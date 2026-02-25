@@ -1,0 +1,19 @@
+{
+    "name": "PhaseCompiler",
+    "description": "Turns a plan into executable phases",
+    "main_user": "Me",
+    "runtime": "cli",
+    "language": "python",
+    "phases": 12,
+    "done": [
+        "Must be finished"
+    ],
+    "constraints": [],
+    "architecture": "serverless",
+    "architecture_notes": "Use AWS technology",
+    "scaling_strategy": "serverless",
+    "expected_scale": "Around 15 users per day",
+    "avoid": [],
+    "phase_duration": "half-day",
+    "starting_point": "existing"
+}

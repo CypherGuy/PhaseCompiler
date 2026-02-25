@@ -1,0 +1,11 @@
+[project]
+name = "phasecompiler"
+version = "0.1.0"
+description = "Convert your project idea into executable, easy to understand phases"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.12.5",
+ "pytest>=9.0.2",
+ "typer>=0.24.1",
+]
