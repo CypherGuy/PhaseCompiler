@@ -1,0 +1,29 @@
+{
+    "name": "HabitFlow",
+    "description": "A simple habit tracker app where users can add daily habits, mark them complete, and visualize their streaks over time",
+    "main_user": "Anyone wanting to build positive habits",
+    "runtime": "Web app",
+    "language": "Python Flask backend, SQLite database, React frontend",
+    "phase_count": 6,
+    "done": [
+        "Users can create and view their habits",
+        "Users can mark habits complete for today",
+        "Users can see their streak count for each habit",
+        "App shows a visual calendar of completed habits"
+    ],
+    "constraints": [
+        "Must work offline first",
+        "No user authentication required"
+    ],
+    "architecture": "other",
+    "architecture_notes": "Simple Flask app with SQLite, single server deployment",
+    "scaling_strategy": "none",
+    "expected_scale": "Single user or small groups, ~100 habits max",
+    "avoid": [
+        "Complex UI frameworks",
+        "Cloud infrastructure",
+        "Real-time sync"
+    ],
+    "phase_duration": "1-2h",
+    "starting_point": "nothing"
+}

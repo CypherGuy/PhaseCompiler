@@ -9,7 +9,11 @@ description = "Convert your project idea into executable, easy to understand pha
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "anthropic>=0.84.0",
     "pydantic>=2.12.5",
     "pytest>=9.0.2",
     "typer>=0.24.1",
 ]
+
+[project.scripts]
+phasecompiler = "phasecompiler.cli:app"

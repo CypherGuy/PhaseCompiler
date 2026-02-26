@@ -1,0 +1,58 @@
+{
+    "phases": [
+        {
+            "id": 1,
+            "title": "Phase 1",
+            "deliverable": "TBD",
+            "tasks": [],
+            "commit_condition": "TBD",
+            "example_input": "TBD",
+            "example_output": "TBD"
+        },
+        {
+            "id": 2,
+            "title": "Phase 2",
+            "deliverable": "TBD",
+            "tasks": [],
+            "commit_condition": "TBD",
+            "example_input": "TBD",
+            "example_output": "TBD"
+        },
+        {
+            "id": 3,
+            "title": "Phase 3",
+            "deliverable": "TBD",
+            "tasks": [],
+            "commit_condition": "TBD",
+            "example_input": "TBD",
+            "example_output": "TBD"
+        },
+        {
+            "id": 4,
+            "title": "Phase 4",
+            "deliverable": "TBD",
+            "tasks": [],
+            "commit_condition": "TBD",
+            "example_input": "TBD",
+            "example_output": "TBD"
+        },
+        {
+            "id": 5,
+            "title": "Phase 5",
+            "deliverable": "TBD",
+            "tasks": [],
+            "commit_condition": "TBD",
+            "example_input": "TBD",
+            "example_output": "TBD"
+        },
+        {
+            "id": 6,
+            "title": "Phase 6",
+            "deliverable": "TBD",
+            "tasks": [],
+            "commit_condition": "TBD",
+            "example_input": "TBD",
+            "example_output": "TBD"
+        }
+    ]
+}

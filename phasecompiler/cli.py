@@ -1,5 +1,3 @@
-# phasecompiler/cli.py
-
 from pydantic import ValidationError
 from phasecompiler.schema import (
     ProjectSpec,
@@ -14,6 +12,7 @@ import typer
 import json
 import sys
 from pathlib import Path
+from phasecompiler.ai_filler import fill_plan
 
 
 app = typer.Typer(help="PhaseCompiler")
@@ -89,6 +88,30 @@ def _create_spec(
         json.dump(output.model_dump(), f, indent=4)
 
     return output.model_dump()
+
+
+def _generate_plan(file: Path) -> dict:
+    """Generate a phased plan from a spec file."""
+    with open(file, "r") as f:
+        spec = json.load(f)
+
+    try:
+        spec_obj = ProjectSpec(**spec)
+    except ValidationError as e:
+        raise ValueError(f"Spec validation failed: {e}")
+
+    plan = {}
+    plan["phases"] = []
+    for i in range(1, spec_obj.phase_count+1):
+        plan["phases"].append({"id": i, "title": f"Phase {i}", "deliverable": "TBD", "tasks": [
+        ], "commit_condition": "TBD", "example_input": "TBD", "example_output": "TBD"},)
+
+    output = PhasePlan(**plan)
+
+    with open("phasecompiler/plan.json", "w") as f:
+        json.dump(plan, f, indent=4)
+
+    return plan
 
 
 @app.command()
@@ -173,30 +196,6 @@ def init() -> dict:
     )
 
 
-def _generate_plan(file: Path) -> dict:
-    """Generate a phased plan from a spec file."""
-    with open(file, "r") as f:
-        spec = json.load(f)
-
-    try:
-        spec_obj = ProjectSpec(**spec)
-    except ValidationError as e:
-        raise ValueError(f"Spec validation failed: {e}")
-
-    plan = {}
-    plan["phases"] = []
-    for i in range(1, spec_obj.phase_count+1):
-        plan["phases"].append({"id": i, "title": f"Phase {i}", "deliverable": "TBD", "tasks": [
-        ], "commit_condition": "TBD", "example_input": "TBD", "example_output": "TBD"},)
-
-    output = PhasePlan(**plan)
-
-    with open("phasecompiler/plan.json", "w") as f:
-        json.dump(plan, f, indent=4)
-
-    return plan
-
-
 @app.command()
 def compile(file: Path = typer.Argument(Path("phasecompiler/spec.json"))):
     """
@@ -210,6 +209,30 @@ def compile(file: Path = typer.Argument(Path("phasecompiler/spec.json"))):
     except ValueError as e:
         typer.echo(f"Error: {e}")
         sys.exit(1)
+
+
+@app.command()
+def fill():
+    """
+Takes an existing plan.json
+Uses the AI module to fill in TBD fields
+Outputs updated plan.json
+"""
+    plan_path = Path("phasecompiler/plan.json")
+    with open(plan_path, "r") as f:
+        plan = json.load(f)
+
+    with open("phasecompiler/spec.json", "r") as f:
+        spec_data = json.load(f)
+
+    spec = ProjectSpec(**spec_data)
+    filled = fill_plan(spec, plan)
+
+    with open(plan_path, "w") as f:
+        json.dump(filled, f, indent=4)
+
+    typer.echo("Plan filled successfully.")
+    typer.echo(json.dumps(filled, indent=4))
 
 
 if __name__ == "__main__":
