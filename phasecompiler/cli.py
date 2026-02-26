@@ -46,8 +46,53 @@ def _prompt_enum(prompt_text: str, enum_cls, default) -> str:
         typer.echo(f"Invalid choice. Pick one of: {choices_str}")
 
 
+def _create_spec(
+    name: str,
+    description: str,
+    main_user: str,
+    runtime: str,
+    language: str,
+    phase_count: int,
+    done: list[str],
+    constraints: list[str],
+    architecture: str,
+    architecture_notes: str,
+    scaling_strategy: str,
+    expected_scale: str,
+    avoid: list[str],
+    phase_duration: str,
+    starting_point: str,
+) -> dict:
+    """Create and save a ProjectSpec with the given parameters."""
+    output = ProjectSpec(
+        name=name,
+        description=description,
+        main_user=main_user,
+        runtime=runtime,
+        language=language,
+        phase_count=phase_count,
+        done=done,
+        constraints=constraints,
+        architecture=ArchitectureStyle(architecture),
+        architecture_notes=architecture_notes,
+        scaling_strategy=ScalingStrategy(scaling_strategy),
+        expected_scale=expected_scale,
+        avoid=avoid,
+        phase_duration=PhaseDuration(phase_duration),
+        starting_point=StartingPoint(starting_point),
+    )
+
+    typer.echo("\nProject spec:")
+    typer.echo(output.model_dump_json(indent=4))
+
+    with open("phasecompiler/spec.json", "w") as f:
+        json.dump(output.model_dump(), f, indent=4)
+
+    return output.model_dump()
+
+
 @app.command()
-def init():
+def init() -> dict:
     """
     Initialize a new project spec
     """
@@ -109,7 +154,7 @@ def init():
         StartingPoint.nothing,
     )
 
-    output = ProjectSpec(
+    return _create_spec(
         name=name,
         description=desc,
         main_user=main_user,
@@ -118,39 +163,27 @@ def init():
         phase_count=phases,
         done=done,
         constraints=constraints,
-        architecture=ArchitectureStyle(architecture),
+        architecture=architecture,
         architecture_notes=architecture_notes,
-        scaling_strategy=ScalingStrategy(scaling_strategy),
+        scaling_strategy=scaling_strategy,
         expected_scale=expected_scale,
         avoid=avoid,
-        phase_duration=PhaseDuration(phase_duration),
-        starting_point=StartingPoint(starting_point),
+        phase_duration=phase_duration,
+        starting_point=starting_point,
     )
 
-    typer.echo("\nProject spec:")
-    typer.echo(output.model_dump_json(indent=4))
 
-    with open("phasecompiler/spec.json", "w") as f:
-        json.dump(output.model_dump(), f, indent=4)
-
-
-@app.command()
-def compile(file: Path = Path("phasecompiler/spec.json")):
-    """
-    loads spec.json and validates it against ProjectSpec
-    """
+def _generate_plan(file: Path) -> dict:
+    """Generate a phased plan from a spec file."""
     with open(file, "r") as f:
         spec = json.load(f)
 
     try:
         spec_obj = ProjectSpec(**spec)
     except ValidationError as e:
-        typer.echo(f"Spec validation failed: {e}")
-        sys.exit(1)
+        raise ValueError(f"Spec validation failed: {e}")
 
-    typer.echo("Compilation successful.")
     plan = {}
-
     plan["phases"] = []
     for i in range(1, spec_obj.phase_count+1):
         plan["phases"].append({"id": i, "title": f"Phase {i}", "deliverable": "TBD", "tasks": [
@@ -158,10 +191,25 @@ def compile(file: Path = Path("phasecompiler/spec.json")):
 
     output = PhasePlan(**plan)
 
-    typer.echo(output.model_dump_json(indent=4))
-
     with open("phasecompiler/plan.json", "w") as f:
         json.dump(plan, f, indent=4)
+
+    return plan
+
+
+@app.command()
+def compile(file: Path = typer.Argument(Path("phasecompiler/spec.json"))):
+    """
+    loads spec.json and validates it against ProjectSpec
+    """
+    try:
+        plan = _generate_plan(file)
+        typer.echo("Compilation successful.")
+        typer.echo(json.dumps(plan, indent=4))
+        return plan
+    except ValueError as e:
+        typer.echo(f"Error: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
