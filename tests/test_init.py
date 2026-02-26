@@ -1,3 +1,11 @@
+from phasecompiler.schema import (
+    ArchitectureStyle,
+    PhaseDuration,
+    ProjectSpec,
+    ScalingStrategy,
+    StartingPoint,
+)
+from phasecompiler.cli import app
 import json
 import sys
 from pathlib import Path
@@ -8,14 +16,6 @@ from typer.testing import CliRunner
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from phasecompiler.cli import app
-from schema import (
-    ArchitectureStyle,
-    PhaseDuration,
-    ProjectSpec,
-    ScalingStrategy,
-    StartingPoint,
-)
 
 runner = CliRunner()
 
@@ -31,7 +31,7 @@ _BASE_SPEC = {
     "expected_scale": "",
     "phase_duration": PhaseDuration.half_day,
     "starting_point": StartingPoint.nothing,
-    "phases": 8,
+    "phase_count": 8,
 }
 
 
@@ -39,11 +39,11 @@ def test_phases_boundary_validation():
     """phases must be between 6 and 12 inclusive; anything outside is rejected."""
     for bad in (0, 5, 13, 100, -1):
         with pytest.raises(ValidationError):
-            ProjectSpec(**{**_BASE_SPEC, "phases": bad})
+            ProjectSpec(**{**_BASE_SPEC, "phase_count": bad})
 
     for ok in (6, 12):
-        spec = ProjectSpec(**{**_BASE_SPEC, "phases": ok})
-        assert spec.phases == ok
+        spec = ProjectSpec(**{**_BASE_SPEC, "phase_count": ok})
+        assert spec.phase_count == ok
 
 
 def test_name_length_constraints():
@@ -102,5 +102,5 @@ def test_init_reprompts_on_out_of_range_phases(tmp_path, monkeypatch):
     assert result.output.count("Phases must be between 6 and 12.") == 2
 
     spec = json.loads((tmp_path / "phasecompiler" / "spec.json").read_text())
-    assert spec["phases"] == 9
+    assert spec["phase_count"] == 9
     assert spec["name"] == "TestProject"

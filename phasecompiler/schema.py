@@ -42,8 +42,8 @@ class ProjectSpec(BaseModel):
                          description="The runtime of the project")
     language: str = Field("python", title="The programming language used",
                           description="The language of the project")
-    phases: int = Field(7, title="Number of phases",
-                        description="The number of phases in the project", ge=6, le=12)
+    phase_count: int = Field(7, title="Number of phases",
+                             description="The number of phases in the project", ge=6, le=12)
     done: list[str] = Field(title="Project completion requirements",
                             description="Conditions for the project to be considered finished")
     constraints: list[str] = Field([], title="Project constraints",
@@ -98,3 +98,17 @@ class ProjectSpec(BaseModel):
             "Affects what the earliest phases look like — e.g. scaffolding vs. audit-and-extend."
         ),
     )
+
+
+class PhaseItem(BaseModel):
+    id: int
+    title: str
+    deliverable: str
+    tasks: list[str]
+    commit_condition: str
+    example_input: str
+    example_output: str
+
+
+class PhasePlan(BaseModel):
+    phases: list[PhaseItem]

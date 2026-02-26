@@ -1,19 +1,20 @@
 # phasecompiler/cli.py
 
 from pydantic import ValidationError
-from schema import (
+from phasecompiler.schema import (
     ProjectSpec,
     ArchitectureStyle,
     ScalingStrategy,
     PhaseDuration,
     StartingPoint,
+    PhasePlan
+
 )
 import typer
 import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 app = typer.Typer(help="PhaseCompiler – schema-driven project planning")
 
@@ -114,7 +115,7 @@ def init():
         main_user=main_user,
         runtime=runtime,
         language=language,
-        phases=phases,
+        phase_count=phases,
         done=done,
         constraints=constraints,
         architecture=ArchitectureStyle(architecture),
@@ -134,11 +135,33 @@ def init():
 
 
 @app.command()
-def compile():
+def compile(file: Path = Path("phasecompiler/spec.json")):
     """
-    Turn a validated spec into a phased plan.
+    loads spec.json and validates it against ProjectSpec
     """
-    typer.echo("Compile command not implemented yet.")
+    with open(file, "r") as f:
+        spec = json.load(f)
+
+    try:
+        spec_obj = ProjectSpec(**spec)
+    except ValidationError as e:
+        typer.echo(f"Spec validation failed: {e}")
+        sys.exit(1)
+
+    typer.echo("Compilation successful.")
+    plan = {}
+
+    plan["phases"] = []
+    for i in range(1, spec_obj.phase_count+1):
+        plan["phases"].append({"id": i, "title": f"Phase {i}", "deliverable": "TBD", "tasks": [
+        ], "commit_condition": "TBD", "example_input": "TBD", "example_output": "TBD"},)
+
+    output = PhasePlan(**plan)
+
+    typer.echo(output.model_dump_json(indent=4))
+
+    with open("phasecompiler/plan.json", "w") as f:
+        json.dump(plan, f, indent=4)
 
 
 if __name__ == "__main__":
