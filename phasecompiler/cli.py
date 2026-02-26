@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 
-app = typer.Typer(help="PhaseCompiler – schema-driven project planning")
+app = typer.Typer(help="PhaseCompiler")
 
 
 def _prompt_list(prompt_text: str, required: bool = False) -> list[str]:
