@@ -4,7 +4,7 @@ description: "Converts a software project idea into a structured, phased executi
 license: MIT
 metadata:
   author: CypherGuy
-  version: "0.1.0"
+  version: "1.0.0"
 ---
 
 # Phase Compiler — Project Planning Skill
@@ -99,7 +99,7 @@ Present the full plan as formatted JSON. Include all phases. Offer to:
 
 ---
 
-## Communication Style
+## How best to talk to the user
 
 - **Report progress in phases.** If `phase_count > 8`, report after every 3 phases:
   ```
