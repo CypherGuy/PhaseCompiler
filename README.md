@@ -144,8 +144,9 @@ The skill returns a complete plan as structured JSON that you can action on:
 You can then:
 
 - Copy the plan directly into a Markdown document
+- Display the result as a live dashboard
 - Export as `plan.json`
-- Extract a checklist (tasks only)
+- Treat it as version control, diffing and versioning phases
 - Ask Claude to adjust individual phases
 
 ---
