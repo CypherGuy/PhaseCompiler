@@ -223,7 +223,7 @@ phase-compiler/
 │   ├── __init__.py
 │   ├── cli.py                 # CLI commands: init, compile, fill
 │   ├── schema.py              # Pydantic models for spec & plan validation
-│   ├── ai_filler.py           # Claude API integration & phase generation
+│   ├── ai_filler.py           # AI integration & phase generation
 │   ├── spec.json              # Your project specification (created by init)
 │   └── plan.json              # Generated phased plan (created by compile, filled by fill)
 ├── tests/

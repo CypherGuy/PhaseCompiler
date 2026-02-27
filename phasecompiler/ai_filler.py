@@ -1,25 +1,18 @@
 import json
 import time
-import anthropic
+from openai import OpenAI
 
 from phasecompiler.schema import ProjectSpec
 
 
-def call_anthropic_api(prompt):
-    message = anthropic.Anthropic().messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=1024,
+def call_openai_api(prompt):
+    client = OpenAI()
+    message = client.chat.completions.create(
+        model="gpt-4o-mini",
+        max_completion_tokens=1024,
         messages=[{"role": "user", "content": prompt}],
     )
-    return message.content
-
-
-def _extract_text(content_blocks):
-    """Extract text from content blocks, returning first text block found."""
-    for block in content_blocks:
-        if hasattr(block, "text"):
-            return block.text
-    return ""
+    return message.choices[0].message.content
 
 
 def _strip_code_fences(text: str) -> str:
@@ -68,8 +61,12 @@ Return only valid JSON with this exact structure:
   "example_output": "example of output at this phase"
 }}"""
 
-    response = call_anthropic_api(prompt)
-    return json.loads(_strip_code_fences(_extract_text(response)))
+    response = call_openai_api(prompt)
+    stripped = _strip_code_fences(response)
+    if not stripped:
+        raise ValueError(
+            f"Empty response from OpenAI for phase {phase_num}: {response}")
+    return json.loads(stripped)
 
 
 def fill_plan(spec: ProjectSpec, plan: dict) -> dict:

@@ -1,29 +1,24 @@
 {
-    "name": "HabitFlow",
-    "description": "A simple habit tracker app where users can add daily habits, mark them complete, and visualize their streaks over time",
-    "main_user": "Anyone wanting to build positive habits",
-    "runtime": "Web app",
-    "language": "Python Flask backend, SQLite database, React frontend",
-    "phase_count": 6,
+    "name": "StudyBattle",
+    "description": "A website that allows you to upload study documents and 'fight' monsters that ask you revision questions as you work your way up a series of child and parent nodes to the top",
+    "main_user": "Students",
+    "runtime": "Website",
+    "language": "Python for the backend, MySQL database, Next/react frontend and maybe typescript too",
+    "phase_count": 10,
     "done": [
-        "Users can create and view their habits",
-        "Users can mark habits complete for today",
-        "Users can see their streak count for each habit",
-        "App shows a visual calendar of completed habits"
+        "User is able to upload docs",
+        "Once the users study materials are complete, you can visualise a structure almost like a binary search tree, with child and parent nodes",
+        "You start at the bottom nodes and can only progress upon defeating all children of a parent node. Lower nodes have easier information, higher nodes may ask you to compare and contrast or explain a topic like the monster is 5",
+        "When an answer is submitted, it must be checked against a series of ai generated criteria based solely off the study materials given. More marks for the closer you are"
     ],
-    "constraints": [
-        "Must work offline first",
-        "No user authentication required"
-    ],
-    "architecture": "other",
-    "architecture_notes": "Simple Flask app with SQLite, single server deployment",
-    "scaling_strategy": "none",
-    "expected_scale": "Single user or small groups, ~100 habits max",
+    "constraints": [],
+    "architecture": "serverless",
+    "architecture_notes": "I would like to use AWS in my project. Maybe Lambda, API Gateway etc..",
+    "scaling_strategy": "serverless",
+    "expected_scale": "Must go up to around 20 users a day, and be able to store up to 500 'battles' minimum",
     "avoid": [
-        "Complex UI frameworks",
-        "Cloud infrastructure",
-        "Real-time sync"
+        "No dynamodb, no need for a login page just yet"
     ],
-    "phase_duration": "1-2h",
+    "phase_duration": "half-day",
     "starting_point": "nothing"
 }

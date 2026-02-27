@@ -3,56 +3,197 @@
         {
             "id": 1,
             "title": "Phase 1",
-            "deliverable": "TBD",
-            "tasks": [],
-            "commit_condition": "TBD",
-            "example_input": "TBD",
-            "example_output": "TBD"
+            "deliverable": "Basic file upload functionality for study documents",
+            "tasks": [
+                "Set up the project structure with a Python backend and Next.js frontend",
+                "Implement file upload endpoint in the backend using Python and Flask/Django",
+                "Create a simple upload form in the frontend using React",
+                "Test file upload functionality with a sample document"
+            ],
+            "commit_condition": "Users can successfully upload study documents and receive a confirmation response",
+            "example_input": "User selects a PDF or Word document and clicks 'Upload'",
+            "example_output": "Response message: 'Document uploaded successfully!'"
         },
         {
             "id": 2,
             "title": "Phase 2",
-            "deliverable": "TBD",
-            "tasks": [],
-            "commit_condition": "TBD",
-            "example_input": "TBD",
-            "example_output": "TBD"
+            "deliverable": "Initial database schema for study materials and question nodes",
+            "tasks": [
+                "Design the database schema for storing study documents and their associated questions",
+                "Create MySQL tables for study documents and nodes with relationships defined between parent and child nodes",
+                "Implement basic data insertion logic for study documents based on uploaded files"
+            ],
+            "commit_condition": "The database schema is defined, tables are created, and at least one study document with child nodes is inserted into the database",
+            "example_input": "Study document titled 'Biology Basics' uploaded which includes topics like 'Cell Structure' and 'Genetics'",
+            "example_output": "Database entries created for 'Biology Basics' with child nodes for 'Cell Structure' and 'Genetics'"
         },
         {
             "id": 3,
             "title": "Phase 3",
-            "deliverable": "TBD",
-            "tasks": [],
-            "commit_condition": "TBD",
-            "example_input": "TBD",
-            "example_output": "TBD"
+            "deliverable": "Functionality to generate question nodes based on uploaded study documents",
+            "tasks": [
+                "Implement a parser to read content from uploaded study documents",
+                "Generate initial question nodes based on the content extracted from the study documents",
+                "Store generated question nodes in the MySQL database, linking them to corresponding study materials"
+            ],
+            "commit_condition": "Question nodes are successfully generated and stored in the database for each uploaded study document",
+            "example_input": {
+                "study_document": "Introduction to Python Programming\n1. What is a variable?\n2. Explain the concept of loops."
+            },
+            "example_output": [
+                {
+                    "node_id": 1,
+                    "question": "What is a variable?",
+                    "difficulty": "easy"
+                },
+                {
+                    "node_id": 2,
+                    "question": "Explain the concept of loops.",
+                    "difficulty": "medium"
+                }
+            ]
         },
         {
             "id": 4,
             "title": "Phase 4",
-            "deliverable": "TBD",
-            "tasks": [],
-            "commit_condition": "TBD",
-            "example_input": "TBD",
-            "example_output": "TBD"
+            "deliverable": "Functionality to visualize the question nodes in a structured format",
+            "tasks": [
+                "Develop a front-end component to display question nodes as a tree structure",
+                "Implement the logic to fetch and organize question nodes from the database",
+                "Ensure that the visualization updates dynamically as new nodes are added"
+            ],
+            "commit_condition": "The user can view a visual representation of question nodes as a tree structure.",
+            "example_input": {
+                "study_material_id": "12345",
+                "question_nodes": [
+                    {
+                        "id": "1",
+                        "text": "What is the basic concept of OOP?",
+                        "parent_id": null,
+                        "children": [
+                            "2",
+                            "3"
+                        ]
+                    },
+                    {
+                        "id": "2",
+                        "text": "Explain encapsulation.",
+                        "parent_id": "1",
+                        "children": []
+                    },
+                    {
+                        "id": "3",
+                        "text": "Define inheritance.",
+                        "parent_id": "1",
+                        "children": []
+                    }
+                ]
+            },
+            "example_output": {
+                "visualization": "<tree_structure_representation>",
+                "message": "Question nodes visualized successfully."
+            }
         },
         {
             "id": 5,
             "title": "Phase 5",
-            "deliverable": "TBD",
-            "tasks": [],
-            "commit_condition": "TBD",
-            "example_input": "TBD",
-            "example_output": "TBD"
+            "deliverable": "Functionality to interact with question nodes and answer them",
+            "tasks": [
+                "Implement the frontend interface for displaying question nodes and submitting answers",
+                "Create backend API endpoints to handle answers submitted by users and validate them against the AI-generated criteria",
+                "Integrate the frontend and backend to ensure seamless communication for answering questions and receiving feedback"
+            ],
+            "commit_condition": "Users can interact with question nodes, submit answers, and receive feedback on their correctness based on the AI criteria",
+            "example_input": "User clicks on a question node and submits an answer: 'The main differences between X and Y are...'",
+            "example_output": "Response indicates the answer's accuracy: 'Your answer is 70% correct. Here are some additional points to consider...'"
         },
         {
             "id": 6,
             "title": "Phase 6",
-            "deliverable": "TBD",
-            "tasks": [],
-            "commit_condition": "TBD",
-            "example_input": "TBD",
-            "example_output": "TBD"
+            "deliverable": "AI response evaluation system for answers submitted by users",
+            "tasks": [
+                "Implement AI criteria for assessing the correctness of user answers based on uploaded study materials",
+                "Create a scoring system that assigns marks based on the closeness of the user's answer to the expected response",
+                "Integrate the evaluation system with the existing question node interaction functionality"
+            ],
+            "commit_condition": "The system can evaluate user answers and provide scores based on established AI criteria",
+            "example_input": "User submits the answer 'The mitochondria is the powerhouse of the cell.' for a question about cell organelles.",
+            "example_output": "Score: 8/10, Comments: 'Good explanation but could include more details about energy production.'"
+        },
+        {
+            "id": 7,
+            "title": "Phase 7",
+            "deliverable": "Integration of feedback mechanism for AI answer evaluations",
+            "tasks": [
+                "Implement a feedback system for users to rate the AI's response evaluation",
+                "Design and create a database table to store user feedback on answers",
+                "Develop a mechanism to collect and analyze feedback to improve AI evaluation"
+            ],
+            "commit_condition": "Users can provide feedback on the AI's response evaluation, and the feedback is stored in the database",
+            "example_input": "User submits a rating of 4 stars and a comment about the AI's answer matching their expectations",
+            "example_output": "Feedback stored successfully with a rating of 4 and the comment saved in the database"
+        },
+        {
+            "id": 8,
+            "title": "Phase 8",
+            "deliverable": "Enhanced AI criteria for diverse question types",
+            "tasks": [
+                "Develop a module to generate diverse types of questions (multiple choice, short answer, etc.) based on study materials",
+                "Create unique AI evaluation criteria for each question type, ensuring tailored feedback",
+                "Implement user interface changes to support different question types and display evaluation results"
+            ],
+            "commit_condition": "The system can generate and evaluate diverse question types based on study materials, with proper feedback displayed to the user.",
+            "example_input": "Study document about photosynthesis; Generate questions like 'What is the process of photosynthesis?' and 'Which organelle is responsible for photosynthesis?'",
+            "example_output": "Question 1: What is the process of photosynthesis? | Evaluation: Good, your answer covers the basic process, but missing detail about light absorption."
+        },
+        {
+            "id": 9,
+            "title": "Phase 9",
+            "deliverable": "Implementation of progress tracking system for user advancement through question nodes",
+            "tasks": [
+                "Develop a progress tracking model in the database to record which nodes a user has defeated",
+                "Implement logic to restrict access to parent nodes until all child nodes are completed",
+                "Create a user interface component that visually represents user progress through the question node structure"
+            ],
+            "commit_condition": "Users can see their progress and can only access parent nodes after defeating all child nodes",
+            "example_input": "User answers questions from child nodes under a parent node",
+            "example_output": "User can access the parent node only after all child questions have been answered correctly"
+        },
+        {
+            "id": 10,
+            "title": "Phase 10",
+            "deliverable": "Complete project with all features functional and a user flow from document upload to answering questions and progress tracking.",
+            "tasks": [
+                "Conduct final testing to ensure all functionalities operate as intended",
+                "Fix any identified bugs or issues in the system",
+                "Prepare documentation for users on how to utilize the platform",
+                "Deploy the project to a server for live access",
+                "Gather initial user feedback for improvements"
+            ],
+            "commit_condition": "All functionalities are tested, documented, and the project is deployed for user access without critical issues.",
+            "example_input": {
+                "study_document": "Intro to Biology.pdf",
+                "uploaded_questions": [
+                    "What is photosynthesis?",
+                    "Describe the process of cellular respiration."
+                ]
+            },
+            "example_output": {
+                "visualization_structure": {
+                    "node": "Biology",
+                    "children": [
+                        {
+                            "node": "Photosynthesis",
+                            "children": []
+                        },
+                        {
+                            "node": "Cellular Respiration",
+                            "children": []
+                        }
+                    ]
+                },
+                "user_progress": "User has defeated all child nodes and can access the parent node."
+            }
         }
     ]
 }
