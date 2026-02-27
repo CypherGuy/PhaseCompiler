@@ -12,7 +12,7 @@ import typer
 import json
 import sys
 from pathlib import Path
-from phasecompiler.ai_filler import fill_plan
+from phasecompiler.ai_filler_openai import fill_plan
 
 
 app = typer.Typer(help="PhaseCompiler")

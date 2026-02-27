@@ -1,6 +1,6 @@
 # PhaseCompiler
 
-A CLI tool that turns your project specification into a structured, execution plan that's split into phases using Claude AI. Instead of vague ideas, you get an actionable roadmap broken into 6–12 concrete phases, each with deliverables, tasks, commit conditions, and examples.
+A CLI tool that turns your project specification into a structured, execution plan that's split into phases using either OpenAI or Claude AI. Instead of vague ideas, you get an actionable roadmap broken into 6–12 concrete phases, each with deliverables, tasks, commit conditions, and examples.
 
 ## The Process
 
@@ -14,7 +14,7 @@ PhaseCompiler works in three steps via three commands:
    - **Commit Condition**: How do you know this phase is complete?
    - **Example Input/Output**: Real examples of the phase in action
 
-Claude receives your full spec and a summary of previously completed phases, ensuring each phase is contextual and builds on earlier work. All three phases are filled with a single API call per phase, making it quick, clean and cost-efficient.
+The AI receives your full spec and a summary of previously completed phases, ensuring each phase is contextual and builds on earlier work. All three phases are filled with a single API call per phase, making it quick, clean and cost-efficient.
 
 ## Why This Tool
 
@@ -22,7 +22,7 @@ Sometimes when I set down and program, I just have no idea where to begin. I may
 
 - Forces you to define what "done" means, what constraints matter, and what your architecture looks like
 - Ensures each phase is scoped relative to your tech choices, timeline, and previous work
-- Saves time: Claude can generate deliverables, tasks, commit conditions, and initial phases in around 10-15 seconds
+- Saves time: The program can generate deliverables, tasks, commit conditions, and initial phases in around 10-15 seconds
 - Cives you examples for each phase to clarify expectations
 - Costs 1 API call per phase - not 5 separate calls for deliverable, tasks, etc.
 
@@ -213,7 +213,7 @@ Recall that PhaseCompiler supports up to 12 phases.
 
 ### 5. Run `fill` When You're Ready
 
-The `compile` step is fast (no API calls). Run `fill` only when your spec is finalized. Filling each phase costs around $0.002 in API fees from testing.
+The `compile` step is fast (no API calls). Run `fill` only when your spec is finalized. Filling each phase costs around $0.002 in API fees from testing. You could also run ai_filler_claude.py for a slightly more expnsive cost.
 
 ## File Structure
 
@@ -223,7 +223,8 @@ phase-compiler/
 │   ├── __init__.py
 │   ├── cli.py                 # CLI commands: init, compile, fill
 │   ├── schema.py              # Pydantic models for spec & plan validation
-│   ├── ai_filler.py           # AI integration & phase generation
+│   ├── ai_filler_openai.py           # OpenAI integration & phase generation
+│   ├── ai_filler_claude.py           # Claude integration & phase generation
 │   ├── spec.json              # Your project specification (created by init)
 │   └── plan.json              # Generated phased plan (created by compile, filled by fill)
 ├── tests/

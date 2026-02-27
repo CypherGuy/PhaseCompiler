@@ -1,5 +1,5 @@
 import pytest
-from phasecompiler.ai_filler import (
+from phasecompiler.ai_filler_openai import (
     _strip_code_fences,
     _build_prior_phases_summary,
 )
