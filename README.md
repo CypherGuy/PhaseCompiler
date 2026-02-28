@@ -1,6 +1,6 @@
 # PhaseCompiler
 
-A Claude skill for converting software project ideas into structured, phased execution plans.
+A Claude skill for converting software project ideas into structured, phased execution plans. Also integrates with Github so you can create issues, actions etc.. based on your project idea, giving you easy, actionable steps you can tick off.
 
 ## Table of Contents
 
@@ -11,6 +11,7 @@ A Claude skill for converting software project ideas into structured, phased exe
 - [Best Practices](#best-practices)
   - [Claude Projects](#projects)
   - [Output](#output)
+- [Github Integration](#github-integration)
 - [File Structure](#file-structure)
 - [License](#license)
 
@@ -148,6 +149,10 @@ You can then:
 - Export as `plan.json`
 - Treat it as version control, diffing and versioning phases
 - Ask Claude to adjust individual phases
+
+## Github Integration
+
+This skill also comes with a GitHub integration. If you ask Claude to integrate with Github it will give you a workflow file and a script you can commit to GitHub to import the plan into GitHub Issues and Actions. Examples can be seen in SKILL.md
 
 ---
 
