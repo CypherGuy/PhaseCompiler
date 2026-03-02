@@ -1,23 +1,25 @@
 # PhaseCompiler
 
-A Claude skill for converting software project ideas into structured, phased execution plans. Also integrates with Github so you can create issues, actions etc.. based on your project idea, giving you easy, actionable steps you can tick off.
+A Claude skill that turns vague project ideas into execution-ready roadmaps - with explicit “definition of done”, dependency-correct sequencing, and GitHub issue automation
 
 ## Table of Contents
 
 - [The Process](#the-process)
+- [Who is this for?](#who-is-this-for)
 - [Why This Skill?](#why-this-skill)
+- [Why not use Claude itself?](#why-can't-i-just-use-claude-itself-to-make-me-a-plan)
 - [Installation](#installation)
 - [Usage](#usage)
 - [Best Practices](#best-practices)
   - [Claude Projects](#projects)
   - [Output](#output)
-- [Github Integration](#github-integration)
+- [GitHub Integration](#github-integration)
 - [File Structure](#file-structure)
 - [License](#license)
 
 ## The process
 
-First, you describe your project idea. Claude may ask you some questions around programming languages, runtime, architecture or constraints. After those are answered, you get a validated JSON schema, which you can view in schema.py, with 6-12 sequential phases.
+First, you describe your project idea. Claude may ask you some questions around programming languages, runtime, architecture or constraints. After those are answered, you receive a validated, dependency-ordered execution plan with 6–12 sequential phases.
 
 Each 'phase' consists of a series of actionable and testable tasks that can help you visualise how to go from nothing to a working product. Each phase includes:
 
@@ -26,6 +28,8 @@ Each 'phase' consists of a series of actionable and testable tasks that can help
 - **Tasks**: Actionable 3–5 step checklist
 - **Commit Condition**: When the phase is complete
 - **Example I/O**: Data flow in and out to help you better understand the idea
+
+Each phase is designed to be completed in isolation and must have a clear commit condition before progressing. This stops architectural drift and having lots of unfinished features.
 
 Example output for a web project:
 
@@ -47,17 +51,50 @@ The plan can be exported as a JSON file, meaning you could for example pass it i
 
 ---
 
+## Who is this for?
+
+Good for:
+
+- Those that start projects but don't finish them
+- Those who can't sequence ideas properly (What should I do next?)
+- Indie developers shipping MVP's
+- Those who fancy a bit of discipline and structure when programming
+
+Bad for:
+
+- Larger teams
+- Complex multi-agent workflows
+
 ## Why This Skill?
 
-Sometimes when I set down and program, I just have no idea where to begin. I may not have a clear idea of what I want to build, or I may have no clue how to structure it.
+Most developers don’t struggle with ideas, or asking Claude to turn their idea into a PLAN.md. They struggle with:
 
-This skill helps me with that, and is:
+- **Starting too big**
+- **Shipping half-finished features**
+- **Rewriting architecture mid-build**
+- **Scope creep killing momentum**
+- **Never defining what “done” actually means**
 
-- **High enough** to see the full journey in one view
-- **Detailed enough** to start coding immediately after Phase 1
-- **Flexible enough** to adapt based on project type, language, architecture, and constraints
+PhaseCompiler forces discipline into your workflow:
 
----
+- **Clear MVP boundaries**
+- **Explicit commit conditions**
+- **Sequential, dependency-aware phases**
+- **Tangible deliverables per phase**
+- **Re-runnable, idempotent planning**
+
+## Why can't I just use Claude itself to make me a plan?
+
+You could ask an LLM to “plan my project.”, but PhaseCompiler enforces structure which is the key idea. As an example:
+
+- Every phase must produce a concrete deliverable
+- Every phase must define a measurable commit condition
+- Tasks are limited to actionable 3–5 step sequences
+- Phases must build sequentially — no abstract fluff
+- The output schema is stable and exportable
+- Plans can be imported into GitHub as milestones + issues
+
+All of these ideas are enforced by the skill and would be way tougher to keep track of with Claude.
 
 ## Installation
 
@@ -100,20 +137,6 @@ Provide project context upfront:
 
 ---
 
-## Best Practices
-
-### Projects
-
-Create a Claude Project for your development work. Add:
-
-1. This skill (upload the `.zip` or add via `/skills add`)
-2. Any existing project documentation, design docs, API specs, or requirements
-3. Project instructions like: "When I ask for help planning a feature, use the phase-compiler skill"
-
-You can also set a global default instruction at **Settings > General > What personal preferences should Claude consider...?** with something like: "Use the phase-compiler skill whenever I ask to plan, structure, or roadmap a project."
-
----
-
 ## Output
 
 The skill returns a complete plan as structured JSON that you can action on:
@@ -142,7 +165,9 @@ The skill returns a complete plan as structured JSON that you can action on:
 }
 ```
 
-You can then:
+The structure is stable and idempotent, meaning it can be versioned, diffed, and safely re-imported into GitHub without duplicating issues.
+
+Once generated, you can then:
 
 - Copy the plan directly into a Markdown document
 - Display the result as a live dashboard
@@ -150,9 +175,17 @@ You can then:
 - Treat it as version control, diffing and versioning phases
 - Ask Claude to adjust individual phases
 
-## Github Integration
+## GitHub Integration
 
-This skill also comes with a GitHub integration. If you ask Claude to integrate with Github it will give you a workflow file and a script you can commit to GitHub to import the plan into GitHub Issues and Actions. Examples can be seen in SKILL.md
+PhaseCompiler can export your plan directly into:
+
+- GitHub Milestones (one per phase)
+- GitHub Issues (one per task)
+- A GitHub Actions workflow for automated importing
+
+The import script is idempotent — re-running it will not duplicate issues. Examples can be seen in SKILL.md
+
+The skill will provide you with steps to get started. Commit the workflow file and the script given to main and the workflow will automatically sync your roadmap into executable GitHub work.
 
 ---
 
