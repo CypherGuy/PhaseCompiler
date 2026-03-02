@@ -23,7 +23,7 @@ If uncertain, ask the user to confirm they want a phased project plan.
 
 Ask the user for project information, all of the inputs in particular, every single non-optional field. Use these fields:
 
-**Required - You must ask the user for these:**
+**Required - You must ask the user and get a defined answer for these:**
 
 - `name` (project name, max 50 chars)
 - `description` (what the project does, max 1000 chars)
@@ -32,18 +32,19 @@ Ask the user for project information, all of the inputs in particular, every sin
 - `language` (default: "python")
 - `runtime` (cli / web / mobile / desktop / library; default: "cli")
 - `phase_count` (integer 6–12; default: 7)
+- `starting_point` (nothing / existing / prototype / mvp; default: "nothing")
+- `MVP` (1–5 concrete features or deliverables that make the product usable by the main_user. These must represent the core value only. No scaling, optimisation, or secondary features at this point.)
+
+**Optional - You must ask the user if they have a preference:**
+
 - `architecture` (microservices / event_driven / serverless / other; default: "other")
 - `scaling_strategy` (none / vertical / horizontal / serverless / auto; default: "none")
-- `starting_point` (nothing / existing / prototype / mvp; default: "nothing")
-
-**Optional - ask the user if they have a preference:**
-
 - `constraints` (budget, time, team size, technical limits)
 - `architecture_notes` (additional design context)
 - `expected_scale` (users, requests/sec, data volume)
 - `avoid` (what NOT to do — patterns, tools, approaches)
 
-Confirm all inputs before generating.
+Collect and confirm all required inputs and state any assumptions before generating the plan. For optional inputs, if the user doesn't have a preference, proceed with defaults and state assumptions.
 
 ---
 
@@ -72,7 +73,8 @@ For each phase **1** through **N** (where N = `phase_count`), produce a phase ob
 - **Tasks are actionable.** 3–5 per phase, in order. Example: `["Create models.py", "Write migrations", "Add CLI argument parsing"]`.
 - **Commit conditions are testable.** Example: "All unit tests pass, API responds to 5 core endpoints."
 - **Example I/O shows data flow.** Describes what state/artifacts exist before and after the phase.
-- **Always ask questions.** Clarify any ambiguities, missing information or otherwise things the user didn't directly provide with the user before proceeding.
+- **Have a preference to ask questions.** Ask questions only when ambiguity affects sequencing, MVP boundaries, or commit conditions. Otherwise proceed with reasonable defaults and state assumptions.
+- **Define an MVP checkpoint.** Ensure the defined MVP is fully delivered before introducing scaling, secondary features, or optimisations in the latter phases. At the phase when the MVP is met, indicate that the MVP is complete in the title.
 - **Determine the value add of the project.** If the user doesn't explicitly state it, ask "What is the main value or benefit this project provides to users? How does it solve an issue they have or improve their workflow?" Use this to guide phase generation.
 
 **Generation Strategy:**
@@ -120,7 +122,7 @@ Present the full plan as formatted JSON. Include all phases. Offer to:
 
 ---
 
-As an additional feature, the user may request to export this information to GitHub. Feel free to tell them that you can do this. If they do so, you need to generate two additional files:
+As an additional feature, the user may request to export this information to GitHub. Feel free to tell them that you can do this. If they do so, you need to generate two additional files on top of the already generated plan.json:
 
 The first is a `.github/workflows/phasecompiler-import.yml` file. This file should contain a GitHub Actions workflow that runs on push to the main branch. The workflow should check out the code, set up Python, install dependencies, and run a script called `scripts/phasecompiler_import.py` that will be responsible for importing the generated plan into GitHub issues. NEVER ASK THE USER FOR THEIR TOKEN. A `GITHUB_TOKEN` variable should be used to authenticate with the GitHub API. NEVER ASK THE USER FOR THEIR TOKEN. The workflow also needs issues: write permission so it can create milestones + issues. It also needs to have a workflow_dispatch trigger so the user can manually trigger it after pushing the plan. Output exactly these two files; do not modify what is given to you in any way except for filling whatever logic is needed in any placeholders.
 
@@ -144,7 +146,7 @@ on:
     branches: ["main"]
     paths:
       - "plan.json"
-      - "scripts/phasecompiler-import.py"
+      - "scripts/phasecompiler_import.py"
       - ".github/workflows/phasecompiler-import.yml"
 
 permissions:

@@ -49,6 +49,8 @@ class ProjectSpec(BaseModel):
                             description="Conditions for the project to be considered finished")
     constraints: list[str] = Field([], title="Project constraints",
                                    description="The constraints of the project")
+    mvp: list[str] = Field([], title="MVP features",
+                           description="What is the MVP?")
 
     # Architecture
     architecture: ArchitectureStyle = Field(
