@@ -4,15 +4,17 @@ A Claude skill that turns vague project ideas into execution-ready roadmaps - wi
 
 ## Table of Contents
 
-- [The Process](#the-process)
+- [The process](#the-process)
 - [Who is this for?](#who-is-this-for)
 - [Why This Skill?](#why-this-skill)
-- [Why not use Claude itself?](#why-can't-i-just-use-claude-itself-to-make-me-a-plan)
+- [Why not just use Claude itself to make me a plan?](#why-not-just-use-claude-itself-to-make-me-a-plan)
 - [Installation](#installation)
+  - [Quick Install](#quick-install-recommended)
 - [Usage](#usage)
-- [Best Practices](#best-practices)
-  - [Claude Projects](#projects)
-  - [Output](#output)
+  - [First starting off](#first-starting-off)
+  - [Specifying Details](#specifying-details)
+  - [Iterative Refinement](#iterative-refinement)
+- [Output](#output)
 - [GitHub Integration](#github-integration)
 - [File Structure](#file-structure)
 - [License](#license)
@@ -83,14 +85,14 @@ PhaseCompiler forces discipline into your workflow:
 - **Tangible deliverables per phase**
 - **Re-runnable, idempotent planning**
 
-## Why can't I just use Claude itself to make me a plan?
+## Why not just use Claude itself to make me a plan?
 
 You could ask an LLM to “plan my project.”, but PhaseCompiler enforces structure which is the key idea. As an example:
 
 - Every phase must produce a concrete deliverable
 - Every phase must define a measurable commit condition
 - Tasks are limited to actionable 3–5 step sequences
-- Phases must build sequentially — no abstract fluff
+- Phases are built sequentially
 - The output schema is stable and exportable
 - Plans can be imported into GitHub as milestones + issues
 
@@ -183,7 +185,7 @@ PhaseCompiler can export your plan directly into:
 - GitHub Issues (one per task)
 - A GitHub Actions workflow for automated importing
 
-The import script is idempotent — re-running it will not duplicate issues. Examples can be seen in SKILL.md
+The import script is idempotent. Re-running it will not duplicate issues. Examples can be seen in SKILL.md
 
 The skill will provide you with steps to get started. Commit the workflow file and the script given to main and the workflow will automatically sync your roadmap into executable GitHub work.
 
@@ -196,10 +198,9 @@ phase-compiler/
 ├── README.md                   # This file
 ├── SKILL.md                    # Main skill instructions for Claude
 ├── schema.py                   # Pydantic models (project spec validation)
-(optional)
 ```
 
-**Note**: Only `SKILL.md` is needed for the Claude skill. The Python files (`schema.py`, `generate-plan.py`) are optional utilities for batch processing or integration with external systems. For conversational use in Claude Desktop or Claude.ai, just upload the skill via SKILL.md.
+**Note**: Only `SKILL.md` is needed for the Claude skill. `schema.py` is an optional file for displaying the schema of the Project spec and how each phase is laid out.
 
 If you would rather have this tool but in a CLI format, feel free to switch over the the CLI branch and clone that.
 
