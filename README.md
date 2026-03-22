@@ -1,193 +1,204 @@
-# PhaseCompiler
+# PhaseCompiler — Web UI
 
-A Claude skill that turns vague project ideas into execution-ready roadmaps - with explicit “definition of done”, dependency-correct sequencing, and GitHub issue automation
+A [self-hosted web app](https://cypherguy--phase-compiler-web.modal.run) that turns your project spec into a structured, phased execution plan using a two-agent Claude system. You fill in a form, two AI agents debate the output, and you get a dependency-ordered roadmap with deliverables, tasks, commit conditions, and examples for each phase.
 
-## Table of Contents
+## The Process
 
-- [The process](#the-process)
-- [Who is this for?](#who-is-this-for)
-- [Why This Skill?](#why-this-skill)
-- [Why not just use Claude itself to make me a plan?](#why-not-just-use-claude-itself-to-make-me-a-plan)
-- [Installation](#installation)
-  - [Quick Install](#quick-install-recommended)
-- [Usage](#usage)
-  - [First starting off](#first-starting-off)
-  - [Specifying Details](#specifying-details)
-  - [Iterative Refinement](#iterative-refinement)
-- [Output](#output)
-- [GitHub Integration](#github-integration)
-- [File Structure](#file-structure)
-- [License](#license)
+There are two agents that interact with each other after submitting details via a single form submission:
 
-## The process
+1. Fill in the form: Add things like your project name, description, definition of done, MVP features, language, runtime, starting point, and number of phases (6–12). There's also optional fields for you to add architecture style, scaling strategy, constraints and things to avoid.
+2. The Planner agent takes your spec and makes a complete JSON plan following the PhaseCompiler schema: title, deliverable, tasks, commit condition, and example I/O for each phase.
+3. The Analyzer agent checks for certain things in order to make it higher quality: Things like if commit conditions are testable, phases are properly sequenced, and deliverables are concrete. If it approves, the result is returned immediately. If it rejects, its feedback is passed back to the Planner for a revised attempt — up to 3 debate rounds.
 
-First, you describe your project idea. Claude may ask you some questions around programming languages, runtime, architecture or constraints. After those are answered, you receive a validated, dependency-ordered execution plan with 6–12 sequential phases.
+By splitting the process into two agents, each one can focus on its own job. This produces tighter plans than a single agent doing both at once.
 
-Each 'phase' consists of a series of actionable and testable tasks that can help you visualise how to go from nothing to a working product. Each phase includes:
+A live status feed shows which agent is running and logs each debate round in real time.
 
-- **Title**: Meaningful phase purpose
-- **Deliverable**: Concrete output (working code, tests, docs)
-- **Tasks**: Actionable 3–5 step checklist
-- **Commit Condition**: When the phase is complete
-- **Example I/O**: Data flow in and out to help you better understand the idea
+## Why This Tool
 
-Each phase is designed to be completed in isolation and must have a clear commit condition before progressing. This stops architectural drift and having lots of unfinished features.
+Sometimes when I sit down to program, I have no idea where to begin. I may not have a clear idea of what I want to build, or I may have no clue how to structure it. Just telling an AI to "build me a plan" doesn't clarify scope, dependencies, or deliverables, which is where this tool comes in. PhaseCompiler:
 
-Example output for a web project:
+- Forces you to define what "done" means, what constraints matter, and what your MVP looks like
+- Ensures each phase is scoped relative to your tech choices and previous phases
+- Has a second agent review the plan so vague or unordered phases get caught before you start building
+- Costs roughly $0.02 per 8-phase plan from testing
+- Shows a pre-flight token estimate before you spend anything
 
-```
-Phase 1: Backend Setup & Database Schema
-Phase 2: Core API Endpoints
-Phase 3: Authentication & Authorization
-Phase 4: Frontend Scaffolding
-Phase 5: Feature Implementation
-...
-Phase N: Testing, Optimization & Deployment
-```
-
-You can see an actual JSON example in the [Output](#output) section.
-
-Each phase builds on the previous one, meaning there's no abstract phases that aren't relevant.
-
-The plan can be exported as a JSON file, meaning you could for example pass it into an LLM for easy visual analysis by asking it to draw you a webpage of the plan.
-
----
-
-## Who is this for?
-
-Good for:
-
-- Those that start projects but don't finish them
-- Those who can't sequence ideas properly (What should I do next?)
-- Indie developers shipping MVP's
-- Those who fancy a bit of discipline and structure when programming
-
-Bad for:
-
-- Larger teams
-- Complex multi-agent workflows
-
-## Why This Skill?
-
-Most developers don’t struggle with ideas, or asking Claude to turn their idea into a PLAN.md. They struggle with:
-
-- **Starting too big**
-- **Shipping half-finished features**
-- **Rewriting architecture mid-build**
-- **Scope creep killing momentum**
-- **Never defining what “done” actually means**
-
-PhaseCompiler forces discipline into your workflow:
-
-- **Clear MVP boundaries**
-- **Explicit commit conditions**
-- **Sequential, dependency-aware phases**
-- **Tangible deliverables per phase**
-- **Re-runnable, idempotent planning**
-
-## Why not just use Claude itself to make me a plan?
-
-You could ask an LLM to “plan my project.”, but PhaseCompiler enforces structure which is the key idea. As an example:
-
-- Every phase must produce a concrete deliverable
-- Every phase must define a measurable commit condition
-- Tasks are limited to actionable 3–5 step sequences
-- Phases are built sequentially
-- The output schema is stable and exportable
-- Plans can be imported into GitHub as milestones + issues
-
-All of these ideas are enforced by the skill and would be way tougher to keep track of with Claude.
+Unlike the Claude skill in the main branch (which integrates into Claude Desktop) or the CLI in the `cli` branch (which runs from the terminal), This branch is a hosted form you can open in any browser. It only needs a Modal account and your Anthropic API key. Alternatively you can just
 
 ## Installation
 
-### Quick Install (recommended)
+### Prerequisites
 
-1. Download the SKILL.md file
-2. Upload to Claude Desktop: **Open Sidebar > Customize > Create new Skill > Upload Skill**
+- **Python 3.11+**
+- **Modal account** — [sign up here](https://modal.com/) (free tier is enough)
+- **Anthropic API key** — [get one here](https://console.anthropic.com/)
+
+### Steps
+
+1. **Clone the repo and switch to this branch:**
+
+   ```bash
+   git clone https://github.com/CypherGuy/phase-compiler.git
+   cd phase-compiler
+   git checkout website
+   ```
+
+2. **Create a virtual environment and install Modal:**
+
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate   # Windows: .venv\Scripts\activate
+   pip install modal
+   ```
+
+3. **Authenticate with Modal:**
+
+   ```bash
+   modal token new
+   ```
+
+4. **Deploy:**
+
+   ```bash
+   modal deploy modal_app.py
+   ```
+
+   The output will show your endpoint URL:
+
+   ```
+   https://your-username--phase-compiler-web.modal.run
+   ```
+
+5. **Open the URL in your browser and paste in your Anthropic API key.** It is used only for that request and never stored.
 
 ---
 
 ## Usage
 
-### First starting off
+### Filling in the form
 
-You can start by asking Claude to plan a project:
+The form is split into required fields and optional settings.
 
-> "Help me plan a project"
+**Required:**
 
-> "I want to build a CLI tool for managing tasks. Can you create a development roadmap?"
+- **Project Name** — Short name, max 50 characters
+- **Description** — What does it do? Max 1000 characters
+- **Definition of Done** — One condition per line. What does "finished" look like?
+- **MVP Features** — Core features only, one per line. No scaling or secondary features yet
+- **Language** — e.g. `python`, `typescript`, `rust`
+- **Main User** — Who uses it? Default: `Just Myself`
+- **Runtime** — CLI / Web / Mobile / Desktop / Library
+- **Starting Point** — Nothing from scratch / Existing codebase / Prototype / MVP already done
+- **Number of Phases** — Integer from 6–12
 
-> "Plan out a web app that lets users track expenses"
+**Optional** (expand the section):
 
-### Specifying Details
+- **Architecture** — Microservices / Event-driven / Serverless / Other
+- **Scaling Strategy** — None / Vertical / Horizontal / Serverless / Auto
+- **Expected Scale** — e.g. `single user`, `10k DAU`
+- **Architecture Notes** — Frameworks, patterns, extra design context
+- **Constraints** — Budget, time, team size, technical limits — one per line
+- **Avoid** — Tools, patterns, or practices to skip — one per line
 
-Provide project context upfront:
+### Estimating cost first
 
-> "Plan a Python web backend using FastAPI with Postgres, starting from scratch, 8 phases"
+Click the button labbeled 'Estimate tokens first'. to show you the estimated input token count and cost breakdown before anything is generated.
 
-> "I'm building a mobile app in React Native. It's for myself, serverless architecture. Create a plan."
+### Generating the plan
 
-> "Plan a library/SDK in Rust with these constraints: <1 week timeline, needs comprehensive tests"
+Click **Generate Roadmap**. The loading overlay shows live status:
 
-### Iterative Refinement
+- Which agent is running
+- Whether the Analyzer approved or rejected
+- How many debate rounds occurred
 
-> "Can you expand Phase 3 with more detail on the API design?"
-
-> "Merge phases 5 and 6 to make this 8 phases instead of 9"
-
-> "Adjust the phases to prioritize authentication earlier"
+On approval, the results page appears.
 
 ---
 
 ## Output
 
-The skill returns a complete plan as structured JSON that you can action on:
+The results page shows:
+
+- Project data — Language, runtime, phase count, and how many agent rounds it took (e.g. `1 (approved first try ✨)`)
+- Token usage card — Input tokens, output tokens, cache written, total cost, and how far off the pre-flight estimate was
+- Phase cards — One per phase, each with:
+  - Title and deliverable
+  - Task checklist (3–5 items)
+  - Commit condition badge
+  - Example input / output boxes
+- Raw JSON toggle — Expand to copy the full `plan.json`
+
+![Example phase card](phase.png)
+
+Or in JSON form:
 
 ```json
 {
-  "project": {
-    "name": "MyApp",
-    "description": "...",
-    "language": "python",
-    "runtime": "web",
-    ...
-  },
-  "phases": [
-    {
-      "id": 1,
-      "title": "Backend Setup & Database Schema",
-      "deliverable": "Running API server with database connected",
-      "tasks": ["...", "...", "..."],
-      "commit_condition": "API responds to health check endpoint",
-      "example_input": "Project requirements",
-      "example_output": "Git repo with initial project structure"
-    },
-    ...
-  ]
+  "id": 3,
+  "title": "Database Schema & Algorithm Storage",
+  "deliverable": "MongoDB collections for algorithms with metadata, code, and descriptions; seed data loaded for all algorithms",
+  "tasks": [
+    "Define MongoDB schema: Algorithm collection with fields (name, code, pseudocode, description, difficulty, time_complexity, space_complexity)",
+    "Create migration/seed script to insert all 8+ algorithms with metadata into MongoDB",
+    "Add indexes on algorithm name and difficulty for fast retrieval",
+    "Write functions to fetch algorithm by name, list all algorithms, and retrieve algorithm code"
+  ],
+  "commit_condition": "MongoDB contains 8+ algorithm documents, queries return correct algorithm metadata and code in <100ms",
+  "example_input": "Empty MongoDB instance",
+  "example_output": "MongoDB collection 'algorithms' with 8 documents; query db.algorithms.find({name: 'Bubble Sort'}) returns full record with code"
 }
 ```
 
-The structure is stable and idempotent, meaning it can be versioned, diffed, and safely re-imported into GitHub without duplicating issues.
+---
 
-Once generated, you can then:
+## Best Practices
 
-- Copy the plan directly into a Markdown document
-- Display the result as a live dashboard
-- Export as `plan.json`
-- Treat it as version control, diffing and versioning phases
-- Ask Claude to adjust individual phases
+### 1. Be specific in your description
 
-## GitHub Integration
+Vague descriptions produce vague phases. "A FastAPI backend with JWT auth and PostgreSQL" gives the Planner enough to sequence things correctly. "A backend app" does not.
 
-PhaseCompiler can export your plan directly into:
+### 2. Write testable done conditions
 
-- GitHub Milestones (one per phase)
-- GitHub Issues (one per task)
-- A GitHub Actions workflow for automated importing
+- ✅ "Users can click any algorithm and see a step-by-step visualisation"
+- ✅ "All 8 algorithm pages load without errors"
+- ❌ "The site works" (too vague — the Analyzer will reject this)
 
-The import script is idempotent. Re-running it will not duplicate issues. Examples can be seen in SKILL.md
+### 3. Keep the MVP list short
 
-The skill will provide you with steps to get started. Commit the workflow file and the script given to main and the workflow will automatically sync your roadmap into executable GitHub work.
+The Planner scopes every phase around your MVP features. More MVP items means more phases touch them, which means longer output and more tokens. List only the core value — no nice-to-haves.
+
+### 4. Choose a realistic phase count
+
+- **6 phases**: Small projects or simple features
+- **8–10 phases**: Medium projects with several distinct concerns
+- **12 phases**: Large projects with complex architecture and many tracks
+
+### 5. Leave optional fields blank if unused
+
+Architecture notes, constraints, and avoid lists all add to the input prompt and cost. Skip them unless they affect how the phases should be structured.
+
+### 6. Clear done conditions prevent debate rounds
+
+If the Analyzer rejects the plan, both agents run again. Clear, specific done conditions and a concrete description almost always get approved in round 1. Debate rounds roughly double the cost.
+
+---
+
+## Cost
+
+The web version uses **Claude Haiku 4.5** — the cheapest available Claude model. Prompt caching is enabled on both agent system prompts, which saves ~90% on system prompt tokens in debate rounds 2 and 3.
+
+Typical costs from testing:
+
+| Plan size | Rounds | Approx. cost |
+| --------- | ------ | ------------ |
+| 6 phases  | 1      | ~$0.015      |
+| 8 phases  | 1      | ~$0.020      |
+| 10 phases | 1      | ~$0.028      |
+| Any size  | 2–3    | ~2–3× above  |
+
+The token usage card on the results page shows the exact breakdown every time.
 
 ---
 
@@ -195,14 +206,13 @@ The skill will provide you with steps to get started. Commit the workflow file a
 
 ```
 phase-compiler/
-├── README.md                   # This file
-├── SKILL.md                    # Main skill instructions for Claude
-├── schema.py                   # Pydantic models (project spec validation)
+├── modal_app.py        # Modal deployment — FastAPI app, form HTML, both agents
+├── SKILL.md            # PhaseCompiler skill instructions (copied into the Modal image)
+├── schema.py           # Pydantic models for spec & plan validation
+└── README.md           # This file
 ```
 
-**Note**: Only `SKILL.md` is needed for the Claude skill. `schema.py` is an optional file for displaying the schema of the Project spec and how each phase is laid out.
-
-If you would rather have this tool but in a CLI format, feel free to switch over the the CLI branch and clone that.
+The entire app lives in `modal_app.py`. The HTML form, both agent prompts, the debate loop, and the SSE streaming endpoint are all in that one file.
 
 ---
 
