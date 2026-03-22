@@ -98,6 +98,10 @@ FORM_HTML = """<!DOCTYPE html>
     transition: border-color 0.15s;
   }
   input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+  input::placeholder, textarea::placeholder { color: #6b6b80 !important; opacity: 1; }
+  input::-webkit-input-placeholder, textarea::-webkit-input-placeholder { color: #6b6b80 !important; opacity: 1; }
+  input::-moz-placeholder, textarea::-moz-placeholder { color: #6b6b80 !important; opacity: 1; }
+  .prefilled { color: #6b6b80 !important; }
   select option { background: var(--surface2); }
   textarea { resize: vertical; min-height: 80px; }
   details { margin-bottom: 1.25rem; }
@@ -323,36 +327,35 @@ FORM_HTML = """<!DOCTYPE html>
 
       <div class="field">
         <label for="name">Project Name <span class="req">*</span></label>
-        <input type="text" id="name" name="name" placeholder="e.g. TaskTracker CLI" maxlength="50" value="Algorithm Visualiser" required>
+        <input type="text" id="name" name="name" placeholder="e.g. TaskTracker CLI" maxlength="50" value="TaskFlow" class="prefilled" required>
       </div>
 
       <div class="field">
         <label for="description">Description <span class="req">*</span> <span class="hint">What does it do? Max 1000 chars</span></label>
-        <textarea id="description" name="description" placeholder="A CLI tool for managing personal tasks with priorities, tags, and due dates." maxlength="1000" rows="3" required>A website that allows you to learn about Bubble/Insertion/Merge/Quick/Heap sort as well as algorithms like FloodFill. There will be diagrams, questions and answers, flashcards etc..</textarea>
+        <textarea id="description" name="description" placeholder="A CLI tool for managing personal tasks with priorities, tags, and due dates." maxlength="1000" rows="3" class="prefilled" required>A CLI tool for managing personal tasks. Tasks have a title, optional due date, and priority (low/medium/high). Everything persists to a local JSON file between sessions.</textarea>
       </div>
 
       <div class="field">
         <label for="done">Definition of Done <span class="req">*</span> <span class="hint">One condition per line</span></label>
-        <textarea id="done" name="done" placeholder="Users can create, list, complete and delete tasks&#10;Tasks persist between sessions&#10;Filters by tag and due date work correctly" rows="5" required>There are at least eight algorithms to view and learn about
-Users can click an algorithm to view a demo of how it is sorted
-Users can view code for all algorithms
-A slider for each visualisation can stop at each step to see what's happened, with detailed descriptions of what's changed and why
-Users can view compare and contrast-esque questions</textarea>
+        <textarea id="done" name="done" placeholder="Users can create, list, complete and delete tasks&#10;Tasks persist between sessions&#10;Filters by tag and due date work correctly" rows="3" class="prefilled" required>Users can add, list, complete, and delete tasks from the terminal
+Tasks persist between sessions via a local JSON file
+Tasks can be filtered by priority</textarea>
       </div>
 
       <div class="field">
         <label for="mvp">MVP Features <span class="req">*</span> <span class="hint">Core features only — one per line</span></label>
-        <textarea id="mvp" name="mvp" placeholder="Add / list / complete / delete tasks&#10;Task persistence via JSON file&#10;Due date and priority support" rows="3" required>View algorithms, code and visualisation</textarea>
+        <textarea id="mvp" name="mvp" placeholder="Add / list / complete / delete tasks&#10;Task persistence via JSON file&#10;Due date and priority support" rows="3" class="prefilled" required>Add, list, complete, and delete tasks
+Persist tasks to a JSON file</textarea>
       </div>
 
       <div class="grid-2">
         <div class="field">
           <label for="language">Language <span class="req">*</span></label>
-          <input type="text" id="language" name="language" value="python" placeholder="python, typescript, rust…" required>
+          <input type="text" id="language" name="language" value="python" placeholder="python, typescript, rust…" class="prefilled" required>
         </div>
         <div class="field">
           <label for="main_user">Main User <span class="req">*</span></label>
-          <input type="text" id="main_user" name="main_user" value="Just Myself" placeholder="Myself, small team…" required>
+          <input type="text" id="main_user" name="main_user" value="Just Myself" placeholder="Myself, small team…" class="prefilled" required>
         </div>
       </div>
 
@@ -360,8 +363,8 @@ Users can view compare and contrast-esque questions</textarea>
         <div class="field">
           <label for="runtime">Runtime <span class="req">*</span></label>
           <select id="runtime" name="runtime">
-            <option value="cli">CLI</option>
-            <option value="web" selected>Web</option>
+            <option value="cli" selected>CLI</option>
+            <option value="web">Web</option>
             <option value="mobile">Mobile</option>
             <option value="desktop">Desktop</option>
             <option value="library">Library / SDK</option>
@@ -380,7 +383,7 @@ Users can view compare and contrast-esque questions</textarea>
 
       <div class="field">
         <label for="phase_count">Number of Phases <span class="req">*</span> <span class="hint">6–12</span></label>
-        <input type="number" id="phase_count" name="phase_count" value="8" min="6" max="12" required>
+        <input type="number" id="phase_count" name="phase_count" value="6" min="6" max="12" required>
       </div>
     </div>
 
@@ -473,6 +476,9 @@ Users can view compare and contrast-esque questions</textarea>
 
 <script>
 const form = document.getElementById('planForm');
+document.querySelectorAll('.prefilled').forEach(el => {
+  el.addEventListener('input', () => el.classList.remove('prefilled'), { once: true });
+});
 const loading = document.getElementById('loading');
 const resultsDiv = document.getElementById('results');
 const statusMsg = document.getElementById('statusMsg');
