@@ -1,0 +1,148 @@
+```json
+{
+  "project": {
+    "name": "InvoiceFlow",
+    "language": "Node.js 20",
+    "runtime": "web (REST API + React SPA)",
+    "package_manager": "npm",
+    "framework": "Express 4.21 (backend), React 18 (frontend)",
+    "database": "PostgreSQL 16",
+    "deployment": "Docker Compose (local), Railway (production)",
+    "external_services": ["Stripe API (payment links, webhooks)", "SendGrid API (transactional email)"]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Project Bootstrap and Database Schema",
+      "deliverable": "`npm run dev` starts backend on http://localhost:3001 and frontend on http://localhost:3000; PostgreSQL 16 running in Docker with all tables created",
+      "tasks": [
+        "Initialize Node.js 20 backend repo with Express 4.21, dotenv, and nodemon in package.json",
+        "Create docker-compose.yml with PostgreSQL 16 service, volume persistence, and environment variables",
+        "Write PostgreSQL schema in `backend/db/schema.sql` with users, invoices, and payments tables",
+        "Create `backend/db/connection.js` using pg library to connect to PostgreSQL and execute schema on startup",
+        "Initialize React 18 frontend repo using Vite with axios for API calls and react-router-dom for navigation",
+        "Create `.env.example` files in both backend and frontend listing required variables (DATABASE_URL, STRIPE_SECRET_KEY, SENDGRID_API_KEY, JWT_SECRET)"
+      ],
+      "commit_condition": "Run `docker compose up -d` then `npm run dev` in backend folder — terminal shows 'Server listening on port 3001'; in frontend folder run `npm run dev` — terminal shows 'VITE v... ready in ... ms'; query PostgreSQL with `psql -U invoiceflow -d invoiceflow -c '\\dt'` — outputs users, invoices, payments tables",
+      "example_input": "Empty project directory with no database, no environment variables set",
+      "example_output": "Backend listens on http://localhost:3001; frontend listens on http://localhost:3000; `psql -U invoiceflow -d invoiceflow -c 'SELECT table_name FROM information_schema.tables WHERE table_schema = \\'public\\';'` returns (users | invoices | payments | invoice_line_items)"
+    },
+    {
+      "id": 2,
+      "title": "Authentication and User Management API",
+      "deliverable": "`POST /api/auth/register` creates a user in PostgreSQL and returns JWT token; `POST /api/auth/login` validates credentials and returns JWT; `GET /api/users/me` requires valid JWT and returns user profile",
+      "tasks": [
+        "Install jsonwebtoken, bcryptjs, and express-async-errors in backend package.json",
+        "Create `backend/middleware/authMiddleware.js` to verify JWT in Authorization header and attach user to request object",
+        "Create `backend/utils/hashPassword.js` with bcrypt hash and compare functions for password security",
+        "Create `backend/routes/auth.js` with POST /register and POST /login endpoints, storing hashed passwords in users table",
+        "Create `backend/routes/users.js` with GET /me endpoint protected by authMiddleware returning user profile (id, email, business_name)",
+        "Create `backend/main.js` Express app entry point with middleware stack, routes, and global error handler catching async errors"
+      ],
+      "commit_condition": "Run `curl -X POST http://localhost:3001/api/auth/register -H 'Content-Type: application/json' -d '{\"email\": \"freelancer@example.com\", \"password\": \"SecurePass123\", \"business_name\": \"Design Studio\"}' | jq .token` — returns a non-empty JWT string; run `curl -X GET http://localhost:3001/api/users/me -H 'Authorization: Bearer <TOKEN>' | jq .email` — returns `\"freelancer@example.com\"`",
+      "example_input": "PostgreSQL users table empty; frontend at http://localhost:3000 with no authentication logic yet",
+      "example_output": "POST /api/auth/register with email 'jane@invoiceflow.com', password 'Pass123!' — HTTP 201: {\"token\": \"eyJhbGciOiJIUzI1NiIs...\", \"user\": {\"id\": 1, \"email\": \"jane@invoiceflow.com\", \"business_name\": null}}; POST /api/auth/login with same credentials — HTTP 200: {\"token\": \"eyJhbGciOiJIUzI1NiIs...\"}; GET /api/users/me with valid token — HTTP 200: {\"id\": 1, \"email\": \"jane@invoiceflow.com\", \"business_name\": null}"
+    },
+    {
+      "id": 3,
+      "title": "Invoice CRUD API and Data Model",
+      "deliverable": "`POST /api/invoices` creates invoice in PostgreSQL and returns full invoice object; `GET /api/invoices` returns list of user's invoices; `GET /api/invoices/:id` returns single invoice with line items; `PUT /api/invoices/:id` and `DELETE /api/invoices/:id` modify unpaid invoices",
+      "tasks": [
+        "Install stripe library in backend for later Stripe integration",
+        "Create `backend/routes/invoices.js` with POST endpoint that inserts invoice record into invoices table (invoice_number, user_id, client_email, client_name, amount, status, due_date, created_at, paid_at)",
+        "Add GET /invoices endpoint returning all invoices for authenticated user ordered by created_at DESC",
+        "Add GET /invoices/:id endpoint returning single invoice with line items joined from invoice_line_items table",
+        "Add PUT /invoices/:id endpoint allowing description, due_date, and client info updates only if invoice status is 'draft' or 'unpaid'",
+        "Add DELETE /invoices/:id endpoint allowing deletion only if status is 'draft', returning 404 otherwise",
+        "Create `backend/utils/generateInvoiceNumber.js` to generate unique sequential invoice numbers (INV-001, INV-002, etc.) per user"
+      ],
+      "commit_condition": "Run `curl -X POST http://localhost:3001/api/invoices -H 'Authorization: Bearer <TOKEN>' -H 'Content-Type: application/json' -d '{\"client_name\": \"Acme Corp\", \"client_email\": \"client@acme.com\", \"amount\": 1500, \"due_date\": \"2025-02-28\", \"line_items\": [{\"description\": \"Web Design\", \"quantity\": 1, \"rate\": 1500}]}' | jq .id` — returns a numeric invoice ID; run `curl -X GET http://localhost:3001/api/invoices -H 'Authorization: Bearer <TOKEN>' | jq '.[] | .invoice_number'` — returns at least one invoice with format INV-xxx",
+      "example_input": "Authenticated user (JWT token valid) with no invoices yet; PostgreSQL invoices and invoice_line_items tables empty",
+      "example_output": "POST /api/invoices with client_name 'Blue Corp', amount 2500, due_date '2025-03-15' — HTTP 201: {\"id\": 1, \"invoice_number\": \"INV-001\", \"user_id\": 1, \"client_name\": \"Blue Corp\", \"client_email\": \"contact@bluecorp.com\", \"amount\": 2500, \"status\": \"draft\", \"due_date\": \"2025-03-15\", \"created_at\": \"2024-01-15T10:00:00Z\", \"paid_at\": null}; GET /api/invoices with same user — HTTP 200: [{\"id\": 1, \"invoice_number\": \"INV-001\", \"status\": \"draft\", ...}]; PUT /api/invoices/1 with amount 3000 — HTTP 200: {\"id\": 1, \"amount\": 3000, \"status\": \"draft\"}"
+    },
+    {
+      "id": 4,
+      "title": "Stripe Payment Link Generation and Webhook Handler",
+      "deliverable": "`POST /api/invoices/:id/send-payment-link` generates a Stripe Payment Link, stores link URL in PostgreSQL, returns payment link object; `POST /api/webhooks/stripe` webhook endpoint receives Stripe payment_intent.succeeded events and updates invoice status to 'paid'",
+      "tasks": [
+        "Create `backend/routes/stripe.js` with POST /invoices/:id/send-payment-link endpoint that calls Stripe API to create payment link for invoice amount",
+        "Store Stripe payment_link_id and payment_link_url in invoices table; update invoice status from 'draft' to 'sent'",
+        "Create `backend/routes/webhooks.js` with POST /webhooks/stripe endpoint that verifies Stripe signature using raw request body",
+        "In webhook handler, listen for payment_intent.succeeded events; match Stripe metadata to invoice ID and update status to 'paid' with paid_at timestamp",
+        "Add Stripe webhook secret (STRIPE_WEBHOOK_SECRET) to environment variables and .env.example",
+        "Create `backend/utils/stripeClient.js` exporting initialized Stripe instance with STRIPE_SECRET_KEY"
+      ],
+      "commit_condition": "Run `curl -X POST http://localhost:3001/api/invoices/1/send-payment-link -H 'Authorization: Bearer <TOKEN>' | jq .payment_link_url` — returns a Stripe payment link URL starting with https://pay.stripe.com/; query `psql -U invoiceflow -d invoiceflow -c 'SELECT status, payment_link_url FROM invoices WHERE id=1;'` — returns (sent | https://pay.stripe.com/...); simulate webhook: `curl -X POST http://localhost:3001/api/webhooks/stripe -H 'Content-Type: application/json' -d '{...}' ` with valid Stripe signature — HTTP 200 response",
+      "example_input": "Invoice INV-001 with status 'draft', amount 2500, stored in PostgreSQL; Stripe API key configured; no payment link sent yet",
+      "example_output": "POST /api/invoices/1/send-payment-link — HTTP 200: {\"id\": 1, \"invoice_number\": \"INV-001\", \"status\": \"sent\", \"payment_link_url\": \"https://pay.stripe.com/pay/cs_test_...\", \"stripe_payment_link_id\": \"plink_1M...\"}; when Stripe sends payment_intent.succeeded webhook, database query `SELECT status, paid_at FROM invoices WHERE id=1;` returns (paid | 2024-01-15 10:05:00)"
+    },
+    {
+      "id": 5,
+      "title": "SendGrid Email Delivery for Payment Links",
+      "deliverable": "`POST /api/invoices/:id/send-email` sends invoice with payment link via SendGrid, returns email send confirmation; client receives HTML email with invoice details, line items, and clickable Stripe payment link button",
+      "tasks": [
+        "Install @sendgrid/mail library in backend",
+        "Create `backend/utils/sendGridClient.js` exporting initialized SendGrid client with SENDGRID_API_KEY",
+        "Create `backend/services/emailService.js` with sendInvoiceEmail(invoice, paymentLinkUrl) function that composes HTML email template",
+        "Build HTML email template in `backend/templates/invoiceEmail.html` showing invoice number, due date, line items table, total amount, and Stripe payment link button",
+        "Create `backend/routes/emails.js` with POST /invoices/:id/send-email endpoint that validates invoice exists and payment link is generated, then calls SendGrid API",
+        "Update invoices table with sent_at timestamp when email sent via SendGrid, change status to 'sent' if still in 'draft' state"
+      ],
+      "commit_condition": "Run `curl -X POST http://localhost:3001/api/invoices/1/send-email -H 'Authorization: Bearer <TOKEN>' -H 'Content-Type: application/json' -d '{\"client_email\": \"client@example.com\"}' | jq .message_id` — returns a non-empty SendGrid message ID; check email inbox or SendGrid dashboard for email from noreply@invoiceflow.com to client@example.com with subject containing invoice number",
+      "example_input": "Invoice INV-001 with status 'sent', payment_link_url set to https://pay.stripe.com/pay/..., no email sent yet; SendGrid API key configured; SENDGRID_FROM_EMAIL environment variable set",
+      "example_output": "POST /api/invoices/1/send-email with client_email 'billing@acme.com' — HTTP 200: {\"message_id\": \"<...@sendgrid.net>\"}; client receives email with subject 'Invoice INV-001 from Design Studio', body containing invoice date, due date, 'Web Design $1500', total, and 'Pay Now' button linking to Stripe payment link; database query shows invoice sent_at timestamp updated"
+    },
+    {
+      "id": 6,
+      "title": "React Dashboard with Invoice List and Real-Time Status Updates",
+      "deliverable": "Dashboard at http://localhost:3000/dashboard displays table/list of all user invoices with columns (invoice number, client name, amount, status, due date, actions); status badges update in real-time when webhook marks invoice as paid; 'Create Invoice' button navigates to form",
+      "tasks": [
+        "Create `frontend/pages/Dashboard.jsx` component that fetches invoices list from GET /api/invoices on mount using axios",
+        "Build invoice list UI as table or card grid showing invoice_number, client_name, amount, status, due_date with conditional styling (red for overdue, green for paid, yellow for unpaid)",
+        "Implement status badge component that polls GET /api/invoices/:id every 5 seconds or uses polling interval when status is 'sent' (awaiting payment)",
+        "Add action buttons per invoice: 'View', 'Edit', 'Send Email', 'Download PDF' (placeholder for phase 7), 'Delete'",
+        "Create `frontend/components/InvoiceForm.jsx` for creating new invoices with fields client_name, client_email, amount, due_date, and line items array input",
+        "Add navigation between Dashboard and InvoiceForm using react-router-dom; add logout button in header"
+      ],
+      "commit_condition": "Open http://localhost:3000/dashboard in browser with valid JWT — page renders table with at least 2 invoices (INV-001, INV-002); invoice rows show status badges; click 'Create Invoice' button — navigates to form with empty fields; create invoice and submit — new row appears in table immediately",
+      "example_input": "Frontend at http://localhost:3000; user authenticated with valid JWT; PostgreSQL contains 2 invoices for user (INV-001 status 'unpaid', INV-002 status 'paid')",
+      "example_output": "Browser displays /dashboard with table: | INV-001 | Acme Corp | $2,500 | unpaid (yellow) | 2025-02-28 | View Edit Send Email Delete | and | INV-002 | Blue Corp | $1,500 | paid (green) | 2025-01-31 | View Edit Send Email Delete |; header shows user email 'jane@example.com' and Logout button; clicking 'Create Invoice' loads form with empty inputs"
+    },
+    {
+      "id": 7,
+      "title": "PDF Invoice Export and Automated Overdue Payment Reminders",
+      "deliverable": "`GET /api/invoices/:id/pdf` returns binary PDF file with invoice details and line items; backend cron job runs daily at 9 AM to send SendGrid reminder emails to clients with invoices unpaid and past due_date",
+      "tasks": [
+        "Install pdfkit library in backend for PDF generation",
+        "Create `backend/services/pdfService.js` with generateInvoicePDF(invoice, lineItems) function that creates PDF stream with header, invoice metadata, line items table, total, and payment terms",
+        "Create `backend/routes/pdf.js` with GET /invoices/:id/pdf endpoint that calls pdfService and returns PDF as downloadable attachment with filename INV-{invoice_number}.pdf",
+        "Install node-cron library in backend for scheduled task execution",
+        "Create `backend/jobs/overduReminder.js` cron job that runs daily at 09:00, queries invoices where status='unpaid' and due_date < today, and sends reminder email via SendGrid to client_email",
+        "Create `backend/templates/reminderEmail.html` HTML email template for overdue payment reminder with invoice number, overdue amount, and payment link",
+        "Add cron job initialization to backend/main.js startup"
+      ],
+      "commit_condition": "Run `curl -X GET http://localhost:3001/api/invoices/1/pdf -H 'Authorization: Bearer <TOKEN>' -o invoice.pdf && file invoice.pdf` — file command returns 'PDF document' and file size > 1KB; open invoice.pdf in browser — displays invoice with number, client name, line items, total amount; manually trigger cron job: `node -e 'require(\"./backend/jobs/overdueReminder.js\").runNow();'` — check SendGrid dashboard or email inbox for reminder email sent to overdue invoice client"
+      ,
+      "example_input": "Invoice INV-001 with status 'unpaid', due_date '2025-01-15' (past current date), client_email 'client@acme.com'; PostgreSQL has 3 invoices with 1 overdue; SendGrid API key configured",
+      "example_output": "GET /api/invoices/1/pdf — HTTP 200 Content-Type: application/pdf; browser downloads file 'INV-001.pdf' containing: header with 'INVOICE' title, 'From: Design Studio', 'Bill To: Acme Corp', date issued, due date, table with line items ('Web Design | 1 | $1500.00'), subtotal/tax/total, payment terms, and Stripe payment button QR code; cron job runs at 09:00 — client@acme.com receives email with subject 'Payment Reminder: Invoice INV-001 is now overdue', body showing amount due and 'Pay Now' link"
+    },
+    {
+      "id": 8,
+      "title": "Production Deployment to Railway and Monitoring",
+      "deliverable": "Application deployed to Railway.app; backend accessible at https://invoiceflow-api-{random}.railway.app/api; frontend accessible at https://invoiceflow-{random}.railway.app; `curl https://invoiceflow-api-{random}.railway.app/health` returns {\"status\": \"ok\"}; all Stripe webhooks and SendGrid emails functional in production",
+      "tasks": [
+        "Create `Dockerfile` for backend with Node.js 20 base image, EXPOSE 3001, CMD ['node', 'backend/main.js']",
+        "Create `frontend/Dockerfile` with Node.js 20 base image, build step running `npm run build`, final stage serving dist folder via simple HTTP server (e.g., serve package)",
+        "Create `.railwayrc.json` or use Railway CLI to link backend and frontend repos; set environment variables (DATABASE_URL, STRIPE_SECRET_KEY, SENDGRID_API_KEY, JWT_SECRET, STRIPE_WEBHOOK_SECRET) in Railway dashboard",
+        "Deploy PostgreSQL 16 database via Railway Postgres service; migrate schema using provided backup or init script",
+        "Configure Railway domain routing: /api/* → backend service, /* → frontend service (or deploy as separate Railway projects with custom domains)",
+        "Add `GET /health` endpoint in backend returning {\"status\": \"ok\", \"timestamp\": Date.now()} for uptime monitoring",
+        "Test all critical flows in production: register user, create invoice, send via email, simulate Stripe payment, verify webhook execution and database update, download PDF"
+      ],
+      "commit_condition": "Run `curl https://invoiceflow-api-{domain}.railway.app/health` — returns HTTP 200: {\"status\": \"ok\"}; open https://invoiceflow-{domain}.railway.app in browser — page loads with login form; register new user with email 'prod-test@example.com', create invoice, send payment link via email, verify email received in inbox, check Railway logs: `railway logs` — shows no errors",
+      "example_input": "Application code running locally; PostgreSQL, Stripe, and SendGrid credentials configured in .env file; frontend and backend Dockerfiles and Railway config files created but not deployed",
+      "example_output": "Railway dashboard shows 2 active services (backend, frontend) both with status 'Running'; GET https://invoiceflow-api-railway.railway.app/api/invoices with valid JWT token returns invoice list; POST /api/invoices creates new invoice in production PostgreSQL; POST /api/invoices/1/send-email sends email from production SendGrid; Stripe test payment link works and webhook updates invoice status; user at https://invoiceflow-railway.railway.app/dashboard sees real-time invoice updates; PDF download works and file is generated; cron job logs show daily execution of overdue reminder job"
+    }
+  ]
+}
+```

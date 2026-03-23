@@ -1,0 +1,155 @@
+```json
+{
+  "project": {
+    "name": "StudyBattles",
+    "language": "Python 3.11",
+    "runtime": "web (REST API + React frontend)",
+    "package_manager": "pip (backend), npm (frontend)",
+    "framework": "FastAPI 0.111 (backend), React 18 (frontend)",
+    "database": "MongoDB 7.0",
+    "deployment": "Docker + AWS EC2 (production ready in phase 11)",
+    "external_services": [
+      "AWS S3 (document storage)",
+      "OpenAI GPT-4 (tree generation, question generation, answer evaluation)",
+      "python-pptx 0.6 (PPTX parsing)",
+      "python-docx 0.8 (DOCX parsing)",
+      "yt-dlp 2024.01 (YouTube video transcript extraction)"
+    ]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Backend and Database Foundation",
+      "deliverable": "FastAPI server runs on localhost:8000 with health endpoint and MongoDB connected",
+      "tasks": [
+        "Initialize Python 3.11 virtual environment and create requirements.txt with FastAPI 0.111, uvicorn 0.29, pymongo 4.6, python-dotenv 1.0, boto3 1.34, openai 1.12, pytest 7.4",
+        "Create backend directory structure: backend/main.py, backend/routes/, backend/models/, backend/services/, backend/config.py",
+        "Set up backend/main.py with FastAPI app instance, CORS middleware, root logger, and environment variable loading from .env file",
+        "Configure backend/config.py to read AWS S3 credentials (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_S3_BUCKET), OpenAI API key, and MongoDB connection string from .env",
+        "Create backend/db.py with MongoDB client initialization and connection test function",
+        "Create backend/routes/health.py with GET /health endpoint returning {\"status\": \"ok\", \"database\": \"connected\"} when MongoDB is reachable",
+        "Write pytest test in tests/test_health.py validating GET /health returns 200 and correct JSON structure"
+      ],
+      "commit_condition": "Run `pytest tests/test_health.py -v` — test passes with exit code 0; Run `python backend/main.py` in separate terminal and `curl http://localhost:8000/health` — returns {\"status\": \"ok\", \"database\": \"connected\"}",
+      "example_input": "Empty project directory with no Python environment",
+      "example_output": "Terminal: `python backend/main.py` prints 'INFO: Uvicorn running on http://127.0.0.1:8000'; curl returns HTTP 200 with {\"status\": \"ok\", \"database\": \"connected\"}; tests/test_health.py runs with 1 passed"
+    },
+    {
+      "id": 2,
+      "title": "MongoDB Schema and Session Storage",
+      "deliverable": "MongoDB collections 'sessions', 'trees', 'questions', and 'answers' exist with validated schema and initial indexes",
+      "tasks": [
+        "Create backend/models/schema.py defining Pydantic models for Session, Node, Tree, Question, Answer, and AnswerEvaluation with all required fields",
+        "Create backend/models/mongodb.py with MongoDBClient class handling CRUD operations for sessions (create, read, update_progress), trees (insert, find_by_id), questions (insert, find_by_node_id), and answers (insert, find_by_question_id)",
+        "Write MongoDB initialization script backend/db_init.py that creates collections 'sessions', 'trees', 'questions', 'answers' with indexes on session_id, tree_id, node_id, and user_session_id",
+        "Create backend/routes/sessions.py with POST /sessions (generates UUID, stores in MongoDB, returns session_id) and GET /sessions/{session_id} (retrieves session metadata including tree_id, progress)",
+        "Write pytest tests in tests/test_mongodb.py validating CRUD operations for sessions, trees, and answers with mock MongoDB fixtures"
+      ],
+      "commit_condition": "Run `python backend/db_init.py` — prints 'Collections created successfully'; Run `pytest tests/test_mongodb.py -v` — all 8 tests pass with exit code 0; Run `python -c \"from backend.models.mongodb import MongoDBClient; client = MongoDBClient(); print(client.list_collections())\"` — prints ['sessions', 'trees', 'questions', 'answers']",
+      "example_input": "FastAPI server running, MongoDB database exists but is empty",
+      "example_output": "MongoDB collections 'sessions', 'trees', 'questions', 'answers' created with indexes; POST /sessions returns {\"session_id\": \"550e8400-e29b-41d4-a716-446655440000\", \"created_at\": \"2024-01-15T10:00:00Z\"}; GET /sessions/{session_id} returns {\"session_id\": \"...\", \"tree_id\": null, \"unlocked_nodes\": [], \"current_node_id\": null}"
+    },
+    {
+      "id": 3,
+      "title": "Document Parsing and Text Extraction",
+      "deliverable": "`POST /upload` accepts PPTX, DOCX, and YouTube URLs; extracts and stores raw text in MongoDB; returns extracted_text field with document content",
+      "tasks": [
+        "Install python-pptx 0.6, python-docx 0.8, yt-dlp 2024.01, and requests 2.31 in requirements.txt",
+        "Create backend/services/document_parser.py with parse_pptx(file_path) returning concatenated slide text, parse_docx(file_path) returning document paragraphs and table text, and extract_youtube_transcript(video_url) using yt-dlp to return video transcript",
+        "Create backend/services/text_cleaner.py with normalize_text(raw_text) removing extra whitespace, fixing encoding issues, and splitting into logical chunks max 4000 chars each",
+        "Create backend/routes/upload.py with POST /upload endpoint accepting multipart file (pptx, docx) or JSON body with youtube_url; storing raw file in AWS S3 and extracted text in MongoDB 'uploads' collection; returning {\"upload_id\": \"...\", \"extracted_text\": \"...\", \"file_type\": \"pptx\"|\"docx\"|\"youtube\"}",
+        "Write integration tests in tests/test_document_parser.py with mock PPTX, DOCX files and YouTube URL handling; validate text extraction without calling actual OpenAI API"
+      ],
+      "commit_condition": "Run `pytest tests/test_document_parser.py -v` — all 6 tests pass; Create sample.pptx with 2 slides and run `curl -X POST -F 'file=@sample.pptx' http://localhost:8000/upload` — returns HTTP 201 with extracted_text containing slide content",
+      "example_input": "FastAPI server running, empty MongoDB, AWS S3 credentials configured in .env",
+      "example_output": "POST /upload with sample.pptx returns {\"upload_id\": \"64a1b2c3\", \"extracted_text\": \"Slide 1 content...\\nSlide 2 content...\", \"file_type\": \"pptx\", \"created_at\": \"2024-01-15T10:00:00Z\"}; MongoDB 'uploads' collection contains document with upload_id, extracted_text, and S3 file_url"
+    },
+    {
+      "id": 4,
+      "title": "Topic Hierarchy Generation via OpenAI",
+      "deliverable": "`POST /trees/generate` sends extracted text to GPT-4; returns tree_id and renders a 3-level hierarchy with parent-child relationships persisted in MongoDB",
+      "tasks": [
+        "Create backend/services/tree_generator.py with generate_tree(extracted_text, max_depth=3) function that calls OpenAI GPT-4 API with system prompt requesting JSON tree structure; validates response JSON; returns tree dict with root node and all descendants",
+        "Implement tree validation in backend/services/tree_generator.py ensuring max 3 depth levels, at least 1 child per internal node, leaf nodes include learning_objectives array",
+        "Create backend/models/node.py defining Node dataclass with fields: node_id, title, description, level (0–2), parent_node_id, child_node_ids, learning_objectives, question_count",
+        "Create backend/routes/trees.py with POST /trees/generate endpoint accepting {\"upload_id\": \"...\"} or {\"extracted_text\": \"...\"}, calling tree_generator, storing entire tree in MongoDB 'trees' collection, and returning {\"tree_id\": \"...\", \"root_node\": {...}, \"total_nodes\": N}",
+        "Write unit tests in tests/test_tree_generator.py mocking OpenAI API responses with valid tree JSON; validate tree structure compliance with depth and node count constraints"
+      ],
+      "commit_condition": "Run `pytest tests/test_tree_generator.py -v` — all 5 tests pass; Run POST /trees/generate with sample extracted_text — returns HTTP 201 with tree_id and root_node structure; Query MongoDB: `db.trees.findOne({tree_id: \"...\"})`  — document contains nested node objects with level, parent_node_id, and child_node_ids fields",
+      "example_input": "Extracted text from PPTX: 'Algebra is the study of variables and equations. Linear equations have one variable. Quadratic equations have two variables...' (400+ chars)",
+      "example_output": "POST /trees/generate returns {\"tree_id\": \"65a1b2c3\", \"root_node\": {\"node_id\": \"n0\", \"title\": \"Algebra\", \"level\": 0, \"child_node_ids\": [\"n1\", \"n2\"]}, \"total_nodes\": 7}; MongoDB tree document shows nested structure: Algebra (L0) → [Linear Equations (L1), Quadratic Equations (L1)] → [Solving Linear (L2), Graphing Linear (L2), etc.]"
+    },
+    {
+      "id": 5,
+      "title": "Question Generation and Storage",
+      "deliverable": "`POST /questions/generate` creates all question variants (Define, Solve, Compare, ELI5, Finish the Answer) for leaf nodes via GPT-4 and persists in MongoDB",
+      "tasks": [
+        "Create backend/services/question_generator.py with generate_questions_for_node(node, learning_objectives, gpt_client) calling OpenAI GPT-4 with prompt requesting 5-question set (one per question type) in JSON format; validating response contains all 5 types",
+        "Define question types in backend/models/question.py as enum: DEFINE, SOLVE, COMPARE, ELI5, FINISH_THE_ANSWER; each type has id, text, expected_answer_format (string, equation, comparison, simple_explanation, completion)",
+        "Create backend/routes/questions.py with POST /questions/generate/{tree_id} endpoint that iterates over all leaf nodes (level 2) in tree, calls question_generator, and bulk-inserts documents into MongoDB 'questions' collection with fields: question_id, tree_id, node_id, question_type, question_text, expected_answer_format, learning_objectives",
+        "Implement caching in backend/services/question_generator.py: before calling GPT-4, check if questions for (node_id, learning_objectives) hash already exist in MongoDB 'question_cache'; skip API call if found",
+        "Write integration tests in tests/test_question_generator.py mocking GPT-4 responses; validate all 5 question types are generated per leaf node; validate caching prevents duplicate API calls"
+      ],
+      "commit_condition": "Run `pytest tests/test_question_generator.py -v` — all 7 tests pass; Run POST /questions/generate/{tree_id} after creating a sample tree — returns HTTP 200 with {\"generated_count\": N, \"leaf_nodes\": M, \"total_questions\": N*5}; Query MongoDB: `db.questions.countDocuments({tree_id: \"...\"})` — returns N*5 documents",
+      "example_input": "MongoDB contains tree with 5 leaf nodes (level 2), each with learning_objectives array",
+      "example_output": "POST /questions/generate returns {\"generated_count\": 5, \"leaf_nodes\": 5, \"total_questions\": 25}; MongoDB 'questions' collection has 25 documents: 5 with question_type=DEFINE, 5 with SOLVE, 5 with COMPARE, 5 with ELI5, 5 with FINISH_THE_ANSWER; each linked to a leaf node_id and tree_id"
+    },
+    {
+      "id": 6,
+      "title": "Answer Submission and LLM-Based Marking",
+      "deliverable": "`POST /answers/submit` accepts student answer text, validates format, calls GPT-4 to generate mark scheme and score against learning objectives, and stores evaluation in MongoDB",
+      "tasks": [
+        "Create backend/services/answer_evaluator.py with evaluate_answer(student_answer, question, learning_objectives, gpt_client) function calling GPT-4 with prompt including question_text, expected_answer_format, learning_objectives; GPT-4 returns JSON with {\"score\": 0-100, \"feedback\": \"...\", \"key_points_covered\": [...], \"missing_points\": [...]}",
+        "Create backend/models/evaluation.py with AnswerEvaluation dataclass: question_id, student_answer, score (0-100), feedback, key_points_covered array, missing_points array, evaluated_at timestamp",
+        "Create backend/routes/answers.py with POST /answers/submit endpoint accepting {\"session_id\": \"...\", \"question_id\": \"...\", \"student_answer\": \"...\"}, validating session and question exist, calling answer_evaluator, storing AnswerEvaluation in MongoDB 'answers' collection, and returning {\"score\": N, \"feedback\": \"...\", \"key_points_covered\": [...]}",
+        "Implement answer format validation in backend/services/answer_validator.py: DEFINE expects text ≥50 chars, SOLVE expects equation/numeric response, COMPARE expects structured comparison (e.g., 'A: ... B: ... Difference: ...'), ELI5 expects text ≥30 chars, FINISH_THE_ANSWER expects text completion ≥20 chars",
+        "Write integration tests in tests/test_answer_evaluator.py mocking GPT-4 marking responses; test all 5 question types with valid and invalid answer formats; validate scores, feedback, and key_points arrays"
+      ],
+      "commit_condition": "Run `pytest tests/test_answer_evaluator.py -v` — all 8 tests pass; Create sample question and POST /answers/submit with valid student answer — returns HTTP 200 with score (0-100), feedback string, and key_points_covered array; Query MongoDB: `db.answers.findOne({question_id: \"...\"})` — contains score, feedback, and evaluation timestamp",
+      "example_input": "MongoDB contains question doc: {question_id: \"q1\", question_type: \"DEFINE\", question_text: \"Define photosynthesis\", learning_objectives: [\"process description\", \"input/output\"]}, and POST body: {\"session_id\": \"...\", \"question_id\": \"q1\", \"student_answer\": \"Photosynthesis is the process by which plants convert light energy into chemical energy stored in glucose...\"} (≥50 chars)",
+      "example_output": "POST /answers/submit returns {\"score\": 78, \"feedback\": \"Good explanation of the process. You covered energy conversion and glucose production but didn't mention the role of chlorophyll.\", \"key_points_covered\": [\"process description\", \"energy conversion\"], \"missing_points\": [\"chlorophyll role\"]}; MongoDB 'answers' document: {answer_id: \"a1\", question_id: \"q1\", student_answer: \"...\", score: 78, feedback: \"...\", evaluated_at: \"2024-01-15T10:05:00Z\"}"
+    },
+    {
+      "id": 7,
+      "title": "Node Unlock Mechanics and Session Progress Tracking",
+      "deliverable": "`POST /sessions/{session_id}/unlock-check` evaluates all children of a parent node; if all are answered with score ≥70, marks parent as unlocked and returns unlock status",
+      "tasks": [
+        "Create backend/models/node_progress.py with NodeProgress dataclass: node_id, is_unlocked (bool), is_answered (bool), answer_ids array, child_completion_percentage (0-100)",
+        "Implement unlock logic in backend/services/unlock_checker.py with check_unlock(node_id, session_id, mongodb_client) querying all answers for children of node_id in session; if all children have at least one answer with score ≥70, return {\"can_unlock\": true, \"reason\": \"All children defeated\"}; else return {\"can_unlock\": false, \"incomplete_children\": [...], \"avg_child_score\": N}",
+        "Create backend/routes/progress.py with POST /sessions/{session_id}/unlock-check endpoint accepting {\"node_id\": \"...\"}, calling unlock_checker, and if unlock approved, updating MongoDB sessions document to add node_id to unlocked_nodes array; returning unlock status and updated progress",
+        "Implement session progress retrieval with GET /sessions/{session_id}/progress returning {\"tree_id\": \"...\", \"unlocked_nodes\": [...], \"current_node_id\": \"...\", \"total_nodes\": N, \"completion_percent\": M, \"answered_questions\": K}",
+        "Add GET /sessions/{session_id}/node/{node_id}/status returning {\"is_unlocked\": bool, \"children_status\": [{\"node_id\": \"...\", \"is_defeated\": bool, \"best_score\": N}], \"completion_percent\": M}",
+        "Write integration tests in tests/test_unlock_checker.py simulating multi-answer scenarios: child with score <70 blocks parent unlock, child with score ≥70 contributes to parent unlock, all children defeated triggers parent unlock"
+      ],
+      "commit_condition": "Run `pytest tests/test_unlock_checker.py -v` — all 6 tests pass; Create sample tree with 2 children, submit answers scoring 75 and 80 for each child, then POST /sessions/{session_id}/unlock-check with parent_node_id — returns {\"can_unlock\": true}; Query MongoDB: `db.sessions.findOne({session_id: \"...\"})` — unlocked_nodes array includes parent node_id",
+      "example_input": "Tree structure: Parent → [Child1, Child2]; Session with answers: {question for Child1 with score 75, question for Child2 with score 80}",
+      "example_output": "POST /sessions/{session_id}/unlock-check with parent_node_id returns {\"can_unlock\": true, \"reason\": \"All children defeated\", \"unlocked_node_id\": \"parent_n1\"}; GET /sessions/{session_id}/progress shows unlocked_nodes: [\"parent_n1\"], completion_percent: 40 (2 of 5 nodes defeated)"
+    },
+    {
+      "id": 8,
+      "title": "React Frontend Setup and Page Navigation",
+      "deliverable": "React 18 SPA renders at localhost:3000 with routing (Home, Upload, Study Grid, Question Modal, Results) and session persistence via localStorage",
+      "tasks": [
+        "Initialize React 18 frontend with `npm create vite@latest frontend -- --template react`, install react-router-dom 6.22, axios 1.6, react-icons 4.7, and tailwindcss 3.4",
+        "Create frontend/src/pages/Home.tsx rendering welcome screen with 'Start Studying' button (routes to Upload page) and 'Continue Session' button if session_id exists in localStorage",
+        "Create frontend/src/pages/Upload.tsx with file input (accept .pptx, .docx) and YouTube URL input textarea; POST to /upload endpoint; display extracted_text preview and 'Generate Tree' button",
+        "Create frontend/src/pages/StudyGrid.tsx rendering hierarchical tree visualization (level 0 root, level 1 and 2 nodes) using nested div cards; clickable leaf nodes (level 2) route to QuestionModal with node_id param",
+        "Create frontend/src/pages/QuestionModal.tsx displaying single question (question_text, question_type label); conditionally render input field (textarea for DEFINE/ELI5, input for SOLVE, structured form for COMPARE, fill-in-blank for FINISH_THE_ANSWER); Submit button posts to /answers/submit",
+        "Create frontend/src/pages/Results.tsx displaying score, feedback, key_points_covered list, missing_points list, and 'Next Question' or 'Back to Grid' button",
+        "Set up frontend/src/services/api.ts with axios client, session ID management (read/write from localStorage), and wrapper functions for all backend endpoints",
+        "Create frontend/src/App.tsx with BrowserRouter, route definitions, session initialization on mount, and localStorage sync for session_id and tree_id"
+      ],
+      "commit_condition": "Run `npm run dev` in frontend directory — Vite dev server starts on localhost:3000; Open browser to localhost:3000 — renders Home page with 'Start Studying' button; Navigate to Upload, select sample.pptx, click 'Generate Tree' — session_id persists in localStorage and tree renders on StudyGrid",
+      "example_input": "React Vite project initialized, backend API running on localhost:8000, no session_id in localStorage",
+      "example_output": "Browser at localhost:3000 shows Home page with title 'StudyBattles' and buttons 'Start Studying' and 'Continue Session' (disabled); click 'Start Studying' → Upload page with file input and YouTube URL textarea; select sample.pptx and click Generate Tree → tree renders with expandable nodes; localStorage contains {session_id: \"550e8400...\", tree_id: \"65a1b2c3...\"}"
+    },
+    {
+      "id": 9,
+      "title": "Study Grid UI and Question Modal Integration",
+      "deliverable": "Frontend displays full tree hierarchy with unlocked/locked node states; clicking leaf nodes opens question modal; submitting answer updates modal to show results; locked parent nodes display completion bar of children",
+      "tasks": [
+        "Create frontend/src/components/NodeCard.tsx rendering single node with title, description, level badge, lock icon (if locked), completion percentage bar (for parent nodes), and click handler to open QuestionModal for leaf nodes",
+        "Implement tree visualization in frontend/src/components/TreeVisualizer.tsx recursively rendering root → level 1 → level 2 nodes in grid/tree layout; conditionally hide locked branches or show as grayed-out; color-code by unlock status (green=unlocked, red=locked, gray=no questions yet)",
+        "Create frontend/src/components/QuestionDisplay.tsx rendering question_text, question_type label, and conditional input based on type (DEFINE textarea, SOLVE input with equation placeholder, COMPARE structured form with A/B/Difference fields, ELI5 textarea, FINISH_THE_ANSWER text + blank to fill)",
+        "Implement answer format validation in frontend/src/services/validator.ts: reject DEFINE/ELI5 if <30 chars, reject empty SOLVE, validate COMPARE has all 3 fields, validate FINISH_THE_ANSWER completion matches expected length range; show inline error if validation fails",
+        "Create frontend/src/components/ResultsDisplay.tsx showing score as large number with color (red <50, yellow 50-69, green
