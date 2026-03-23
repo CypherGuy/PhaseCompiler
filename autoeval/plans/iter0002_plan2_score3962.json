@@ -1,0 +1,168 @@
+```json
+{
+  "project": {
+    "name": "StudyBattles",
+    "language": "Python 3.11",
+    "runtime": "web",
+    "package_manager": "pip",
+    "framework": "FastAPI 0.111",
+    "database": "MongoDB 7.0",
+    "deployment": "Docker + AWS EC2",
+    "external_services": [
+      "OpenAI API (GPT-4)",
+      "AWS S3",
+      "YouTube Data API (optional for metadata)"
+    ]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Environment Setup and Backend Scaffold",
+      "deliverable": "`python -m fastapi.cli` starts a development server on `http://localhost:8000` with `/docs` returning Swagger UI",
+      "tasks": [
+        "Create Python 3.11 virtual environment and install FastAPI 0.111, uvicorn 0.27, pydantic 2.6, pymongo 4.6, python-dotenv 1.0",
+        "Initialize monorepo folder structure: `backend/`, `frontend/`, `shared/`, `.env.example` with OpenAI API key, AWS credentials, MongoDB URI",
+        "Create `backend/main.py` with FastAPI app instance and health check endpoint `GET /health` returning `{\"status\": \"ok\"}`",
+        "Configure MongoDB connection in `backend/database.py` using pymongo and expose `db` client for async operations",
+        "Create `.gitignore` with `__pycache__/`, `.venv/`, `.env`, `*.pyc`, `node_modules/`, `build/`, `dist/`",
+        "Initialize git repository and create initial commit with all scaffold files"
+      ],
+      "commit_condition": "Run `python -m uvicorn backend.main:app --reload` and curl `http://localhost:8000/health` — returns `{\"status\": \"ok\"}`",
+      "example_input": "Greenfield project with no files.",
+      "example_output": "Terminal shows `Uvicorn running on http://localhost:8000`. Curl returns: `{\"status\": \"ok\"}`"
+    },
+    {
+      "id": 2,
+      "title": "AWS S3 and OpenAI Integration Setup",
+      "deliverable": "`POST /api/test-upload` accepts a test file, uploads it to AWS S3, and returns `{\"file_url\": \"https://s3.amazonaws.com/...\"}`",
+      "tasks": [
+        "Install boto3 3.28 (AWS SDK) and python-magic 0.4.27 (file type detection)",
+        "Create `backend/services/aws_service.py` with `upload_file_to_s3(file_bytes, bucket_name, file_key)` function returning S3 URL",
+        "Create `backend/services/openai_service.py` with `generate_topic_tree(document_text, max_depth=3)`, `generate_questions_for_node(topic, question_type)`, and `evaluate_answer(question, student_answer, mark_scheme)` function stubs",
+        "Install openai 1.14 and configure API key from environment variable in `backend/config.py`",
+        "Create `backend/models/upload.py` with Pydantic schema `FileUploadRequest` (file_name, file_bytes) and `FileUploadResponse` (file_url, file_key)",
+        "Add `POST /api/test-upload` endpoint in `backend/main.py` that accepts a file, calls `upload_file_to_s3()`, and returns the S3 URL"
+      ],
+      "commit_condition": "Run `curl -F 'file=@test.txt' http://localhost:8000/api/test-upload` with a valid AWS S3 bucket configured — returns `{\"file_url\": \"https://s3.amazonaws.com/...\", \"file_key\": \"uploads/...\"}`",
+      "example_input": "Text file `test.txt` with content `Hello World`.",
+      "example_output": "Response: `{\"file_url\": \"https://studybattles.s3.amazonaws.com/uploads/test-1702.txt\", \"file_key\": \"uploads/test-1702.txt\"}`"
+    },
+    {
+      "id": 3,
+      "title": "Document Parser and Topic Tree Generation",
+      "deliverable": "`POST /api/documents/upload` accepts a file (PPTX, DOCX, or plain text), extracts text, calls OpenAI GPT-4 to generate a 3-level topic tree, stores it in MongoDB, and returns `{\"document_id\": \"...\", \"tree\": {...}}`",
+      "tasks": [
+        "Install python-pptx 0.6.23, python-docx 0.8.11, and textract 1.6.3 (document parsing libraries)",
+        "Create `backend/services/document_parser.py` with `extract_text_from_pptx(file_bytes)`, `extract_text_from_docx(file_bytes)`, and `extract_text_from_txt(file_bytes)` functions",
+        "Implement `backend/services/openai_service.py` function `generate_topic_tree(document_text, max_depth=3)` that calls OpenAI GPT-4 with a structured prompt to return a JSON tree with nodes structured as `{\"id\": \"node_uuid\", \"title\": \"Topic\", \"level\": 0, \"children\": [...]}`",
+        "Create MongoDB collection schema in `backend/models/document.py`: `Document` with fields `document_id`, `file_name`, `file_url`, `original_text`, `topic_tree`, `created_at`, `node_unlock_status` (dict of node_id → bool)",
+        "Implement `POST /api/documents/upload` endpoint that accepts file upload, parses document, calls topic tree generation, stores in MongoDB, and returns document and tree",
+        "Add `GET /api/documents/{document_id}` endpoint returning full document with topic tree"
+      ],
+      "commit_condition": "Upload a `.docx` file to `POST /api/documents/upload` — response includes `document_id`, `file_url`, and `topic_tree` with at least 3 levels and root node containing child nodes",
+      "example_input": "DOCX file with title `Biology Basics` containing text about cells, photosynthesis, and mitochondria.",
+      "example_output": "Response:\n```json\n{\n  \"document_id\": \"doc_64a1b2c3\",\n  \"file_url\": \"https://s3.amazonaws.com/.../Biology_Basics.docx\",\n  \"topic_tree\": {\n    \"id\": \"root_0\",\n    \"title\": \"Biology Basics\",\n    \"level\": 0,\n    \"children\": [\n      {\n        \"id\": \"node_1a\",\n        \"title\": \"Cell Structure\",\n        \"level\": 1,\n        \"children\": [\n          {\"id\": \"node_2a\", \"title\": \"Nucleus\", \"level\": 2, \"children\": []}\n        ]\n      }\n    ]\n  }\n}\n```"
+    },
+    {
+      "id": 4,
+      "title": "Question Generation and Node Marking System",
+      "deliverable": "`POST /api/nodes/{node_id}/generate-questions` calls OpenAI to generate 5 questions of predetermined types (Define, Solve, Compare, ELI5, Finish the Answer), stores them in MongoDB, and returns `{\"node_id\": \"...\", \"questions\": [...]}`",
+      "tasks": [
+        "Create MongoDB collection schema in `backend/models/question.py`: `Question` with fields `question_id`, `node_id`, `document_id`, `type` (enum: Define, Solve, Compare, ELI5, FinishAnswer), `question_text`, `mark_scheme`, `max_marks`, `created_at`",
+        "Implement `backend/services/openai_service.py` function `generate_questions_for_node(node_title, node_content, question_types=[\"Define\", \"Solve\", \"Compare\", \"ELI5\", \"FinishAnswer\"])` that calls GPT-4 with structured prompts and returns array of questions with mark schemes",
+        "Create `backend/models/marking.py` with `AnswerSubmission` schema: `submission_id`, `question_id`, `student_answer`, `marks_awarded`, `max_marks`, `feedback`, `timestamp`",
+        "Implement `backend/services/openai_service.py` function `evaluate_answer(question, student_answer, mark_scheme, max_marks)` that calls GPT-4 to grade the answer against the mark scheme and returns `{\"marks_awarded\": int, \"max_marks\": int, \"feedback\": str}`",
+        "Create `POST /api/nodes/{node_id}/generate-questions` endpoint that retrieves node content, calls question generation, stores questions in MongoDB, and returns questions (without mark schemes)",
+        "Create `POST /api/questions/{question_id}/submit-answer` endpoint that accepts student answer, calls `evaluate_answer()`, stores submission in MongoDB, and returns `{\"marks_awarded\": int, \"max_marks\": int, \"feedback\": str}`"
+      ],
+      "commit_condition": "Post to `POST /api/nodes/node_1a/generate-questions` — response includes array of 5 questions with types Define, Solve, Compare, ELI5, FinishAnswer. Then submit answer to `POST /api/questions/{question_id}/submit-answer` with `{\"student_answer\": \"...\"}` — response returns `marks_awarded`, `max_marks`, and `feedback`",
+      "example_input": "Node with `id=node_1a`, `title=\"Nucleus\"`, content extracted from document.",
+      "example_output": "Generate response:\n```json\n{\n  \"node_id\": \"node_1a\",\n  \"questions\": [\n    {\n      \"question_id\": \"q_1\",\n      \"type\": \"Define\",\n      \"question_text\": \"Define the nucleus and its primary function.\",\n      \"max_marks\": 2\n    },\n    {\n      \"question_id\": \"q_2\",\n      \"type\": \"ELI5\",\n      \"question_text\": \"Explain the nucleus like I'm 5 years old.\",\n      \"max_marks\": 2\n    }\n  ]\n}\n```\n\nSubmit answer response:\n```json\n{\n  \"marks_awarded\": 2,\n  \"max_marks\": 2,\n  \"feedback\": \"Excellent! You correctly identified the nucleus as the cell's control center and mentioned DNA storage.\"\n}\n```"
+    },
+    {
+      "id": 5,
+      "title": "Node Unlock Logic and Battle State Management",
+      "deliverable": "`GET /api/documents/{document_id}/node-status` returns unlock status for all nodes; `POST /api/nodes/{node_id}/check-unlock` evaluates if all children are defeated (all questions answered with ≥70% marks) and unlocks parent node, returning `{\"node_id\": \"...\", \"unlocked\": true, \"parent_unlocked\": true}`",
+      "tasks": [
+        "Create MongoDB collection schema in `backend/models/battle.py`: `NodeBattle` with fields `document_id`, `node_id`, `is_unlocked` (bool), `child_nodes_required` (array of child node_ids), `all_children_defeated` (bool), `parent_node_id`, `updated_at`",
+        "Implement function in `backend/services/battle_service.py` called `check_node_defeated(node_id, document_id)` that queries all questions for a node, sums marks from all submissions, calculates win percentage (total_marks / total_max_marks), and returns True if ≥70%",
+        "Implement function `unlock_parent_node(node_id, document_id)` that checks if all children of a node are defeated, updates `node_unlock_status` in MongoDB, and recursively checks parent node for unlock",
+        "Create `GET /api/documents/{document_id}/node-status` endpoint that returns full tree with `is_unlocked`, `defeated`, `win_percentage` fields for each node",
+        "Create `POST /api/nodes/{node_id}/check-unlock` endpoint that calls `check_node_defeated()`, calls `unlock_parent_node()` if all children defeated, and returns unlock status",
+        "Initialize all nodes as `is_unlocked=true` for leaf nodes (no children), `is_unlocked=false` for parent nodes on first document creation"
+      ],
+      "commit_condition": "Upload document, generate questions for all leaf nodes, answer all questions with ≥70% marks. Run `GET /api/documents/{document_id}/node-status` — leaf nodes show `unlocked: true`, parent nodes show `unlocked: false`. Submit all answers with 100% marks, then post to `POST /api/nodes/node_1/check-unlock` — returns `unlocked: true` for parent node",
+      "example_input": "Document with tree:\n```\nroot (level 0)\n├── node_1 (level 1, has children)\n│   ├── leaf_1a (level 2, no children)\n│   └── leaf_1b (level 2, no children)\n└── node_2 (level 1, has children)\n```\nAll leaf nodes have 2 questions each.",
+      "example_output": "After answering all leaf questions with ≥70%:\n```json\n{\n  \"document_id\": \"doc_64a1b2c3\",\n  \"node_status\": [\n    {\n      \"node_id\": \"root\",\n      \"is_unlocked\": true,\n      \"defeated\": true,\n      \"win_percentage\": null,\n      \"children_all_defeated\": true\n    },\n    {\n      \"node_id\": \"node_1\",\n      \"is_unlocked\": true,\n      \"defeated\": true,\n      \"win_percentage\": 80,\n      \"children_all_defeated\": true\n    }\n  ]\n}\n```"
+    },
+    {
+      "id": 6,
+      "title": "React Frontend Scaffold and Document Upload UI",
+      "deliverable": "`npm start` runs React 18 dev server on `http://localhost:3000`; user sees a homepage with file upload input that accepts PPTX, DOCX, and TXT files; uploading file shows loading state and redirects to `/study/{document_id}` with topic tree displayed",
+      "tasks": [
+        "Initialize React 18 frontend with `create-react-app` or Vite 5.0 in `frontend/` folder",
+        "Install axios 1.6, react-router-dom 6.21, and zustand 4.4 (state management)",
+        "Create `frontend/src/pages/HomePage.tsx` with drag-and-drop file upload input accepting `.pptx`, `.docx`, `.txt`",
+        "Create `frontend/src/services/api.ts` with axios instance pointing to `http://localhost:8000/api` and methods `uploadDocument(file)` and `fetchDocument(document_id)`",
+        "Create `frontend/src/store/documentStore.ts` with Zustand store holding `currentDocument`, `currentTree`, `nodeStatus`, and actions `setDocument`, `setTree`, `setNodeStatus`",
+        "Create `frontend/src/components/TopicTree.tsx` that renders a nested tree structure showing all nodes and their unlock status (locked nodes shown as greyed out)",
+        "Create `frontend/src/pages/StudyPage.tsx` with topic tree and click handler that navigates to question page for leaf nodes"
+      ],
+      "commit_condition": "Run `npm start` in `frontend/` folder — page loads at `http://localhost:3000`, upload a DOCX file, and page redirects to `/study/{document_id}` showing topic tree with all nodes",
+      "example_input": "User opens homepage and selects a 100KB DOCX file.",
+      "example_output": "Page shows loading spinner, then redirects to `/study/doc_64a1b2c3` displaying hierarchical tree:\n```\n- Biology Basics (locked)\n  - Cell Structure (locked)\n    - Nucleus (unlocked, clickable)\n    - Mitochondria (unlocked, clickable)\n  - Photosynthesis (locked)\n    - Chloroplast (unlocked, clickable)\n```"
+    },
+    {
+      "id": 7,
+      "title": "Question Display and Answer Submission UI",
+      "deliverable": "`/study/{document_id}/node/{node_id}` page displays one question at a time with appropriate input type (text for Define/ELI5, text field for Solve, etc.), submit button, and on submission shows marks, max marks, and feedback. Clicking next shows next question or returns to tree when all questions answered",
+      "tasks": [
+        "Create `frontend/src/pages/QuestionPage.tsx` that fetches questions for a node via `GET /api/nodes/{node_id}/generate-questions` on first load",
+        "Create `frontend/src/components/QuestionDisplay.tsx` that renders different input types based on `question.type` (Define, Solve, Compare, ELI5, FinishAnswer)",
+        "Create `frontend/src/components/AnswerInput.tsx` with textarea for text answers and proper validation",
+        "Create `frontend/src/components/AnswerResult.tsx` that displays marks (e.g., `2/2`), feedback, and a next/return button",
+        "Implement `submitAnswer(question_id, student_answer)` in `api.ts` that posts to `POST /api/questions/{question_id}/submit-answer`",
+        "Add state in QuestionPage to track current question index, submitted answers, and whether node is complete",
+        "Add button to return to tree page (`/study/{document_id}`) when all questions answered"
+      ],
+      "commit_condition": "Navigate to `/study/doc_64a1b2c3/node/leaf_1a`, see first question displayed. Type answer and click submit — page shows marks and feedback. Click next — page shows second question. After all questions answered, click return button and page redirects to `/study/doc_64a1b2c3`",
+      "example_input": "Leaf node `leaf_1a` with 2 questions: (1) \"Define nucleus\" (2) \"What does the nucleus store?\"",
+      "example_output": "Page shows:\n```\nQuestion 1 of 2: Define nucleus\n[Text input area]\n[Submit button]\n\nAfter submit:\nYou scored 2/2 ✓\nFeedback: Correct! You identified the nucleus as the control center and mentioned DNA.\n[Next button]\n```"
+    },
+    {
+      "id": 8,
+      "title": "Session Persistence with localStorage",
+      "deliverable": "`GET /api/documents/{document_id}` endpoint is called on every frontend app load; Zustand store hydrates from localStorage; user can refresh page mid-battle and resume without losing progress; node unlock state persists across sessions",
+      "tasks": [
+        "Create `frontend/src/hooks/useSessionPersistence.ts` hook that loads document, tree, and node status from MongoDB on app initialization",
+        "Update Zustand store to persist state to localStorage on every action using `persist()` middleware",
+        "Add localStorage keys: `currentDocumentId`, `answeredQuestionIds` (set of IDs with scores), `unlockedNodeIds`",
+        "Create `frontend/src/App.tsx` with `useEffect` that checks localStorage for `currentDocumentId` and fetches full state from MongoDB on app load",
+        "Add `GET /api/documents/{document_id}/node-status` call in frontend `useEffect` to sync unlock status from backend MongoDB",
+        "Update `TopicTree.tsx` to show user's actual unlock progress from Zustand store, reflecting both answered questions and unlocked nodes",
+        "Verify that closing browser tab and reopening resumes session at same point with same tree state and answered questions"
+      ],
+      "commit_condition": "Start study session, answer 3 questions (2 in leaf_1a, 1 in leaf_1b), refresh page with F5 — tree and answered questions persist. Check browser DevTools → Application → localStorage — entries show answered question IDs and document ID",
+      "example_input": "User is on question page `/study/doc_64a1b2c3/node/leaf_1a` and has answered 1 of 2 questions.",
+      "example_output": "After F5 refresh, page still shows question 2 of 2 with previous answer visible (if applicable). localStorage contains:\n```\ncurrentDocumentId: \"doc_64a1b2c3\"\nansiweredQuestionIds: [\"q_1\"]\nunlockedNodeIds: [\"leaf_1a\", \"leaf_1b\"]\n```"
+    },
+    {
+      "id": 9,
+      "title": "Result Display and Key-Point Feedback",
+      "deliverable": "`/study/{document_id}/results` page displays all answered questions grouped by node, marks per question, total marks per node (e.g., `4/6`), mark scheme for each question, student answer comparison, and overall percentage. Clicking a node shows expanded view with all question details",
+      "tasks": [
+        "Create `frontend/src/pages/ResultsPage.tsx` that fetches all submissions for document via `GET /api/documents/{document_id}/submissions`",
+        "Create `POST /api/documents/{document_id}/submissions` backend endpoint that returns array of all submissions with question text, mark scheme, student answer, marks awarded, and feedback",
+        "Create `frontend/src/components/ResultsSummary.tsx` that displays tree structure with marks for each node (e.g., \"Nucleus: 4/6\")",
+        "Create `frontend/src/components/NodeResultsDetail.tsx` that expands to show all questions in a node with side-by-side comparison: mark scheme vs student answer, with marks and feedback",
+        "Add button on StudyPage `/study/{document_id}` to navigate to results page",
+        "Style results display with color coding: green for ≥70%, yellow for 50-69%, red for <50%",
+        "Add export results to JSON feature that downloads `results_{document_id}.json`"
+      ],
+      "commit_condition": "Answer all 6 questions across 2 leaf nodes. Navigate to `/study/doc_64a1b2c3/results` — page shows summary with nodes and marks. Click on a node to expand and verify all 3 questions in that node are displayed with mark schemes and feedback",
+      "example_input": "Two leaf nodes answered:\n- leaf_1a: 2 questions, scored 4/4\n- leaf_1b: 2 questions, scored 3/4\n- leaf_1c: 2 questions, scored 5/6",
+      "example_output": "Results page displays:\n```\n- Cell Structure: 12/14 (85%)\n  - Nucleus: 4/4\n    - Q1: Define nucleus [2/2] ✓\n      Mark scheme: Control center, stores DNA\n      Your answer: The nucleus controls the cell and stores its DNA\n    - Q2: Function [2/2] ✓\n  - Mitochondria: 3/4\n    - Q1: Powerhouse role [1/2] ⚠\n      Mark scheme: ATP production, energy conversion\n      Your answer: Makes energy\n      Feedback: Partially correct. Mention ATP and conversion process.\n```"
+    },
+    {
+      "id": 10,
+      "title": "Loading States, Error Handling, and Responsive Design",

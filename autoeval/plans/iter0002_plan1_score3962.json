@@ -1,0 +1,146 @@
+```json
+{
+  "project": {
+    "name": "StudyBattles",
+    "language": "Python 3.11",
+    "runtime": "web (REST API + React SPA)",
+    "package_manager": "pip (backend), npm (frontend)",
+    "framework": "FastAPI 0.111 (backend), React 18 (frontend)",
+    "database": "MongoDB 7.0",
+    "deployment": "Docker + AWS EC2 (backend), Vercel (frontend)",
+    "external_services": [
+      "AWS S3 (document storage)",
+      "OpenAI GPT-4 (tree generation, question generation, mark scheme evaluation)",
+      "MongoDB Atlas (cloud database)"
+    ]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Backend environment and API foundation",
+      "deliverable": "`POST /api/health` returns `{ \"status\": \"ok\" }` from running FastAPI server",
+      "tasks": [
+        "Install Python 3.11 and create virtual environment with pip; install FastAPI 0.111, uvicorn 0.27, python-dotenv 1.0",
+        "Create project directory structure: `backend/`, `frontend/`, `docker-compose.yml`, `.env.example`",
+        "Create `backend/app.py` with FastAPI application and CORS middleware for localhost:3000",
+        "Create `backend/config.py` to load environment variables (OpenAI API key, AWS credentials, MongoDB URI, S3 bucket name)",
+        "Create `backend/requirements.txt` listing FastAPI, uvicorn, pymongo 4.6, python-dotenv, boto3 3.35, openai 1.35, pydantic 2.6",
+        "Create `docker-compose.yml` with MongoDB 7.0 service (port 27017, database name `studybattles_db`)",
+        "Write `backend/routers/health.py` with GET `/api/health` endpoint that returns status",
+        "Create `.env.example` with placeholders for OPENAI_API_KEY, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_S3_BUCKET_NAME, MONGODB_URI"
+      ],
+      "commit_condition": "Run `docker-compose up -d && python -m uvicorn backend.app:app --reload` — server starts on http://localhost:8000; run `curl http://localhost:8000/api/health` — returns `{\"status\":\"ok\"}`",
+      "example_input": "No services running; empty project directory",
+      "example_output": "Running FastAPI server on port 8000; `curl http://localhost:8000/api/health` returns `{\"status\":\"ok\"}`; MongoDB listening on port 27017"
+    },
+    {
+      "id": 2,
+      "title": "MongoDB schema and document storage service",
+      "deliverable": "`backend/services/mongo_service.py` exports `insert_document(doc_id, filename, s3_url, status)` function that stores document metadata in MongoDB and returns inserted doc with `_id`",
+      "tasks": [
+        "Install pymongo 4.6 and create `backend/services/mongo_service.py` with MongoClient initialization and database connection logic",
+        "Create MongoDB collection `documents` with schema validation: `{ doc_id, filename, s3_url, status (\"pending\"|\"tree_generated\"|\"failed\"), created_at, updated_at }`",
+        "Create MongoDB collection `topic_trees` with schema: `{ doc_id, root_node (nested structure), max_depth, created_at }`",
+        "Create MongoDB collection `sessions` with schema: `{ session_id, doc_id, user_defeated_nodes (array), user_unlocked_nodes (array), created_at, last_accessed }`",
+        "Write `insert_document(doc_id, filename, s3_url, status)` function that inserts document metadata and returns inserted document with MongoDB `_id`",
+        "Write `get_document_by_id(doc_id)` function that retrieves document metadata and raises 404 if not found",
+        "Write `update_document_status(doc_id, status)` function that updates document status field",
+        "Write helper function `init_mongo_collections()` called on app startup to create indexes on doc_id and session_id"
+      ],
+      "commit_condition": "Run `docker-compose up -d && python -c \"from backend.services.mongo_service import init_mongo_collections; init_mongo_collections()\"` — no errors; query MongoDB: `db.documents.findOne()` returns empty array (collections created); run `python -c \"from backend.services.mongo_service import insert_document; doc = insert_document('test123', 'test.pptx', 'https://s3.url/test.pptx', 'pending'); print(doc)\"` — returns document dict with _id field",
+      "example_input": "MongoDB running; empty database",
+      "example_output": "MongoDB collections `documents`, `topic_trees`, `sessions` created with indexes; inserted document: `{ \"_id\": ObjectId(...), \"doc_id\": \"test123\", \"filename\": \"test.pptx\", \"s3_url\": \"https://s3.url/test.pptx\", \"status\": \"pending\", \"created_at\": \"2025-01-01T...\" }`"
+    },
+    {
+      "id": 3,
+      "title": "AWS S3 file upload and document storage",
+      "deliverable": "`POST /api/documents/upload` accepts multipart PPTX or DOCX files, returns `{ \"doc_id\": \"...\", \"s3_url\": \"...\", \"status\": \"pending\" }` after uploading to AWS S3 and storing metadata in MongoDB",
+      "tasks": [
+        "Install boto3 3.35 and python-multipart 0.0.6 for file handling",
+        "Create `backend/services/s3_service.py` with S3Client initialization using AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_S3_BUCKET_NAME from config",
+        "Write `upload_file_to_s3(file_content, filename, doc_id)` function that uploads binary file to S3 at path `uploads/{doc_id}/{filename}` and returns S3 URL",
+        "Write `validate_file_type(filename)` function that rejects files not ending in .pptx or .docx and raises 400 error",
+        "Create `backend/routers/documents.py` with POST `/api/documents/upload` endpoint that accepts multipart file, validates type, calls S3 upload, inserts MongoDB document, and returns doc_id with S3 URL",
+        "Add 50MB max file size constraint in FastAPI upload handler and return 413 if exceeded",
+        "Create `backend/routers/documents.py` with GET `/api/documents/{doc_id}` endpoint that retrieves document metadata from MongoDB and returns it with status"
+      ],
+      "commit_condition": "Create test file `test_upload.pptx` (binary PPTX format); run `curl -X POST -F \"file=@test_upload.pptx\" http://localhost:8000/api/documents/upload` — returns `{ \"doc_id\": \"...\", \"s3_url\": \"https://bucket.s3.amazonaws.com/uploads/...\", \"status\": \"pending\" }`; verify S3 file exists via AWS console or `aws s3 ls s3://bucket/uploads/`; verify MongoDB document inserted via `db.documents.findOne()`",
+      "example_input": "AWS S3 bucket configured; MongoDB running; no documents uploaded yet",
+      "example_output": "HTTP 200: `{ \"doc_id\": \"65a1f2c9d4e5b6c7a8d9e0f1\", \"s3_url\": \"https://studybattles-bucket.s3.amazonaws.com/uploads/65a1f2c9d4e5b6c7a8d9e0f1/slides.pptx\", \"status\": \"pending\" }`; file exists in S3; MongoDB document: `{ \"_id\": ObjectId(...), \"doc_id\": \"65a1f2c9d4e5b6c7a8d9e0f1\", \"filename\": \"slides.pptx\", \"s3_url\": \"https://...\", \"status\": \"pending\" }`"
+    },
+    {
+      "id": 4,
+      "title": "OpenAI topic tree generation from documents",
+      "deliverable": "`POST /api/documents/{doc_id}/generate-tree` processes S3 document, calls OpenAI GPT-4 with extracted text, returns `{ \"doc_id\": \"...\", \"root_node\": {...}, \"status\": \"tree_generated\" }` with 3-level hierarchy",
+      "tasks": [
+        "Install python-pptx 0.6.23 and python-docx 0.8.11 for extracting text from PPTX and DOCX files",
+        "Create `backend/services/document_extractor.py` with `extract_text_from_pptx(s3_url)` function that downloads file from S3 and extracts all slide text",
+        "Create `extract_text_from_docx(s3_url)` function in same file that downloads file from S3 and extracts all paragraph text",
+        "Create `backend/services/llm_service.py` with OpenAI client initialization using OPENAI_API_KEY from config",
+        "Write `generate_topic_tree(doc_text, max_depth=3)` function in llm_service that calls OpenAI GPT-4 with system prompt requesting JSON output of nested topic structure with max 3 levels, max 5 children per node",
+        "Structure GPT-4 response to return JSON: `{ \"node_id\": \"unique-id\", \"title\": \"Topic Name\", \"description\": \"Brief description\", \"type\": \"concept|skill|boss\", \"children\": [...] }` (leaf nodes have type \"boss\")",
+        "Create POST `/api/documents/{doc_id}/generate-tree` endpoint in documents router that calls extract_text, then generate_topic_tree, stores result in MongoDB `topic_trees` collection, updates document status to \"tree_generated\", and returns tree with doc_id"
+      ],
+      "commit_condition": "Run `curl -X POST http://localhost:8000/api/documents/65a1f2c9d4e5b6c7a8d9e0f1/generate-tree` (with valid doc_id from Phase 3 upload) — returns HTTP 200 with `{ \"doc_id\": \"65a1f2c9d4e5b6c7a8d9e0f1\", \"root_node\": { \"node_id\": \"root-algebra\", \"title\": \"Algebra Fundamentals\", \"type\": \"concept\", \"children\": [ { \"node_id\": \"linear-eq\", \"title\": \"Linear Equations\", \"type\": \"concept\", \"children\": [ { \"node_id\": \"solve-2x\", \"title\": \"Solving 2x+3=7\", \"type\": \"boss\", \"children\": [] } ] } ] }, \"status\": \"tree_generated\" }`; verify MongoDB `topic_trees` collection has inserted document",
+      "example_input": "Document uploaded to S3 with status \"pending\"; example PPTX contains slides on \"Algebra: Linear Equations, Quadratic Equations, Systems of Equations\"",
+      "example_output": "HTTP 200: `{ \"doc_id\": \"65a1f2c9d4e5b6c7a8d9e0f1\", \"root_node\": { \"node_id\": \"algebra-root\", \"title\": \"Algebra\", \"description\": \"Introduction to algebraic concepts\", \"type\": \"concept\", \"children\": [ { \"node_id\": \"linear-eq\", \"title\": \"Linear Equations\", \"type\": \"concept\", \"children\": [ { \"node_id\": \"boss-solve\", \"title\": \"Solve 2x+5=15\", \"type\": \"boss\" } ] }, { \"node_id\": \"quadratic\", \"title\": \"Quadratic Equations\", \"type\": \"concept\", \"children\": [ { \"node_id\": \"boss-quad\", \"title\": \"Factor x²-5x+6\", \"type\": \"boss\" } ] } ] }, \"status\": \"tree_generated\" }` — depth 3, max 5 children per node respected"
+    },
+    {
+      "id": 5,
+      "title": "Question generation and mark scheme creation",
+      "deliverable": "`backend/services/question_service.py` exports `generate_questions(node_id, node_title, topic_text)` function that returns array of 5 questions in predetermined formats (Define, Solve, Compare, ELI5, Finish the Answer) with LLM-generated mark schemes stored in MongoDB `questions` collection",
+      "tasks": [
+        "Create MongoDB collection `questions` with schema: `{ node_id, question_type (\"Define\"|\"Solve\"|\"Compare\"|\"ELI5\"|\"Finish\"), question_text, mark_scheme (array of key points with point values), difficulty, created_at }`",
+        "Create `backend/services/question_service.py` with `generate_questions(node_id, node_title, topic_context)` function that calls OpenAI GPT-4 5 times (once per question type) requesting specific JSON structure",
+        "For each question type, define GPT-4 prompt requesting: question_text (string), mark_scheme (array of `{ \"key_point\": \"...\", \"points\": 1 }`), difficulty (\"easy\"|\"medium\"|\"hard\")",
+        "Store all 5 generated questions in MongoDB `questions` collection with node_id as foreign key",
+        "Write `get_questions_by_node(node_id)` function that retrieves all 5 questions for a node from MongoDB",
+        "Write validation to ensure each question has 1-5 key points in mark scheme and max 5 points total per question",
+        "Create POST `/api/nodes/{node_id}/generate-questions` endpoint that calls question generation, stores in MongoDB, and returns array of 5 question objects with node_id"
+      ],
+      "commit_condition": "Run `curl -X POST http://localhost:8000/api/nodes/boss-solve-2x/generate-questions -H \"Content-Type: application/json\" -d '{\"node_title\": \"Solve 2x+3=7\", \"topic_context\": \"Linear equations basics\"}'` — returns HTTP 200 with array of 5 question objects, each with type in [\"Define\", \"Solve\", \"Compare\", \"ELI5\", \"Finish\"]; verify MongoDB `questions` collection has 5 documents with node_id = \"boss-solve-2x\"",
+      "example_input": "Topic tree generated; boss node with node_id = \"boss-algebra-linear-solve\", title = \"Solve 2x+3=7\"",
+      "example_output": "HTTP 200: `[ { \"node_id\": \"boss-algebra-linear-solve\", \"question_type\": \"Solve\", \"question_text\": \"Solve for x: 2x + 3 = 7\", \"mark_scheme\": [ { \"key_point\": \"Subtract 3 from both sides\", \"points\": 1 }, { \"key_point\": \"Get 2x = 4\", \"points\": 1 }, { \"key_point\": \"Divide by 2\", \"points\": 1 }, { \"key_point\": \"Answer x = 2\", \"points\": 2 } ], \"difficulty\": \"easy\" }, { \"node_id\": \"boss-algebra-linear-solve\", \"question_type\": \"ELI5\", \"question_text\": \"Explain like I'm 5: what does solving 2x+3=7 mean?\", \"mark_scheme\": [ { \"key_point\": \"Finding the value of x that balances the equation\", \"points\": 2 }, { \"key_point\": \"Undo operations in reverse order\", \"points\": 3 } ], \"difficulty\": \"easy\" }, ... (3 more questions) ]`"
+    },
+    {
+      "id": 6,
+      "title": "Answer submission and LLM-based marking",
+      "deliverable": "`POST /api/answers` accepts JSON with `{ \"question_id\", \"session_id\", \"answer_text\" }`, calls OpenAI GPT-4 to evaluate against mark scheme, returns `{ \"question_id\", \"score\": 0-5, \"feedback\": \"...\", \"key_points_hit\": [...] }`",
+      "tasks": [
+        "Create MongoDB collection `answers` with schema: `{ session_id, question_id, answer_text, score (0-5), feedback, key_points_hit (array), created_at }`",
+        "Create `backend/services/marking_service.py` with `evaluate_answer(answer_text, question_obj, mark_scheme)` function that calls OpenAI GPT-4 with prompt requesting JSON: `{ \"score\": 0-5, \"feedback\": \"Brief feedback\", \"key_points_hit\": [\"key point 1\", \"key point 2\"] }`",
+        "Write GPT-4 prompt that instructs model to compare student answer against mark scheme, award points for key points matched, max points equal to mark_scheme total, and provide constructive feedback",
+        "Create POST `/api/answers` endpoint that validates question_id exists and is not already answered by session, calls marking_service, stores result in answers collection, and returns score with feedback",
+        "Write `get_answers_by_session(session_id)` function that retrieves all answers for a session from MongoDB",
+        "Add logic to reject duplicate answers (same question_id + session_id already exists) with 409 conflict",
+        "Create GET `/api/answers/{session_id}` endpoint that retrieves all answers for session and returns array with scores, feedback, and key points hit"
+      ],
+      "commit_condition": "Create valid session_id via localStorage; retrieve question_id from Phase 5 generated question; run `curl -X POST http://localhost:8000/api/answers -H \"Content-Type: application/json\" -d '{\"question_id\": \"q_...\", \"session_id\": \"sess_123\", \"answer_text\": \"Subtract 3, then divide by 2 to get x=2\"}'` — returns HTTP 200 with `{ \"question_id\": \"q_...\", \"score\": 5, \"feedback\": \"Excellent! You correctly identified the two steps.\", \"key_points_hit\": [\"Subtract 3 from both sides\", \"Divide by 2\"] }`; verify MongoDB `answers` collection has 1 document",
+      "example_input": "Session created (localStorage); question generated: \"Solve for x: 2x+3=7\" with mark_scheme `[{\"key_point\": \"Subtract 3\", \"points\": 1}, {\"key_point\": \"Divide by 2\", \"points\": 2}]`; student submits answer: \"Subtract 3 from both sides to get 2x=4, then divide by 2 to get x=2\"",
+      "example_output": "HTTP 200: `{ \"question_id\": \"q_solve_2x_001\", \"score\": 3, \"feedback\": \"Great approach! You correctly identified both steps. Consider stating the final check: verify x=2 in the original equation.\", \"key_points_hit\": [\"Subtract 3 from both sides\", \"Divide by 2\"], \"created_at\": \"2025-01-01T...\" }`; MongoDB stores answer with score 3"
+    },
+    {
+      "id": 7,
+      "title": "Node unlock mechanics and boss defeat tracking",
+      "deliverable": "`POST /api/sessions/{session_id}/complete-node` accepts `{ \"node_id\", \"average_score\" }`, unlocks parent node if all sibling boss nodes have average_score >= 3, returns `{ \"defeated_nodes\": [...], \"unlocked_nodes\": [...], \"parent_unlocked\": true|false }`",
+      "tasks": [
+        "Add fields to sessions collection: `defeated_nodes` (array of node_ids where average_score >= 3), `unlocked_nodes` (array of node_ids available for answering)",
+        "Create `backend/services/unlock_service.py` with `calculate_node_average_score(session_id, node_id)` function that retrieves all answers for node_id in session, averages scores (0-5), returns average",
+        "Write `check_parent_unlock(topic_tree, node_id, defeated_nodes)` function that traverses tree, finds parent of node_id, checks if all children are in defeated_nodes, returns parent_node_id or None",
+        "Write `mark_node_defeated(session_id, node_id, average_score)` function that adds node_id to session.defeated_nodes if average_score >= 3",
+        "Write `unlock_parent_node(session_id, parent_node_id)` function that adds parent_node_id to session.unlocked_nodes",
+        "Create POST `/api/sessions/{session_id}/complete-node` endpoint that calls calculate_node_average_score, mark_node_defeated, checks parent unlock, calls unlock_parent_node if applicable, and returns defeated_nodes, unlocked_nodes, parent_unlocked boolean",
+        "Create GET `/api/sessions/{session_id}` endpoint that retrieves session and returns defeated_nodes, unlocked_nodes, and progress status"
+      ],
+      "commit_condition": "Create session and defeat 2 sibling boss nodes (e.g., \"solve-linear-eq\" and \"solve-quadratic\") with average_scores >= 3; run `curl -X POST http://localhost:8000/api/sessions/sess_123/complete-node -H \"Content-Type: application/json\" -d '{\"node_id\": \"solve-quadratic\", \"average_score\": 4}'` (after already defeating \"solve-linear-eq\") — returns HTTP 200 with `{ \"defeated_nodes\": [\"solve-linear-eq\", \"solve-quadratic\"], \"unlocked_nodes\": [\"equations-parent\"], \"parent_unlocked\": true }`; verify MongoDB session document has unlocked_nodes updated",
+      "example_input": "Session with 2 sibling boss nodes (both children of \"Equations\" parent node); student defeats first child with score 4.2, second child with score 3.8",
+      "example_output": "HTTP 200 after defeating second child: `{ \"session_id\": \"sess_123\", \"defeated_nodes\": [\"boss-solve-linear\", \"boss-solve-quadratic\"], \"unlocked_nodes\": [\"concept-equations\"], \"parent_unlocked\": true, \"num_available\": 5 }`; parent node \"Equations\" now available for user to expand in frontend"
+    },
+    {
+      "id": 8,
+      "title": "React frontend scaffold and document upload UI",
+      "deliverable": "`frontend/src/pages/UploadPage.jsx` exports React component that renders form accepting PPTX/DOCX files, displays upload progress, calls `POST /api/documents/upload`, redirects to tree view on success with `doc_id` in URL",
+      "tasks": [
+        "Install Node.js 18.x and create React 18 app via `npm create vite@latest frontend -- --template react`",
+        "Install dependencies: react-router-dom 6.20, axios 1.6, zustand 4.4 (state management), react-query 3.39",
+        
