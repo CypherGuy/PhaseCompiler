@@ -28,19 +28,20 @@ import re
 import sys
 
 # ── paths ──────────────────────────────────────────────────────────────────────
-BASE         = os.path.dirname(os.path.abspath(__file__))
-PROMPT_FILE  = os.path.join(BASE, "prompt.md")
-CHAMP_FILE   = os.path.join(BASE, "champion_prompt.md")
-EVAL_FILE    = os.path.join(BASE, "eval_suite.md")
+BASE = os.path.dirname(os.path.abspath(__file__))
+PROMPT_FILE = os.path.join(BASE, "prompt.md")
+CHAMP_FILE = os.path.join(BASE, "champion_prompt.md")
+EVAL_FILE = os.path.join(BASE, "eval_suite.md")
 BRIEFS = [
     os.path.join(BASE, "brief.md"),       # StudyBattles  — 11 phases, MVP at 7
-    os.path.join(BASE, "brief_cli.md"),   # DevLogSummarizer — 6 phases, MVP at 4
+    # DevLogSummarizer — 6 phases, MVP at 4
+    os.path.join(BASE, "brief_cli.md"),
     os.path.join(BASE, "brief_saas.md"),  # InvoiceFlow   —  8 phases, MVP at 5
 ]
 RESULTS_FILE = os.path.join(BASE, "results.tsv")
-SKILL_FILE   = os.path.join(BASE, "..", "SKILL.md")
-PLANS_DIR    = os.path.join(BASE, "plans")
-SCORES_DIR   = os.path.join(BASE, "scores")
+SKILL_FILE = os.path.join(BASE, "..", "SKILL.md")
+PLANS_DIR = os.path.join(BASE, "plans")
+SCORES_DIR = os.path.join(BASE, "scores")
 
 NUM_PLANS_PER_BRIEF = 3                            # plans generated per brief
 NUM_PLANS = NUM_PLANS_PER_BRIEF * len(BRIEFS)      # 3 briefs × 3 = 9 total
@@ -48,19 +49,23 @@ MAX_SCORE = NUM_PLANS * 49 * 10                    # 9 × 49 × 10 = 4410
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 
+
 def load(path: str) -> str:
     with open(path, encoding="utf-8") as f:
         return f.read()
 
+
 def save(path: str, content: str) -> None:
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)
+
 
 def log(msg: str) -> None:
     ts = datetime.datetime.now().strftime("%H:%M:%S")
     print(f"[{ts}] {msg}", flush=True)
 
 # ── claude client ──────────────────────────────────────────────────────────────
+
 
 def make_client() -> anthropic.Anthropic:
     key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
@@ -77,6 +82,7 @@ def make_client() -> anthropic.Anthropic:
 
 # ── generation ─────────────────────────────────────────────────────────────────
 
+
 def generate_plan(client: anthropic.Anthropic, prompt: str, brief: str) -> str:
     response = client.messages.create(
         model="claude-haiku-4-5-20251001",  # cheapest model — generation only
@@ -87,6 +93,7 @@ def generate_plan(client: anthropic.Anthropic, prompt: str, brief: str) -> str:
     return response.content[0].text
 
 # ── scoring ────────────────────────────────────────────────────────────────────
+
 
 SCORE_SCHEMA = """{
   "plan_1": {
@@ -192,7 +199,8 @@ def improve_prompt(
         test_totals[test_key] = total_pts
         test_maxes[test_key] = max_pts
 
-    worst = sorted(test_totals.items(), key=lambda x: x[1] / test_maxes[x[0]])[:4]
+    worst = sorted(test_totals.items(),
+                   key=lambda x: x[1] / test_maxes[x[0]])[:4]
     worst_str = "; ".join(
         f"{t} scored {test_totals[t]}/{test_maxes[t]}" for t, _ in worst
     )
@@ -262,7 +270,8 @@ def get_iteration() -> int:
         return 1
     with open(RESULTS_FILE, encoding="utf-8") as f:
         lines = f.readlines()
-    return max(1, len(lines))  # header counts as line 1 → iteration 1 on first run
+    # header counts as line 1 → iteration 1 on first run
+    return max(1, len(lines) - 1)
 
 
 REQ_COUNTS = {
@@ -307,10 +316,12 @@ def append_result(
     with open(RESULTS_FILE, "a", encoding="utf-8") as f:
         if write_header:
             per_test_header = "\t".join(test_keys)
-            f.write(f"iteration\ttimestamp\tscore\tchampion_score\tstatus\tprompt_hash\tbrief\t{per_test_header}\tanalysis\n")
+            f.write(
+                f"iteration\ttimestamp\tscore\tchampion_score\tstatus\tprompt_hash\tbrief\t{per_test_header}\tanalysis\n")
         ts = datetime.datetime.now().isoformat()
         safe_analysis = analysis.replace("\t", " ").replace("\n", " ")[:300]
-        per_test_vals = "\t".join(str(test_totals.get(k, 0)) for k in test_keys)
+        per_test_vals = "\t".join(str(test_totals.get(k, 0))
+                                  for k in test_keys)
         f.write(f"{iteration}\t{ts}\t{score}\t{champion_score}\t{status}\t{prompt_hash}\t{brief_name}\t{per_test_vals}\t{safe_analysis}\n")
 
 
@@ -347,7 +358,8 @@ def sync_to_skill_md(champion_prompt: str) -> None:
 def save_plans(plans: list[str], iteration: int, score: int) -> None:
     os.makedirs(PLANS_DIR, exist_ok=True)
     for i, plan in enumerate(plans):
-        path = os.path.join(PLANS_DIR, f"iter{iteration:04d}_plan{i + 1}_score{score}.json")
+        path = os.path.join(
+            PLANS_DIR, f"iter{iteration:04d}_plan{i + 1}_score{score}.json")
         save(path, plan)
 
 
@@ -396,7 +408,8 @@ def main() -> None:
     save_plans(plans, iteration, total_score)
     save_score_data(score_data, iteration)
     test_totals = compute_test_totals(score_data)
-    log("Per-test scores: " + " | ".join(f"{k}:{test_totals[k]}" for k in REQ_COUNTS))
+    log("Per-test scores: " +
+        " | ".join(f"{k}:{test_totals[k]}" for k in REQ_COUNTS))
 
     # ── Step 4: Accept / reject ────────────────────────────────────────────────
     if total_score > champion_score:
@@ -414,12 +427,14 @@ def main() -> None:
 
     # ── Step 5: Generate improved prompt for next iteration ───────────────────
     log("Generating improved prompt for next iteration...")
-    improved = improve_prompt(client, current_prompt, plans, score_data, eval_suite, champion_score)
+    improved = improve_prompt(client, current_prompt,
+                              plans, score_data, eval_suite, champion_score)
     save(PROMPT_FILE, improved)
     log("Saved improved prompt.md.")
 
     # ── Step 6: Log result ─────────────────────────────────────────────────────
-    append_result(iteration, total_score, champion_score, status, prompt_hash, brief_name, analysis, test_totals)
+    append_result(iteration, total_score, champion_score, status,
+                  prompt_hash, brief_name, analysis, test_totals)
     log(f"Done. Results appended to results.tsv.")
 
 
