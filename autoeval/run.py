@@ -262,7 +262,7 @@ def get_iteration() -> int:
         return 1
     with open(RESULTS_FILE, encoding="utf-8") as f:
         lines = f.readlines()
-    return max(1, len(lines))  # header counts as line 1 → iteration 1 on first run
+    return max(1, len(lines) - 1)  # subtract header line so first real run is iteration 1
 
 
 REQ_COUNTS = {
