@@ -1,0 +1,60 @@
+name: Phase-Compiler Autoeval
+
+on:
+  schedule:
+    - cron: "0  0,3,6,9,12,15,18,21 * * *"   # every 90 min (UTC, part 1)
+    - cron: "30 1,4,7,10,13,16,19,22 * * *"   # every 90 min (UTC, part 2)
+  workflow_dispatch:        # manual trigger from Actions tab
+
+permissions:
+  contents: write           # needed to commit results back
+
+jobs:
+  autoeval:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install anthropic
+
+      - name: Seed baseline (first run only)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ ! -f autoeval/results.tsv ]; then
+            echo "No results.tsv found — running baseline scorer..."
+            python autoeval/score_baseline.py
+          else
+            echo "results.tsv exists — skipping baseline."
+          fi
+
+      - name: Run autoeval iteration
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python autoeval/run.py
+
+      - name: Commit results back to repo
+        run: |
+          git config user.name  "autoeval[bot]"
+          git config user.email "autoeval@noreply.github.com"
+          git add \
+            autoeval/results.tsv \
+            autoeval/scores/ \
+            autoeval/plans/ \
+            autoeval/prompt.md \
+            autoeval/champion_prompt.md \
+            SKILL.md
+          # Only commit if something actually changed
+          git diff --staged --quiet && echo "Nothing to commit." || \
+            git commit -m "autoeval: iteration $(date -u +%Y%m%dT%H%M%SZ)"
+          git push
