@@ -315,7 +315,7 @@ def append_result(
             per_test_header = "\t".join(test_keys)
             f.write(f"iteration\ttimestamp\tscore\tchampion_score\tstatus\tprompt_hash\tbrief\t{per_test_header}\tanalysis\n")
         ts = datetime.datetime.now().isoformat()
-        safe_analysis = analysis.replace("\t", " ").replace("\n", " ")[:300]
+        safe_analysis = analysis.replace("\t", " ").replace("\n", " ")
         per_test_vals = "\t".join(str(test_totals.get(k, 0)) for k in test_keys)
         f.write(f"{iteration}\t{ts}\t{score}\t{champion_score}\t{status}\t{prompt_hash}\t{brief_name}\t{per_test_vals}\t{safe_analysis}\n")
 
