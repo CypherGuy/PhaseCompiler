@@ -260,9 +260,15 @@ def load_champion_score() -> int:
 def get_iteration() -> int:
     if not os.path.exists(RESULTS_FILE):
         return 1
+    max_iter = 0
     with open(RESULTS_FILE, encoding="utf-8") as f:
-        lines = f.readlines()
-    return max(1, len(lines) - 1)  # subtract header line so first real run is iteration 1
+        for line in f.readlines()[1:]:  # skip header
+            parts = line.split("\t")
+            try:
+                max_iter = max(max_iter, int(parts[0]))
+            except (ValueError, IndexError):
+                pass
+    return max_iter + 1
 
 
 REQ_COUNTS = {

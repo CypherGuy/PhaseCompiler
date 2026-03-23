@@ -113,15 +113,36 @@ def generate_html(rows: list[dict], latest_score_data: dict | None) -> str:
             else "badge-baseline" if status == "baseline"
             else "badge-discard"
         )
+        score_val  = int(r.get("score", 0))
+        score_pct  = round(100 * score_val / MAX_SCORE, 1)
+        analysis   = r.get("analysis", "").replace("'", "&#39;").replace('"', "&quot;")
+        brief      = r.get("brief", "")
+        ts         = r.get("timestamp", "")[:16]
+        iteration  = r["iteration"]
+        champ_val  = r.get("champion_score", "")
+        row_id     = f"detail-{i}"
+
         table_rows += f"""
-        <tr>
-          <td>{r['iteration']}</td>
-          <td>{r.get('timestamp','')[:16]}</td>
-          <td class="score-cell">{r['score']}</td>
-          <td>{r.get('champion_score','')}</td>
+        <tr class="data-row" onclick="toggleDetail('{row_id}')">
+          <td class="iter-cell">#{iteration}</td>
+          <td class="ts-cell">{ts}</td>
+          <td class="score-cell">
+            <span class="score-num">{score_val}</span>
+            <span class="score-pct">{score_pct}%</span>
+            <div class="row-bar"><div class="row-bar-fill" style="width:{score_pct}%"></div></div>
+          </td>
+          <td class="champ-val">{champ_val}</td>
           <td><span class="badge {badge_cls}">{status}</span></td>
-          <td style="color:#94a3b8;font-size:0.75rem">{r.get('brief','')}</td>
-          <td class="analysis-cell">{r.get('analysis','')[:100]}</td>
+          <td class="brief-cell">{brief}</td>
+          <td class="expand-cell"><span class="expand-icon">▸</span> <span class="preview-text">{r.get('analysis','')[:60]}…</span></td>
+        </tr>
+        <tr class="detail-row" id="{row_id}">
+          <td colspan="7">
+            <div class="analysis-panel">
+              <div class="analysis-label">Analysis</div>
+              <div class="analysis-body">{r.get('analysis','')}</div>
+            </div>
+          </td>
         </tr>"""
 
     return f"""<!DOCTYPE html>
@@ -152,18 +173,44 @@ def generate_html(rows: list[dict], latest_score_data: dict | None) -> str:
   .chart-title {{ font-size: 0.875rem; font-weight: 600; color: #cbd5e1; margin-bottom: 16px; }}
   table {{ width: 100%; border-collapse: collapse; background: #1e293b;
            border-radius: 12px; overflow: hidden; }}
-  th {{ background: #0f172a; padding: 10px 14px; text-align: left;
-        font-size: 0.75rem; text-transform: uppercase; color: #64748b;
-        letter-spacing: 0.05em; }}
-  td {{ padding: 10px 14px; font-size: 0.8125rem; border-top: 1px solid #334155; }}
-  .score-cell {{ font-weight: 600; color: #a5b4fc; }}
-  .analysis-cell {{ color: #94a3b8; font-size: 0.75rem; max-width: 320px;
-                    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
-  .badge {{ display: inline-block; padding: 2px 8px; border-radius: 99px;
-            font-size: 0.7rem; font-weight: 600; text-transform: uppercase; }}
-  .badge-keep     {{ background: #14532d; color: #86efac; }}
-  .badge-discard  {{ background: #450a0a; color: #fca5a5; }}
-  .badge-baseline {{ background: #1e3a5f; color: #93c5fd; }}
+  th {{ background: #0a0f1e; padding: 10px 16px; text-align: left;
+        font-size: 0.68rem; text-transform: uppercase; color: #475569;
+        letter-spacing: 0.08em; font-family: 'SF Mono', 'Fira Code', monospace; }}
+  td {{ padding: 12px 16px; font-size: 0.8125rem; border-top: 1px solid #1e293b; }}
+  .data-row {{ cursor: pointer; transition: background 0.15s; }}
+  .data-row:hover {{ background: #243044; }}
+  .data-row.open {{ background: #1a2540; }}
+  .iter-cell {{ font-family: 'SF Mono', 'Fira Code', monospace; color: #475569; font-size: 0.75rem; width: 48px; }}
+  .ts-cell   {{ color: #64748b; font-size: 0.75rem; font-family: 'SF Mono', 'Fira Code', monospace; white-space: nowrap; }}
+  .score-cell {{ width: 160px; }}
+  .score-num  {{ font-weight: 700; color: #a5b4fc; font-size: 0.9rem; margin-right: 6px; }}
+  .score-pct  {{ color: #64748b; font-size: 0.7rem; }}
+  .row-bar    {{ background: #0f172a; border-radius: 3px; height: 3px; margin-top: 5px; }}
+  .row-bar-fill {{ background: linear-gradient(90deg, #6366f1, #22c55e); border-radius: 3px; height: 100%; }}
+  .champ-val  {{ color: #64748b; font-size: 0.8rem; }}
+  .brief-cell {{ color: #94a3b8; font-size: 0.75rem; font-family: 'SF Mono', 'Fira Code', monospace; }}
+  .expand-cell {{ color: #475569; font-size: 0.75rem; }}
+  .expand-icon {{ display: inline-block; transition: transform 0.2s; color: #6366f1; margin-right: 4px; }}
+  .data-row.open .expand-icon {{ transform: rotate(90deg); }}
+  .preview-text {{ color: #64748b; font-style: italic; }}
+  .detail-row {{ display: none; }}
+  .detail-row.open {{ display: table-row; }}
+  .detail-row td {{ padding: 0; border-top: none; }}
+  .analysis-panel {{ background: #0a0f1e; border-left: 2px solid #6366f1;
+                     margin: 0 16px 12px; border-radius: 0 6px 6px 0; padding: 14px 18px;
+                     animation: slideDown 0.2s ease; }}
+  @keyframes slideDown {{ from {{ opacity: 0; transform: translateY(-6px); }} to {{ opacity: 1; transform: translateY(0); }} }}
+  .analysis-label {{ font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.1em;
+                     color: #6366f1; font-family: 'SF Mono', 'Fira Code', monospace;
+                     margin-bottom: 8px; }}
+  .analysis-body {{ color: #cbd5e1; font-size: 0.825rem; line-height: 1.65;
+                    white-space: pre-wrap; word-break: break-word; }}
+  .badge {{ display: inline-block; padding: 3px 9px; border-radius: 4px;
+            font-size: 0.65rem; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.06em; font-family: 'SF Mono', 'Fira Code', monospace; }}
+  .badge-keep     {{ background: rgba(34,197,94,0.12); color: #4ade80; border: 1px solid rgba(34,197,94,0.25); }}
+  .badge-discard  {{ background: rgba(239,68,68,0.12); color: #f87171; border: 1px solid rgba(239,68,68,0.25); }}
+  .badge-baseline {{ background: rgba(99,102,241,0.12); color: #818cf8; border: 1px solid rgba(99,102,241,0.25); }}
   @media (max-width: 768px) {{ .chart-row {{ grid-template-columns: 1fr; }} }}
 </style>
 </head>
@@ -175,13 +222,13 @@ def generate_html(rows: list[dict], latest_score_data: dict | None) -> str:
   <div class="card">
     <div class="card-label">Latest Score</div>
     <div class="card-value">{latest_score}</div>
-    <div class="card-sub">{latest_pct}% of 2450</div>
+    <div class="card-sub">{latest_pct}% of {MAX_SCORE}</div>
     <div class="progress-bar"><div class="progress-fill" style="width:{latest_pct}%"></div></div>
   </div>
   <div class="card">
     <div class="card-label">Champion Score</div>
     <div class="card-value">{champion}</div>
-    <div class="card-sub">{champ_pct}% of 2450</div>
+    <div class="card-sub">{champ_pct}% of {MAX_SCORE}</div>
     <div class="progress-bar"><div class="progress-fill" style="width:{champ_pct}%"></div></div>
   </div>
   <div class="card">
@@ -214,7 +261,7 @@ def generate_html(rows: list[dict], latest_score_data: dict | None) -> str:
     <thead>
       <tr>
         <th>#</th><th>Timestamp</th><th>Score</th><th>Champion</th>
-        <th>Status</th><th>Brief</th><th>Analysis</th>
+        <th>Status</th><th>Brief</th><th>Analysis — click row to expand</th>
       </tr>
     </thead>
     <tbody>{table_rows}</tbody>
@@ -252,7 +299,7 @@ new Chart(trendCtx, {{
   options: {{
     responsive: true,
     scales: {{
-      y: {{ min: 0, max: 2450, grid: {{ color: '#334155' }},
+      y: {{ min: 0, max: {MAX_SCORE}, grid: {{ color: '#334155' }},
             ticks: {{ color: '#94a3b8' }} }},
       x: {{ grid: {{ color: '#334155' }}, ticks: {{ color: '#94a3b8' }} }}
     }},
@@ -283,6 +330,15 @@ new Chart(barCtx, {{
     plugins: {{ legend: {{ display: false }} }}
   }}
 }});
+</script>
+<script>
+function toggleDetail(id) {{
+  const detail = document.getElementById(id);
+  const dataRow = detail.previousElementSibling;
+  const isOpen = detail.classList.contains('open');
+  detail.classList.toggle('open', !isOpen);
+  dataRow.classList.toggle('open', !isOpen);
+}}
 </script>
 </body>
 </html>"""
