@@ -1,0 +1,158 @@
+```json
+{
+  "project": {
+    "name": "StudyBattles",
+    "language": "Python 3.11",
+    "runtime": "web",
+    "package_manager": "pip",
+    "framework": "FastAPI 0.111",
+    "database": "MongoDB 7.0",
+    "deployment": "Docker + AWS EC2",
+    "external_services": ["OpenAI GPT-4 API", "AWS S3"]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Backend Project Setup with FastAPI and MongoDB Connection",
+      "deliverable": "`python backend/main.py` launches uvicorn server on http://127.0.0.1:8000 with `/health` endpoint returning {\"status\": \"ok\"}",
+      "tasks": [
+        "Install Python 3.11 with pip; create backend directory structure with __init__.py files in `backend/`, `backend/routes/`, `backend/services/`, `backend/models/`",
+        "Create `requirements.txt` with FastAPI 0.111, uvicorn 0.29, pymongo 4.6, python-dotenv 1.0, requests 2.31, python-multipart 0.0.6",
+        "Create `backend/main.py` with FastAPI app instance, CORS middleware enabling localhost:3000, and `/health` GET endpoint",
+        "Create `.env` file with placeholders for OPENAI_API_KEY, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_S3_BUCKET_NAME, MONGODB_URI",
+        "Configure MongoDB 7.0 connection in `backend/config.py` using pymongo.MongoClient and MONGODB_URI from .env",
+        "Create `backend/routes/health.py` with health check route and mount in main.py"
+      ],
+      "commit_condition": "Run `python backend/main.py` — terminal prints 'Uvicorn running on http://127.0.0.1:8000'; in another terminal, run `curl http://localhost:8000/health` and verify output is {\"status\": \"ok\"}",
+      "example_input": "Empty project directory with no Python dependencies installed",
+      "example_output": "Run `pip install -r requirements.txt && python backend/main.py` — uvicorn starts on port 8000; `curl http://localhost:8000/health` returns {\"status\": \"ok\"}"
+    },
+    {
+      "id": 2,
+      "title": "MongoDB Collections and Data Models Setup",
+      "deliverable": "MongoDB collections `studies`, `nodes`, `answers` exist with indexed fields and example documents matching schema in `backend/models/schemas.py`",
+      "tasks": [
+        "Define MongoDB schema in `backend/models/schemas.py` with Study (study_id, title, root_node_id, created_at), Node (node_id, study_id, parent_id, children_ids, content, level, is_defeated, boss_type), Answer (answer_id, node_id, student_answer, llm_marks, student_marks, timestamp)",
+        "Create `backend/db/init_mongo.py` script that drops existing collections and creates `studies`, `nodes`, `answers` with indexes on study_id, node_id, parent_id, created_at",
+        "Create `backend/db/mongo_client.py` singleton wrapper exposing get_db() returning pymongo database instance with connection pooling",
+        "Write initialization logic in main.py to call init_mongo.py on startup if INIT_DB environment variable is set",
+        "Add sample JSON documents to `backend/fixtures/sample_study.json` showing a 3-level node tree for testing",
+        "Create `backend/models/__init__.py` exporting Study, Node, Answer data classes with Pydantic validation"
+      ],
+      "commit_condition": "Run `INIT_DB=true python backend/main.py` — MongoDB collections are created; run `mongosh` and execute `use studybattles && db.studies.findOne()` — returns a document with fields {study_id, title, root_node_id, created_at}",
+      "example_input": "MongoDB 7.0 running locally on mongodb://localhost:27017; no collections exist",
+      "example_output": "MongoDB collections `studies`, `nodes`, `answers` exist; sample document in `studies`: {\"study_id\": \"study_001\", \"title\": \"Biology Basics\", \"root_node_id\": \"node_root\", \"created_at\": \"2024-01-15T10:00:00Z\"}"
+    },
+    {
+      "id": 3,
+      "title": "Document Upload and AWS S3 Integration",
+      "deliverable": "`POST /api/upload` accepts multipart form (file + metadata), stores file in AWS S3, returns {\"s3_key\": \"uploads/study_001/document.pptx\", \"file_url\": \"https://s3.amazonaws.com/...\"} with HTTP 201",
+      "tasks": [
+        "Create AWS S3 credentials in `backend/config.py` using boto3 and AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_S3_BUCKET_NAME from .env",
+        "Create `backend/services/s3_uploader.py` with upload_document(file, study_id) function that generates unique S3 key, uploads file with public-read ACL, returns S3 URL",
+        "Create `backend/routes/upload.py` with `POST /api/upload` endpoint accepting file and optional title parameter, validating file types (pptx, docx, mp4, webm), calling s3_uploader, returning JSON with s3_key and file_url",
+        "Add file size validation (max 500MB) and MIME type whitelist in upload endpoint",
+        "Create `backend/models/upload.py` with UploadRequest and UploadResponse Pydantic schemas",
+        "Mount upload routes in main.py at `/api/upload`"
+      ],
+      "commit_condition": "Run backend server; execute `curl -F 'file=@test.pptx' -F 'title=Math101' http://localhost:8000/api/upload` — response is HTTP 201 with JSON containing s3_key and file_url fields; verify file exists in AWS S3 bucket",
+      "example_input": "Backend running; AWS S3 bucket created with credentials in .env; user selects test.pptx (2MB PPTX file) from disk",
+      "example_output": "HTTP 201: {\"s3_key\": \"uploads/study_001/test.pptx\", \"file_url\": \"https://mybucket.s3.amazonaws.com/uploads/study_001/test.pptx\", \"uploaded_at\": \"2024-01-15T10:15:00Z\"}"
+    },
+    {
+      "id": 4,
+      "title": "OpenAI Topic Tree Generation Pipeline",
+      "deliverable": "`POST /api/generate-tree` accepts S3 file URL and title, calls OpenAI GPT-4 to generate 3-level node hierarchy, stores nodes in MongoDB, returns root node with nested children structure (HTTP 200)",
+      "tasks": [
+        "Create `backend/services/document_parser.py` with parse_document(s3_url, file_type) function that downloads from S3 and extracts text (pptx via python-pptx, docx via python-docx, video metadata via yt-dlp for YouTube URLs)",
+        "Create `backend/services/tree_generator.py` with generate_tree(extracted_text, title, max_depth=3) function that calls OpenAI GPT-4 with system prompt requesting JSON output of node tree structure with 2–4 children per parent, max 3 levels",
+        "Create `backend/services/node_persister.py` with create_study_and_nodes(title, tree_json) that generates UUIDs for each node, creates Study document with root_node_id, inserts all nodes into MongoDB with parent/child relationships",
+        "Create `backend/routes/generate.py` with `POST /api/generate-tree` endpoint accepting {\"s3_key\": \"...\", \"title\": \"...\"}, calling tree_generator and node_persister, returning root node with full nested tree (HTTP 200)",
+        "Add OpenAI API key configuration and error handling for API rate limits in `backend/config.py`",
+        "Create `backend/models/tree.py` with TreeNode, GenerateTreeRequest, GenerateTreeResponse Pydantic schemas"
+      ],
+      "commit_condition": "Run backend server; execute `curl -X POST http://localhost:8000/api/generate-tree -H 'Content-Type: application/json' -d '{\"s3_key\": \"uploads/study_001/test.pptx\", \"title\": \"Photosynthesis\"}'` — response is HTTP 200 with JSON showing root node containing nested children array with at least 2 levels; verify 10+ documents exist in MongoDB `nodes` collection for that study_id",
+      "example_input": "S3 file `uploads/study_001/test.pptx` contains extracted text 'Photosynthesis is the process...' (500 words); POST request with title 'Photosynthesis'",
+      "example_output": "HTTP 200: {\"study_id\": \"study_001\", \"root_node\": {\"node_id\": \"node_root\", \"content\": \"Photosynthesis\", \"level\": 0, \"children\": [{\"node_id\": \"node_light\", \"content\": \"Light-Dependent Reactions\", \"level\": 1, \"children\": [{\"node_id\": \"node_thylakoid\", \"content\": \"Thylakoid Structure\", \"level\": 2, \"children\": []}]}]}}"
+    },
+    {
+      "id": 5,
+      "title": "Question Generation and Mark Scheme System",
+      "deliverable": "`POST /api/generate-questions` accepts node_id, generates 5 questions across Define/Solve/Compare/ELI5/Finish-the-Answer types, stores in MongoDB with LLM-generated mark schemes, returns question array with formats and schema details (HTTP 201)",
+      "tasks": [
+        "Create `backend/services/question_generator.py` with generate_questions(node_content, question_types=['Define', 'Solve', 'Compare', 'ELI5', 'FinishTheAnswer']) that calls OpenAI GPT-4 to generate one question per type with 2–3 fill-in-the-blank variants or short-answer prompts",
+        "Create `backend/services/mark_scheme_generator.py` with generate_mark_scheme(question, node_content) that calls OpenAI GPT-4 requesting JSON output of expected_answer (list of key phrases/concepts), mark_criteria (partial credit breakdown), sample_correct_answers (3 variations), sample_incorrect_answers (3 common mistakes)",
+        "Create `backend/models/question.py` with Question (question_id, node_id, question_type, prompt, mark_scheme_id), MarkScheme (mark_scheme_id, expected_answer, mark_criteria, sample_correct, sample_incorrect) Pydantic schemas",
+        "Create `backend/routes/questions.py` with `POST /api/generate-questions` endpoint accepting node_id, calling question_generator and mark_scheme_generator, storing questions and mark schemes in MongoDB collections `questions` and `mark_schemes`, returning array of 5 questions with embedded mark scheme metadata",
+        "Add caching layer in `backend/services/cache.py` using Redis or in-memory dict to store generated questions per node_id for 24 hours to avoid regenerating on repeated requests",
+        "Mount questions routes in main.py at `/api/questions`"
+      ],
+      "commit_condition": "Run backend server; execute `curl -X POST http://localhost:8000/api/generate-questions -H 'Content-Type: application/json' -d '{\"node_id\": \"node_light\"}'` — response is HTTP 201 with JSON array of 5 question objects, each with question_type, prompt, mark_scheme containing expected_answer and mark_criteria fields; verify documents exist in MongoDB `questions` collection",
+      "example_input": "Node in MongoDB with content 'Light-Dependent Reactions'; node_id = 'node_light'; no questions yet generated for this node",
+      "example_output": "HTTP 201: {\"node_id\": \"node_light\", \"questions\": [{\"question_id\": \"q1\", \"question_type\": \"Define\", \"prompt\": \"Define the Calvin Cycle in 2 sentences.\", \"mark_scheme\": {\"expected_answer\": [\"CO2 fixation\", \"reduction phase\", \"regeneration\"], \"mark_criteria\": \"2 marks for mentioning 2+ key phases, 1 mark for partial mention\"}}, {\"question_id\": \"q2\", \"question_type\": \"Solve\", \"prompt\": \"If a plant absorbs 100 photons, how many ATP molecules are produced?\", \"mark_scheme\": {\"expected_answer\": [\"3 ATP per NADPH\", \"approximately 300\"], \"mark_criteria\": \"2 marks for correct calculation with units, 1 mark for correct ratio\"}}]}"
+    },
+    {
+      "id": 6,
+      "title": "Question Answering and LLM-Based Answer Evaluation",
+      "deliverable": "`POST /api/answer` accepts node_id, question_id, student_answer, evaluates via OpenAI GPT-4 against mark scheme, returns {\"marks_awarded\": 2, \"max_marks\": 2, \"feedback\": \"Key points identified: CO2 fixation, correct phase order. Minor: missing regeneration detail.\", \"is_defeated\": true} (HTTP 200)",
+      "tasks": [
+        "Create `backend/services/answer_evaluator.py` with evaluate_answer(student_answer, mark_scheme, question_type) that calls OpenAI GPT-4 with prompt including student answer, expected answer, mark criteria, and request for numerical marks (0 to max_marks) plus feedback text",
+        "Create `backend/routes/answer.py` with `POST /api/answer` endpoint accepting {\"node_id\": \"...\", \"question_id\": \"...\", \"student_answer\": \"...\"}, looking up question and mark scheme from MongoDB, calling answer_evaluator, storing result in `answers` collection, returning evaluation JSON with marks_awarded, max_marks, feedback, is_defeated boolean",
+        "Implement defeat logic: is_defeated = marks_awarded >= (max_marks * 0.7) to require 70% pass rate per question",
+        "Create `backend/models/answer.py` with AnswerRequest, AnswerResponse, Evaluation Pydantic schemas",
+        "Add answer history endpoint `GET /api/answers/{node_id}` returning all answers for that node with timestamps and marks",
+        "Mount answer routes in main.py at `/api/answer`"
+      ],
+      "commit_condition": "Run backend server; execute `curl -X POST http://localhost:8000/api/answer -H 'Content-Type: application/json' -d '{\"node_id\": \"node_light\", \"question_id\": \"q1\", \"student_answer\": \"The Calvin Cycle fixes CO2 and regenerates RuBP.\"}'` — response is HTTP 200 with JSON containing marks_awarded (integer), max_marks, feedback (string), is_defeated (boolean); verify document created in MongoDB `answers` collection",
+      "example_input": "Student submits answer 'Photosynthesis produces glucose and oxygen' to Define question about photosynthesis with mark scheme expecting key points: 'glucose', 'oxygen', 'light energy', 'chlorophyll'; max_marks = 2",
+      "example_output": "HTTP 200: {\"answer_id\": \"ans_001\", \"marks_awarded\": 1, \"max_marks\": 2, \"feedback\": \"You correctly identified glucose and oxygen as products. Missing: light energy conversion mechanism. Suggest: explain how light energy is converted to chemical energy.\", \"is_defeated\": false, \"timestamp\": \"2024-01-15T10:30:00Z\"}"
+    },
+    {
+      "id": 7,
+      "title": "Node Unlock Mechanics and Parent-Child Progression",
+      "deliverable": "`POST /api/unlock-parent` accepts node_id, checks if all sibling nodes are defeated, unlocks parent node by setting is_defeated=true in parent document, returns {\"parent_unlocked\": true, \"parent_node\": {...}} (HTTP 200) or {\"parent_unlocked\": false, \"remaining_siblings\": 2} (HTTP 200)",
+      "tasks": [
+        "Create `backend/services/node_unlock.py` with unlock_parent_if_ready(node_id) function that queries MongoDB for parent_id, fetches all sibling nodes (nodes with same parent_id), checks is_defeated status of each, sets parent is_defeated=true if all siblings defeated",
+        "Add automatic unlock trigger to answer_evaluator: after storing evaluation, if is_defeated=true, call unlock_parent_if_ready to cascade unlocks up the tree",
+        "Create `backend/routes/nodes.py` with `GET /api/nodes/{node_id}` returning full node details including children array, is_defeated status, and defeat progress (e.g., '3 of 4 children defeated'); include `GET /api/nodes/{study_id}/tree` returning full study tree with defeat status on all nodes",
+        "Add `POST /api/unlock-parent` endpoint for manual unlock testing, returning parent node state and remaining undefeated siblings count",
+        "Create node queries in MongoDB ensuring efficient lookup of parent/children relationships with indexed queries on parent_id and study_id",
+        "Mount nodes routes in main.py at `/api/nodes`"
+      ],
+      "commit_condition": "Run backend server; create test scenario with parent node and 2 child nodes; mark both children as defeated; execute `curl -X POST http://localhost:8000/api/unlock-parent -H 'Content-Type: application/json' -d '{\"node_id\": \"child_1\"}'` — response is HTTP 200 with parent_unlocked: true and parent node document showing is_defeated=true; query MongoDB to verify parent is_defeated field changed",
+      "example_input": "Study tree with 3 levels; root node with 2 children; both children have 2 descendants each; 3 of 4 grandchildren defeated, 1 remaining",
+      "example_output": "HTTP 200: {\"parent_unlocked\": false, \"remaining_siblings\": 1, \"siblings_status\": [{\"node_id\": \"node_light\", \"is_defeated\": true}, {\"node_id\": \"node_dark\", \"is_defeated\": false}], \"message\": \"Defeat 'Dark Reactions' to unlock parent node.\"}"
+    },
+    {
+      "id": 8,
+      "title": "React Frontend Setup and Study Tree Visualization",
+      "deliverable": "React 18 app running on http://localhost:3000 displays study tree as interactive node graph with collapsible children, color-coded defeated/undefeated nodes, click handlers routing to question view, with TypeScript types for API responses",
+      "tasks": [
+        "Create React 18 frontend using `npx create-react-app frontend --template typescript`; install axios 1.6, react-router-dom 6.20, tailwindcss 3.4, @types/react 18, @types/react-dom 18",
+        "Create `frontend/src/types/api.ts` with TypeScript interfaces for Study, Node, TreeNode, Question, Answer, EvaluationResponse matching MongoDB and FastAPI schemas",
+        "Create `frontend/src/api/client.ts` axios instance configured to call http://localhost:8000/api with error handling and timeout",
+        "Create `frontend/src/pages/TreeView.tsx` component that fetches study tree via `GET /api/nodes/{study_id}/tree`, renders recursive node components with colors (green=defeated, gray=locked, yellow=in-progress), click handlers setting selectedNode state",
+        "Create `frontend/src/components/NodeCard.tsx` displaying node content, level, defeat status, child count, and clickable link to QuestionView",
+        "Configure TailwindCSS in `frontend/tailwind.config.js` with custom color palette for node states",
+        "Create `frontend/src/App.tsx` with Router and routes for `/upload`, `/tree/:studyId`, `/question/:studyId/:nodeId`"
+      ],
+      "commit_condition": "Run `npm run start` in frontend directory — React dev server starts on http://localhost:3000; open http://localhost:3000/tree/study_001 in browser; page loads and displays node tree with at least 3 levels rendered as interactive cards; click on a node card and verify URL changes to /question/study_001/node_id",
+      "example_input": "Backend running with study_001 containing 10+ nodes across 3 levels; nodes have is_defeated values (mix of true/false); React app with API client configured",
+      "example_output": "Browser at http://localhost:3000/tree/study_001 displays root node 'Photosynthesis' (green background, 'DEFEATED' label) with 2 child cards below ('Light-Dependent' yellow, 'Dark Reactions' gray/locked); clicking 'Light-Dependent' navigates to /question/study_001/node_light"
+    },
+    {
+      "id": 9,
+      "title": "Question Answering UI and Answer Submission Flow",
+      "deliverable": "QuestionView component at `/question/:studyId/:nodeId` displays one question with dynamic form (text input for Define, numeric input for Solve, multi-select for Compare, textarea for ELI5/FinishTheAnswer), submits via POST /api/answer, displays evaluation result with marks and feedback inline, with next button to cycle through questions or return to tree",
+      "tasks": [
+        "Create `frontend/src/pages/QuestionView.tsx` component that fetches node and questions via `GET /api/questions` and `GET /api/nodes/{nodeId}`, renders current question using currentQuestionIndex state",
+        "Create `frontend/src/components/QuestionForm.tsx` with conditional rendering based on question_type: Define (textarea), Solve (number input with validation), Compare (checkbox group for multi-select), ELI5 (textarea with placeholder 'Explain as if I were 5'), FinishTheAnswer (text input for completion)",
+        "Implement form submission handler calling `POST /api/answer` with node_id, question_id, student_answer; handle loading state and API errors",
+        "Create `frontend/src/components/EvaluationResult.tsx` displaying marks_awarded, max_marks (e.g., '2 / 2'), feedback text, is_defeated boolean as success/failure message, key points highlighted in feedback",
+        "Add navigation buttons: 'Previous Question' / 'Next Question' (increment currentQuestionIndex), 'Back to Tree' (navigate to TreeView)",
+        "Implement localStorage persistence of currentQuestionIndex per node for session resume (Phase 11 builds on this)",
+        "Add loading spinner while fetching questions and while evaluating answer"
+      ],
+      "commit_condition": "Run frontend and backend; navigate to http://localhost:3000/question/study_001/node_light; page loads and displays one question with appropriate input type; fill in answer and click 'Submit'; page displays evaluation result with marks and feedback within 3 seconds; click 'Next Question' and verify new question renders; click 'Back to Tree' and verify navigation to tree view",
+      "example_input": "Browser at http://localhost:3000/question/study_001/node_light; currentQuestionIndex=0; questions array contains 5 questions of different types; node is not yet defeated",
+      "example_output": "Page displays 'Question 1 of 5: Define the Calvin Cycle' with textarea input; user types 'It's the process that makes sugar'; clicks 'Submit'; within 3 seconds, page displays 'Marks: 1 / 2' with feedback 'You mentioned sugar production (correct) but missed the role of ATP and NADPH. Try

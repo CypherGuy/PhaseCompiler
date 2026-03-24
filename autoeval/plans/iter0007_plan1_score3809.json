@@ -1,0 +1,176 @@
+```json
+{
+  "project": {
+    "name": "StudyBattles",
+    "language": "Python 3.11",
+    "runtime": "web (REST API backend + React SPA frontend)",
+    "package_manager": "pip (backend), npm (frontend)",
+    "framework": "FastAPI 0.111 (backend), React 18 (frontend)",
+    "database": "MongoDB 7.0",
+    "deployment": "Docker + AWS EC2",
+    "external_services": [
+      "OpenAI GPT-4 API (topic tree generation, question generation, answer evaluation)",
+      "AWS S3 (document storage and retrieval)",
+      "python-pptx 0.6.23 (PPTX parsing)",
+      "python-docx 0.8.11 (DOCX parsing)",
+      "youtube-transcript-api 0.6.2 (YouTube transcript extraction)"
+    ]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Backend environment and FastAPI scaffold",
+      "deliverable": "`python backend/main.py` runs a FastAPI server on http://127.0.0.1:8000 with all dependencies installed",
+      "tasks": [
+        "Install Python 3.11, create project monorepo directory structure with `backend/` and `frontend/` subdirectories",
+        "Create `backend/requirements.txt` with FastAPI 0.111, uvicorn 0.29, python-pptx 0.6.23, python-docx 0.8.11, youtube-transcript-api 0.6.2, pymongo 4.7, boto3 1.34, openai 1.13, pydantic 2.6, pydantic-settings 2.2, pytest 7.4, httpx 0.27",
+        "Run `pip install -r backend/requirements.txt` to install all backend dependencies",
+        "Create `backend/main.py` with FastAPI app instance, CORS middleware allowing localhost:3000, and health check endpoint",
+        "Create `backend/config.py` with Pydantic environment variable loader for AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, OPENAI_API_KEY, MONGODB_URI",
+        "Run `python backend/main.py` and verify Uvicorn server starts on http://127.0.0.1:8000"
+      ],
+      "commit_condition": "Run `python backend/main.py` — terminal prints 'Uvicorn running on http://127.0.0.1:8000'; in another terminal, run `curl -s http://localhost:8000/health | jq .status` — returns `\"ok\"`",
+      "example_input": "Empty project directory with no dependencies installed",
+      "example_output": "Run `python backend/main.py` — terminal prints `INFO:     Uvicorn running on http://127.0.0.1:8000`; `curl http://localhost:8000/health` returns `{\"status\":\"ok\"}`"
+    },
+    {
+      "id": 2,
+      "title": "MongoDB schema and session collection setup",
+      "deliverable": "MongoDB database 'studybattles' with 'sessions' and 'uploaded_materials' collections initialized with schema validation and sample documents",
+      "tasks": [
+        "Create `backend/database.py` with MongoClient connection using MONGODB_URI from config",
+        "Create `backend/models.py` with Pydantic models: Session (session_id, user_id, created_at, topic_tree, current_node, unlocked_nodes, answers), Material (material_id, user_id, file_name, s3_key, material_type, created_at), TopicNode (node_id, title, description, parent_id, children, is_leaf, generated_questions)",
+        "Write MongoDB schema validation document in `backend/schema_init.py` that creates 'sessions' and 'uploaded_materials' collections with indexes on session_id and material_id",
+        "Run schema initialization script and verify collections exist in MongoDB with `mongo studybattles --eval 'db.getCollectionNames()'`"
+      ],
+      "commit_condition": "Run `python -c \"from backend.database import db; print(db.sessions); print(db.uploaded_materials)\"` — outputs MongoDB collection objects; run MongoDB query `db.sessions.countDocuments()` — returns `0`",
+      "example_input": "Empty MongoDB instance or fresh database",
+      "example_output": "MongoDB collections created: `use studybattles; db.sessions.findOne()` returns `null` (empty collection); `db.uploaded_materials.findOne()` returns `null` (empty collection); both collections have indexes on session_id and material_id"
+    },
+    {
+      "id": 3,
+      "title": "AWS S3 connection and file upload endpoint",
+      "deliverable": "`POST /api/materials/upload` accepts multipart form data (file + session_id), stores file in AWS S3 bucket 'studybattles-materials', and returns uploaded file metadata",
+      "tasks": [
+        "Create `backend/services/s3_client.py` with S3 client initialization using boto3, configured with AWS credentials from config",
+        "Create `backend/routes/materials.py` with `POST /api/materials/upload` endpoint accepting multipart form data (file, session_id)",
+        "Implement upload handler: generate UUID for material_id, upload file to S3 bucket 'studybattles-materials/{session_id}/{material_id}/{filename}', store metadata in MongoDB 'uploaded_materials' collection",
+        "Write pytest tests in `tests/test_materials_upload.py` for successful upload, invalid file type rejection, missing session_id error handling",
+        "Include `GET /api/materials/{material_id}` endpoint that returns metadata for a previously uploaded material from MongoDB"
+      ],
+      "commit_condition": "Run `pytest tests/test_materials_upload.py -v` — all 4 tests pass; run `curl -X POST http://localhost:8000/api/materials/upload -F 'file=@sample.docx' -F 'session_id=test123'` — returns HTTP 200 with JSON containing material_id, s3_key, created_at",
+      "example_input": "Empty AWS S3 bucket 'studybattles-materials'; empty MongoDB 'uploaded_materials' collection",
+      "example_output": "HTTP 200: `{\"material_id\":\"e8b4f2a1\",\"file_name\":\"sample.docx\",\"s3_key\":\"studybattles-materials/test123/e8b4f2a1/sample.docx\",\"material_type\":\"docx\",\"created_at\":\"2024-01-15T10:00:00Z\"}` stored in MongoDB and file uploaded to S3"
+    },
+    {
+      "id": 4,
+      "title": "Document parsing and text extraction",
+      "deliverable": "`POST /api/materials/{material_id}/parse` extracts and returns full text content from PPTX, DOCX, or YouTube transcript",
+      "tasks": [
+        "Create `backend/services/parsers.py` with parser functions: `parse_docx(s3_key)`, `parse_pptx(s3_key)`, `parse_youtube(youtube_url)`",
+        "Implement DOCX parser using python-docx library to extract all paragraph text",
+        "Implement PPTX parser using python-pptx library to extract all slide text",
+        "Implement YouTube parser using youtube-transcript-api to fetch transcript from video URL",
+        "Create `POST /api/materials/{material_id}/parse` endpoint that retrieves file from S3, detects type, calls appropriate parser, returns extracted text",
+        "Write pytest tests in `tests/test_parsers.py` for each parser type with sample files"
+      ],
+      "commit_condition": "Run `pytest tests/test_parsers.py -v` — all 6 tests pass (2 per parser type); run `curl -X POST http://localhost:8000/api/materials/abc123/parse` — returns HTTP 200 with JSON containing extracted_text field with ≥100 characters",
+      "example_input": "S3 bucket contains uploaded DOCX file 'sample.docx' at 'studybattles-materials/test123/abc123/sample.docx'",
+      "example_output": "HTTP 200: `{\"material_id\":\"abc123\",\"extracted_text\":\"Chapter 1: Introduction. Biology is the study of living organisms...\",\"character_count\":4521,\"parsed_at\":\"2024-01-15T10:05:00Z\"}`"
+    },
+    {
+      "id": 5,
+      "title": "OpenAI topic tree generation",
+      "deliverable": "`POST /api/topics/generate` accepts extracted material text and returns a 3-level topic hierarchy from OpenAI GPT-4",
+      "tasks": [
+        "Create `backend/services/openai_client.py` with OpenAI client initialization using OPENAI_API_KEY from config",
+        "Implement `generate_topic_tree(extracted_text, max_depth=3)` function that calls OpenAI GPT-4 with prompt: 'Given this study material, create a 3-level topic hierarchy. Root is the main topic. Each node has title, description, 2-4 children. Leaf nodes are exam-style concepts. Return as JSON.'",
+        "Parse OpenAI response into TopicNode objects with node_id (UUID), title, description, parent_id, children array, is_leaf boolean",
+        "Create `POST /api/topics/generate` endpoint accepting material_id and session_id, fetches extracted text, generates tree, stores in MongoDB 'sessions' collection under topic_tree field",
+        "Implement validation to ensure max tree depth is 3 and max 4 children per node",
+        "Write pytest tests in `tests/test_tree_generation.py` validating tree structure, depth, and branching factor"
+      ],
+      "commit_condition": "Run `pytest tests/test_tree_generation.py -v` — all 5 tests pass; run `curl -X POST http://localhost:8000/api/topics/generate -H 'Content-Type: application/json' -d '{\"material_id\":\"abc123\",\"session_id\":\"test123\"}'` — returns HTTP 200 with JSON containing topic_tree with root node and nested children",
+      "example_input": "Session in MongoDB with extracted_text: 'Biology is the study of living organisms...' (4521 characters)",
+      "example_output": "HTTP 200: `{\"session_id\":\"test123\",\"topic_tree\":{\"node_id\":\"root1\",\"title\":\"Biology\",\"description\":\"Study of living systems\",\"is_leaf\":false,\"children\":[{\"node_id\":\"n2\",\"title\":\"Cell Structure\",\"is_leaf\":false,\"children\":[{\"node_id\":\"n5\",\"title\":\"Organelles\",\"is_leaf\":true,\"description\":\"Cellular components\"},{\"node_id\":\"n6\",\"title\":\"DNA\",\"is_leaf\":true}]},{\"node_id\":\"n3\",\"title\":\"Evolution\",\"is_leaf\":false}]}}`"
+    },
+    {
+      "id": 6,
+      "title": "Question generation and mark scheme creation",
+      "deliverable": "Question bank generated via OpenAI with 5 predetermined question types per leaf node; mark schemes stored as LLM-generated key points",
+      "tasks": [
+        "Implement `generate_questions_for_node(node_title, node_description, question_types=['Define','Solve','Compare','ELI5','FinishAnswer'])` function calling OpenAI GPT-4 with prompt specifying each question type",
+        "Define question type schemas in `backend/models.py`: Define (text response), Solve (work shown + final answer), Compare (choose 2+ concepts to compare), ELI5 (simple explanation), FinishAnswer (stem + blank to complete)",
+        "For each question, generate mark scheme via OpenAI: 'Generate mark scheme for this question as JSON with key_points array (strings), total_marks, common_mistakes array'",
+        "Create `POST /api/topics/{node_id}/generate-questions` endpoint that generates 5 questions per question type (25 total) for a leaf node, stores in MongoDB 'sessions.topic_tree' nested under node",
+        "Write pytest tests in `tests/test_question_generation.py` validating question schema, question type coverage, mark scheme structure",
+        "Include error handling for nodes with insufficient material to generate diverse questions"
+      ],
+      "commit_condition": "Run `pytest tests/test_question_generation.py -v` — all 6 tests pass; run `curl -X POST http://localhost:8000/api/topics/n5/generate-questions -H 'Content-Type: application/json' -d '{\"session_id\":\"test123\"}'` — returns HTTP 200 with questions array containing 25 question objects with type, text, mark_scheme fields",
+      "example_input": "Session contains leaf node n5 with title 'Organelles' and description 'Cellular components'",
+      "example_output": "HTTP 200: `{\"node_id\":\"n5\",\"questions\":[{\"q_id\":\"q1\",\"type\":\"Define\",\"text\":\"Define an organelle\",\"mark_scheme\":{\"key_points\":[\"Membrane-bound structure\",\"Performs specific function\",\"Found in eukaryotes\"],\"total_marks\":3,\"common_mistakes\":[\"Confusing with prokaryotic structures\"]}},{\"q_id\":\"q2\",\"type\":\"Solve\",\"text\":\"If a mitochondrion produces 36 ATP per glucose, calculate...\",\"mark_scheme\":{\"key_points\":[\"Show working\",\"Correct formula\"],\"total_marks\":5}},...]}` — 25 questions total, 5 per type"
+    },
+    {
+      "id": 7,
+      "title": "Question answering and LLM-based marking",
+      "deliverable": "`POST /api/answers/submit` accepts student answer, calls OpenAI to mark against mark scheme, returns marks + feedback + key point comparison",
+      "tasks": [
+        "Create `backend/services/marking.py` with `mark_answer(student_answer, mark_scheme, question_type)` function calling OpenAI GPT-4 prompt: 'Grade this student answer against the mark scheme. Return JSON with marks_awarded (0-total_marks), feedback (string), key_points_covered (array of strings from mark scheme found in answer), missing_points (array), misconceptions (array)'",
+        "Create `POST /api/answers/submit` endpoint accepting session_id, node_id, question_id, student_answer, question_type; calls marking function, stores answer document in MongoDB 'answers' subcollection of session",
+        "Store answer document with: answer_id, q_id, student_answer_text, marks_awarded, total_marks, feedback, key_points_covered, missing_points, misconceptions, submitted_at",
+        "Implement endpoint validation: reject empty answers, cap answer length at 5000 characters",
+        "Write pytest tests in `tests/test_marking.py` for each question type with sample answers (full mark, partial, zero), verify feedback generation",
+        "Create `GET /api/answers/{session_id}/{node_id}` endpoint returning all answers for a node with aggregate stats (total_marks, avg_percentage)"
+      ],
+      "commit_condition": "Run `pytest tests/test_marking.py -v` — all 8 tests pass (2 per question type); run `curl -X POST http://localhost:8000/api/answers/submit -H 'Content-Type: application/json' -d '{\"session_id\":\"test123\",\"node_id\":\"n5\",\"q_id\":\"q1\",\"student_answer\":\"An organelle is a membrane-bound structure that performs specific functions\",\"question_type\":\"Define\"}'` — returns HTTP 200 with marks_awarded, feedback, key_points_covered fields",
+      "example_input": "curl POST with student_answer='An organelle is a membrane-bound structure that performs specific functions'; mark_scheme has key_points=['Membrane-bound structure','Performs specific function','Found in eukaryotes'] with total_marks=3",
+      "example_output": "HTTP 200: `{\"answer_id\":\"ans1\",\"marks_awarded\":2,\"total_marks\":3,\"percentage\":66.7,\"feedback\":\"Good understanding of structure and function. You correctly identified membrane-bound and function, but didn't mention eukaryote specificity.\",\"key_points_covered\":[\"Membrane-bound structure\",\"Performs specific function\"],\"missing_points\":[\"Found in eukaryotes\"],\"misconceptions\":[],\"submitted_at\":\"2024-01-15T10:15:00Z\"}`"
+    },
+    {
+      "id": 8,
+      "title": "Node unlock mechanic and tree navigation",
+      "deliverable": "`GET /api/sessions/{session_id}/tree` returns topic tree with locked/unlocked status; `POST /api/nodes/{node_id}/check-unlock` verifies all children defeated and unlocks parent",
+      "tasks": [
+        "Add fields to Session model: unlocked_nodes (array of node_ids), current_node (node_id of active boss fight)",
+        "Create unlock logic: leaf node is unlocked when all 25 questions answered with ≥50% average; parent node unlocks when ALL children are unlocked",
+        "Create `GET /api/sessions/{session_id}/tree` endpoint that returns topic_tree with each node decorated with `is_unlocked` boolean, `child_unlock_progress` (X of Y children unlocked)",
+        "Create `POST /api/nodes/{node_id}/check-unlock` endpoint that queries answers collection for node_id, calculates unlock eligibility, updates unlocked_nodes array in session if conditions met, broadcasts unlock status in response",
+        "Implement `GET /api/sessions/{session_id}/node/{node_id}` endpoint returning node with questions, current answers, unlock threshold progress",
+        "Write pytest tests in `tests/test_node_unlock.py` validating unlock conditions, tree navigation, unlock progression"
+      ],
+      "commit_condition": "Run `pytest tests/test_node_unlock.py -v` — all 6 tests pass; run `curl http://localhost:8000/api/sessions/test123/tree | jq '.children[0].is_unlocked'` — returns `false` or `true`; run `curl -X POST http://localhost:8000/api/nodes/n5/check-unlock -H 'Content-Type: application/json' -d '{\"session_id\":\"test123\"}'` — returns HTTP 200 with unlocked status and updated parent lock state",
+      "example_input": "Session has leaf node n5 with 25 generated questions; 20 questions answered with average 55%; parent node n2 has 2 children (n5, n6), both siblings must unlock parent",
+      "example_output": "GET /api/sessions/test123/tree: `{\"nodes\":[{\"node_id\":\"n5\",\"title\":\"Organelles\",\"is_leaf\":true,\"is_unlocked\":true,\"questions_answered\":20,\"avg_percentage\":55},{\"node_id\":\"n6\",\"title\":\"DNA\",\"is_leaf\":true,\"is_unlocked\":false},{\"node_id\":\"n2\",\"title\":\"Cell Structure\",\"is_locked\":true,\"child_unlock_progress\":\"1 of 2 children unlocked\"}]}`; POST /api/nodes/n5/check-unlock: `{\"node_id\":\"n5\",\"newly_unlocked\":true,\"message\":\"Cell Structure parent node still locked (1 of 2 children unlocked)\"}`"
+    },
+    {
+      "id": 9,
+      "title": "Session persistence and localStorage integration",
+      "deliverable": "Session state (current_node, unlocked_nodes, answers) persists across page reloads via localStorage key 'studybattles_{session_id}'",
+      "tasks": [
+        "Create `backend/routes/sessions.py` with `POST /api/sessions` endpoint generating new session_id (UUID), storing in MongoDB with created_at, returns session_id in JSON response",
+        "Create `GET /api/sessions/{session_id}` endpoint returning full session state: topic_tree, unlocked_nodes, current_node, all answers with marks",
+        "Create `PUT /api/sessions/{session_id}` endpoint accepting partial session updates (current_node, unlocked_nodes), merging with existing document, returning updated session",
+        "Implement session timeout: sessions expire after 30 days (TTL index on MongoDB created_at field)",
+        "Write pytest tests in `tests/test_sessions.py` for session creation, retrieval, update, and expiration",
+        "Document session state contract in `backend/SESSION_SCHEMA.md` with field descriptions and example JSON"
+      ],
+      "commit_condition": "Run `pytest tests/test_sessions.py -v` — all 5 tests pass; run `curl -X POST http://localhost:8000/api/sessions | jq .session_id` — returns UUID string; run `curl http://localhost:8000/api/sessions/{id}` after storing and restarting server — returns same session state",
+      "example_input": "No prior session; fresh MongoDB session document for session_id='sess_abc123'",
+      "example_output": "POST /api/sessions: `{\"session_id\":\"sess_abc123\",\"created_at\":\"2024-01-15T10:00:00Z\"}`; GET /api/sessions/sess_abc123: `{\"session_id\":\"sess_abc123\",\"topic_tree\":{...},\"unlocked_nodes\":[\"root1\",\"n2\",\"n5\"],\"current_node\":\"n6\",\"answers\":[...],\"created_at\":\"2024-01-15T10:00:00Z\"}`"
+    },
+    {
+      "id": 10,
+      "title": "React frontend scaffold and session initialization",
+      "deliverable": "React 18 app at http://localhost:3000 with session creation flow, materials upload, tree generation trigger, and page navigation",
+      "tasks": [
+        "Create React app using `npx create-react-app frontend` with Node 18+, install dependencies: axios 1.6, react-router-dom 6.22, tailwindcss 3.4, zustand 4.4",
+        "Create `frontend/src/api.js` with axios instance targeting http://localhost:8000, helper functions for all API endpoints",
+        "Create `frontend/src/store.js` using Zustand for global state: session_id, topic_tree, unlocked_nodes, current_node, answers",
+        "Create `frontend/src/pages/Home.tsx` with button to create new session, stores session_id in localStorage, navigates to upload page",
+        "Create `frontend/src/pages/Upload.tsx` with file input, session_id display, calls `POST /api/materials/upload`, displays upload success, calls `POST /api/topics/generate` on file confirmation",
+        "Create `frontend/src/pages/Tree.tsx` component rendering topic_tree as visual hierarchy with locked/unlocked status badges, click to navigate to node detail",
+        "Create `frontend/src/App.tsx` with React Router routes: `/home`, `/upload/{session_id}`, `/tree/{session_id}`, `/node/{session_id}/{node_id}`"
+      ],
+      "commit_condition": "Run `npm start` in frontend/ — React dev server runs on http://localhost:3000; browser shows Home page with 'New Session' button; click button — navigates to upload page showing session_id in localStorage; verify localStorage via browser DevTools: `JSON.parse(localStorage.getItem('studybattles_...'))`",
+      "example_input": "Empty React project directory; backend running on localhost:8000",
+      "example_output": "Browser at http://localhost:3000 — Home page displays heading 'StudyBattles', blue 'Create New Session' button; click button — redirect
