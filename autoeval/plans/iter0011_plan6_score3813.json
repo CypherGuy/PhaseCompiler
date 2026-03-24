@@ -1,0 +1,120 @@
+```json
+{
+  "project": {
+    "name": "DevLogSummarizer",
+    "language": "Python 3.11",
+    "runtime": "cli",
+    "package_manager": "pip",
+    "framework": "Click 8.1",
+    "database": "SQLite 3 (stdlib)",
+    "deployment": "pip package distributed to PyPI",
+    "external_services": [
+      "OpenAI GPT-4o API"
+    ]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Project Setup and Git Log Parsing Foundation",
+      "deliverable": "`devlog` CLI command installed and runnable, `devlog --version` returns package version string",
+      "tasks": [
+        "Create project directory structure: `devlogsummarizer/`, `src/devlogsummarizer/`, `tests/`, `setup.py`, `.env.example`",
+        "Install Python 3.11, Click 8.1, and GitPython 3.1 into a virtual environment via pip",
+        "Write `setup.py` with entry point `devlog = devlogsummarizer.cli:main` and list dependencies",
+        "Create `src/devlogsummarizer/__init__.py` with `__version__ = \"0.1.0\"`",
+        "Create `src/devlogsummarizer/cli.py` with Click main group and placeholder health command",
+        "Implement `git_parser.py` module with function `get_commits_since_days(repo_path: str, days: int) -> List[Dict]` that returns list of dicts with keys: `hash`, `author`, `date`, `message`",
+        "Write pytest tests for `get_commits_since_days()` using a fixture git repo with 5 test commits"
+      ],
+      "commit_condition": "Run `pip install -e .` in project root, then `devlog --version` in any directory — returns `devlog, version 0.1.0`; Run `pytest tests/test_git_parser.py -v` — all 5 tests pass",
+      "example_input": "Empty project directory with Python 3.11 installed",
+      "example_output": "Run `devlog --version` — terminal prints `devlog, version 0.1.0`; Run `cd /tmp && git init test_repo && cd test_repo && git config user.email 'test@test.com' && git config user.name 'Test' && echo 'test' > file.txt && git add . && git commit -m 'Initial commit'` then `pytest tests/test_git_parser.py::test_get_commits_since_days -v` — test passes and returns commit dict with hash, author='Test', message='Initial commit', date matching current date"
+    },
+    {
+      "id": 2,
+      "title": "Core Summarization and OpenAI Integration",
+      "deliverable": "`devlog summarize` command accepts `--since` flag, calls OpenAI GPT-4o API, returns summary text to stdout",
+      "tasks": [
+        "Create `summarizer.py` module with function `summarize_commits(commits: List[Dict], api_key: str) -> str` that calls OpenAI chat completions endpoint",
+        "Write OpenAI prompt template that takes a list of commit messages and returns a human-readable daily summary",
+        "Implement `devlog summarize` Click command with `--since` option (default 7 days) and `--until` option",
+        "Add error handling for missing OpenAI API key — command prints `Error: OPENAI_API_KEY environment variable not set` and exits with code 1",
+        "Write pytest tests for `summarize_commits()` mocking OpenAI API responses, verify prompt includes all commit messages",
+        "Test `devlog summarize --since 1d` against live OpenAI API with real commits (mark as integration test with @pytest.mark.slow)"
+      ],
+      "commit_condition": "Set `OPENAI_API_KEY=sk-...` in .env, run `devlog summarize --since 7d` in a real git repo with ≥3 commits — stdout prints a summary paragraph mentioning at least 2 commit topics; Run `pytest tests/test_summarizer.py -v` — all 6 tests pass including mock tests",
+      "example_input": "Git repo with 10 commits over the last 7 days authored by 'Alice' and 'Bob' with messages: 'Fix login bug', 'Add dark mode', 'Refactor auth module', etc.; `OPENAI_API_KEY=sk-...` set in environment",
+      "example_output": "Run `devlog summarize --since 7d` — stdout prints: `## Summary for 2024-01-15\\n\\nAlice and Bob focused on authentication improvements and UI enhancements. Key changes: fixed critical login validation issue, implemented dark mode toggle, refactored auth middleware for better error handling. Two new tests added.`; OpenAI API receives POST request with model='gpt-4o', temperature=0.7, containing prompt: 'Summarize these commits: ...'"
+    },
+    {
+      "id": 3,
+      "title": "Daily Grouping and Markdown Output",
+      "deliverable": "`devlog summarize --output markdown` writes grouped daily summaries to `devlog.md` file with datetime headers",
+      "tasks": [
+        "Create `grouper.py` module with function `group_commits_by_day(commits: List[Dict]) -> Dict[str, List[Dict]]` that groups by ISO date string",
+        "Implement `format_markdown()` function that converts grouped commits + summaries to Markdown with headers: `## [Date] - Day Summary`",
+        "Add `--output` option to `devlog summarize` command with choices: `stdout` (default) and `file`",
+        "When `--output file` is set, write Markdown output to `devlog.md` in current directory; print `Wrote summary to devlog.md` to stdout",
+        "Add optional `--output-path` parameter to override default `devlog.md` filename",
+        "Write tests for grouping 10 commits across 3 days, verify Markdown format has 3 date headers and all commits included"
+      ],
+      "commit_condition": "Run `devlog summarize --since 7d --output file` in a git repo with ≥10 commits across ≥3 days — file `devlog.md` is created and contains ≥3 lines with pattern `## YYYY-MM-DD`; Run `pytest tests/test_grouper.py tests/test_formatter.py -v` — all tests pass",
+      "example_input": "Git repo with 10 commits: 5 on 2024-01-15, 3 on 2024-01-14, 2 on 2024-01-13; each commit has hash, author, date, message; OpenAI API returns summaries for each day",
+      "example_output": "File `devlog.md` contains: `## 2024-01-15 - Monday\\nAlice implemented user dashboard with search. Fixed critical SQL injection vulnerability. Added 6 new unit tests.\\n\\n## 2024-01-14 - Sunday\\nBob refactored database connection pooling. Updated dependencies. Wrote integration tests.\\n\\n## 2024-01-13 - Saturday\\nAlice added dark mode toggle. Updated README.`"
+    },
+    {
+      "id": 4,
+      "title": "SQLite Caching Layer and Idempotency",
+      "deliverable": "`devlog summarize --since 7d` on second run completes in <1 second for previously cached commits, skips OpenAI API calls for hashes in cache",
+      "tasks": [
+        "Create `cache.py` module with SQLite database schema: table `summaries` with columns `commit_hash` (PRIMARY KEY TEXT), `summary_text` (TEXT), `created_at` (DATETIME), `ttl_days` (INTEGER DEFAULT 30)`",
+        "Implement `init_cache_db(cache_path: str)` function that creates cache database at `~/.devlogsummarizer/cache.db` (create parent dirs if needed)",
+        "Write `get_cached_summary(commit_hash: str) -> Optional[str]` and `set_cached_summary(commit_hash: str, summary: str)` functions",
+        "Modify `summarize_commits()` to check cache before calling OpenAI API — return cached text if commit_hash exists and TTL not expired",
+        "Add `--skip-cache` flag to `devlog summarize` to force fresh OpenAI calls even if hashes are cached",
+        "Implement cache expiration cleanup: `get_all_cached_summaries()` filters out rows where `created_at + ttl_days < today`",
+        "Write tests for cache write/read, TTL expiration, and second run performance comparison"
+      ],
+      "commit_condition": "Run `devlog summarize --since 7d --output file` (first run, ~5–10 seconds with OpenAI API), then `devlog summarize --since 7d --output file` again (second run must complete in <1 second); Verify `~/.devlogsummarizer/cache.db` exists with ≥10 rows in summaries table; Run `pytest tests/test_cache.py -v` — all tests pass",
+      "example_input": "Git repo with 15 commits across 5 days; first run calls OpenAI API and caches all summaries; cache.db populated with 5 rows (one per day); second run with identical commit set",
+      "example_output": "First run: `devlog summarize --since 5d` takes 7 seconds, calls OpenAI 5 times, writes devlog.md; Second run with same arguments: completes in 0.3 seconds, reads all data from `~/.devlogsummarizer/cache.db`, skips OpenAI entirely; Query `sqlite3 ~/.devlogsummarizer/cache.db 'SELECT COUNT(*) FROM summaries;'` returns `5`; Markdown output identical between runs"
+    },
+    {
+      "id": 5,
+      "title": "Configuration Management and CLI Enhancements",
+      "deliverable": "`devlog config set openai-key <key>` saves API key to `~/.devlogsummarizer/config.json`, `devlog summarize` reads key from config if OPENAI_API_KEY env var not set",
+      "tasks": [
+        "Create `config.py` module with `load_config() -> Dict` and `save_config(config: Dict)` functions using JSON file at `~/.devlogsummarizer/config.json`",
+        "Implement `devlog config` Click group with subcommands: `set` and `get`",
+        "Add `devlog config set openai-key` command that stores key in config file with mode 0600 (read/write owner only)",
+        "Add `devlog config set default-since` and `devlog config set default-output` commands to store user preferences",
+        "Modify `devlog summarize` to read defaults from config: if `--since` not provided, use config value or default to 7",
+        "Update API key resolution: prioritize env var `OPENAI_API_KEY`, fallback to config file, raise error if neither set",
+        "Add `devlog config get` command to display current config (mask API key as `sk-...`)",
+        "Write tests for config file creation, persistence, and CLI read/write operations"
+      ],
+      "commit_condition": "Run `devlog config set openai-key sk-test123` — file `~/.devlogsummarizer/config.json` created with `{\"openai_key\": \"sk-test123\"}`; Run `devlog config get` — stdout prints config values with key masked; Run `devlog summarize --since 7d --output file` without OPENAI_API_KEY env var — reads key from config and runs successfully; Run `pytest tests/test_config.py -v` — all tests pass",
+      "example_input": "Empty `~/.devlogsummarizer/` directory; user runs `devlog config set openai-key sk-abc123def456` and `devlog config set default-since 14`",
+      "example_output": "File `~/.devlogsummarizer/config.json` contains `{\"openai_key\": \"sk-abc123def456\", \"default_since\": 14}`; Run `devlog config get` prints: `openai-key: sk-...\\ndefault-since: 14`; Next run of `devlog summarize --output file` (no `--since` flag) uses `default_since: 14` from config and completes successfully"
+    },
+    {
+      "id": 6,
+      "title": "Package Distribution, Documentation, and Final Integration Testing",
+      "deliverable": "`pip install devlogsummarizer` installs CLI globally, `devlog summarize --help` displays full help text, package published to PyPI with README.md and working examples",
+      "tasks": [
+        "Write comprehensive `README.md` with installation instructions, usage examples, configuration examples, and troubleshooting section",
+        "Create `CHANGELOG.md` documenting v0.1.0 release with all features listed",
+        "Update `setup.py` with package metadata: name='devlogsummarizer', version='0.1.0', author, license, long_description from README",
+        "Add `-r requirements.txt` with pinned versions: Click==8.1.7, GitPython==3.1.40, openai==1.3.0",
+        "Build distribution: run `python setup.py sdist bdist_wheel` and verify `.whl` and `.tar.gz` in `dist/`",
+        "Write integration test: create temp git repo with 20 commits over 10 days, run full pipeline (`config set`, `summarize`, check cache, re-run), verify all outputs",
+        "Add verbose logging flag: `devlog summarize --verbose` prints debug info: commits fetched, cache hits/misses, OpenAI calls, output path",
+        "Run final sanity checks: uninstall package, reinstall from wheel, verify all commands work in fresh shell"
+      ],
+      "commit_condition": "Run `python setup.py sdist bdist_wheel` — generates `devlogsummarizer-0.1.0-py3-none-any.whl` and `devlogsummarizer-0.1.0.tar.gz`; Install wheel: `pip install dist/devlogsummarizer-0.1.0-py3-none-any.whl`, open new shell, run `devlog --version` — returns `devlog, version 0.1.0`; Run integration test: `pytest tests/test_integration.py::test_full_pipeline -v` — test passes in <15 seconds",
+      "example_input": "Packaged distribution files: `.whl` and `.tar.gz`; fresh Python 3.11 environment without devlogsummarizer installed; test git repo with 20 commits across 10 days; OpenAI API key configured",
+      "example_output": "Run `pip install devlogsummarizer-0.1.0-py3-none-any.whl` — installs to site-packages; Run `devlog --version` in new shell — prints `devlog, version 0.1.0`; Run `devlog summarize --since 10d --output file --verbose` — stdout prints: `Fetching commits since 2024-01-05... Found 20 commits. Cache hits: 8, misses: 12. Calling OpenAI API 12 times... Wrote summary to devlog.md (2.3 KB, 10 days)`. File `devlog.md` contains 10 day headers with summaries. Rerun same command — stdout prints: `Fetching commits... Found 20 commits. Cache hits: 20, misses: 0. Skipped OpenAI API. Wrote summary to devlog.md (2.3 KB, 10 days)` (completes in <0.5 seconds)"
+    }
+  ]
+}
+```

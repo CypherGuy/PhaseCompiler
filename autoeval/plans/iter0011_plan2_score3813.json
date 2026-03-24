@@ -1,0 +1,128 @@
+```json
+{
+  "project": {
+    "name": "StudyBattles",
+    "language": "Python 3.11",
+    "runtime": "web (FastAPI backend + React 18 frontend)",
+    "package_manager": "pip (backend), npm (frontend)",
+    "framework": "FastAPI 0.111 (backend), React 18 (frontend)",
+    "database": "MongoDB 7.0",
+    "deployment": "Docker + AWS EC2",
+    "external_services": [
+      "AWS S3",
+      "OpenAI GPT-4 API",
+      "python-pptx (PPTX parsing)",
+      "python-docx (DOCX parsing)",
+      "youtube-transcript-api (YouTube transcript extraction)"
+    ]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Project Setup and Infrastructure",
+      "deliverable": "`python backend/main.py` starts Uvicorn server on http://127.0.0.1:8000 — GET /health returns {\"status\": \"ok\"}; `npm start` starts React dev server on http://localhost:3000 with blank landing page",
+      "tasks": [
+        "Initialize Git monorepo with `/backend` (FastAPI 0.111 + uvicorn 0.29) and `/frontend` (React 18 + Vite) directory structure",
+        "Create `backend/requirements.txt` with FastAPI 0.111, uvicorn 0.29, motor 3.3 (async MongoDB driver), python-dotenv 1.0, boto3 1.34 (AWS SDK), openai 1.3, python-pptx 0.6.21, python-docx 0.8.11, youtube-transcript-api 0.6.1, pydantic 2.5",
+        "Install Python 3.11 dependencies via `pip install -r backend/requirements.txt`",
+        "Configure MongoDB 7.0 local instance and test connection with connection string in `.env` file",
+        "Set up AWS S3 bucket named `studybattles-uploads` and store AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION in `.env`",
+        "Store OpenAI API key (GPT-4) in `.env` as OPENAI_API_KEY",
+        "Create `backend/main.py` with FastAPI app instance, CORS middleware (allow localhost:3000), and `/health` endpoint",
+        "Create `frontend/src/App.jsx` with React Router setup routing to `/` (landing page) and `/study/:session_id` (study page)"
+      ],
+      "commit_condition": "Run `python backend/main.py` in background, then `curl -s http://127.0.0.1:8000/health | jq .status` returns `\"ok\"`; run `npm start` in `/frontend` directory and open http://localhost:3000 — page loads with blank React component and no console errors",
+      "example_input": "Empty project directory, Python 3.11 installed, npm and Node.js installed, MongoDB 7.0 running locally on 127.0.0.1:27017, AWS S3 bucket created, OpenAI API key obtained",
+      "example_output": "Terminal 1: `python backend/main.py` prints 'Uvicorn running on http://127.0.0.1:8000'; Terminal 2: `npm start` prints 'VITE v5.0.0 ready in X ms' and 'Local: http://localhost:3000'; curl http://127.0.0.1:8000/health returns {\"status\": \"ok\"}; Browser at http://localhost:3000 displays blank React app with no errors"
+    },
+    {
+      "id": 2,
+      "title": "MongoDB Schema and Document Models",
+      "deliverable": "MongoDB collections `sessions`, `topics`, and `nodes` exist with validated Pydantic models; `POST /api/sessions` creates a session document and returns {\"session_id\": \"abc123\", \"created_at\": \"2024-01-15T10:00:00Z\"}",
+      "tasks": [
+        "Define Pydantic model `Session` with fields: session_id (str), created_at (datetime), uploaded_file_name (str), s3_url (str), tree_root_node_id (str, nullable), unlocked_node_ids (list of str, default empty), current_node_id (str, nullable)",
+        "Define Pydantic model `Node` with fields: node_id (str), label (str), description (str), level (int, 0–2), parent_node_id (str, nullable), children_node_ids (list of str), is_boss (bool), defeated (bool), question_ids (list of str)",
+        "Define Pydantic model `Topic` with fields: topic_id (str), session_id (str), name (str), key_points (list of str), created_at (datetime)",
+        "Create `backend/db.py` with async MongoDB connection function using motor 3.3 and MongoClient initialization from MONGO_URI env var",
+        "Create `backend/models.py` with Pydantic Session, Node, and Topic classes",
+        "Implement `POST /api/sessions` endpoint that generates a unique session_id, creates a session document in MongoDB `sessions` collection, and returns the session object with 201 status code",
+        "Write pytest test in `tests/test_sessions.py` for session creation — test that POST returns 201, session_id is a UUID, and MongoDB document is stored"
+      ],
+      "commit_condition": "Run `pytest tests/test_sessions.py -v` — test for session creation passes; run `curl -X POST http://127.0.0.1:8000/api/sessions -H 'Content-Type: application/json'` and verify response contains session_id and created_at fields with HTTP 201 status",
+      "example_input": "MongoDB 7.0 running, backend/main.py running, empty `sessions` collection",
+      "example_output": "POST http://127.0.0.1:8000/api/sessions returns HTTP 201 with body: {\"session_id\": \"550e8400-e29b-41d4-a716-446655440000\", \"created_at\": \"2024-01-15T10:30:45.123Z\", \"uploaded_file_name\": null, \"s3_url\": null, \"tree_root_node_id\": null, \"unlocked_node_ids\": [], \"current_node_id\": null}; MongoDB query `db.sessions.findOne({})` returns the inserted document"
+    },
+    {
+      "id": 3,
+      "title": "File Upload and Document Parsing",
+      "deliverable": "`POST /api/sessions/{session_id}/upload` accepts multipart/form-data with file field, stores file in AWS S3 `studybattles-uploads` bucket, extracts text, and returns {\"file_name\": \"algebra.pptx\", \"extracted_text\": \"Chapter 1...\", \"char_count\": 2500}",
+      "tasks": [
+        "Create `backend/storage.py` with async function `upload_to_s3(file_bytes, file_name, session_id)` using boto3 that generates S3 URL in format `s3://studybattles-uploads/{session_id}/{file_name}` and returns the URL",
+        "Create `backend/parsers.py` with functions `parse_pptx(file_path)`, `parse_docx(file_path)`, and `parse_youtube_url(url)` that extract text content — PPTX uses python-pptx 0.6.21 to extract all slide text, DOCX uses python-docx 0.8.11 to extract all paragraph text, YouTube uses youtube-transcript-api 0.6.1 to fetch captions",
+        "Implement `POST /api/sessions/{session_id}/upload` endpoint that accepts file upload, validates file type (PPTX, DOCX only — no YouTube in MVP), calls `upload_to_s3()`, parses file content using appropriate parser, updates session document with uploaded_file_name and s3_url, and returns extracted text with char count",
+        "Implement `POST /api/sessions/{session_id}/upload-youtube` endpoint that accepts JSON body with `youtube_url` field, validates URL format, extracts transcript via youtube-transcript-api, and returns extracted text",
+        "Add MIME type validation in upload endpoint — reject files that are not application/vnd.openxmlformats-officedocument.presentationml.presentation (PPTX) or application/vnd.openxmlformats-officedocument.wordprocessingml.document (DOCX)",
+        "Write pytest tests in `tests/test_upload.py` for PPTX parsing, DOCX parsing, S3 upload, session update, and file type rejection"
+      ],
+      "commit_condition": "Run `pytest tests/test_upload.py -v` — all upload and parsing tests pass; create test file `test_sample.pptx` with 5 slides, run `curl -X POST -F 'file=@test_sample.pptx' http://127.0.0.1:8000/api/sessions/{session_id}/upload` and verify HTTP 200 response contains extracted_text field with content from all 5 slides and s3_url field with bucket URL",
+      "example_input": "Session created with session_id '550e8400-e29b-41d4-a716-446655440000', AWS S3 bucket exists, PPTX file with content 'Chapter 1: Introduction\\nKey Point 1\\nKey Point 2'",
+      "example_output": "POST http://127.0.0.1:8000/api/sessions/550e8400-e29b-41d4-a716-446655440000/upload returns HTTP 200: {\"file_name\": \"chapter1.pptx\", \"extracted_text\": \"Chapter 1: Introduction\\nKey Point 1\\nKey Point 2\", \"char_count\": 45, \"s3_url\": \"s3://studybattles-uploads/550e8400-e29b-41d4-a716-446655440000/chapter1.pptx\"}; MongoDB session document updated with uploaded_file_name: 'chapter1.pptx' and s3_url field"
+    },
+    {
+      "id": 4,
+      "title": "Topic Tree Generation via OpenAI",
+      "deliverable": "`POST /api/sessions/{session_id}/generate-tree` accepts {\"extracted_text\": \"...\", \"depth\": 3} and returns {\"root_node_id\": \"node_0\", \"tree_structure\": {...}} with complete boss tree stored in MongoDB; tree max depth is 3 levels",
+      "tasks": [
+        "Create `backend/llm.py` with async function `generate_topic_tree(extracted_text, max_depth=3)` using OpenAI GPT-4 API that generates a JSON structure with nodes: each node has label (str), description (str), level (0–2), parent_id (str or null), children (array of child nodes), is_boss (bool — true if leaf node)",
+        "Implement GPT-4 prompt that ingests extracted_text and outputs a hierarchical JSON tree structure with max 3 levels; root is level 0 (main topic), intermediate nodes are level 1 (subtopics), leaf nodes are level 2 (boss encounters) marked with is_boss=true",
+        "Create `POST /api/sessions/{session_id}/generate-tree` endpoint that accepts extracted_text, calls `generate_topic_tree()` with GPT-4, stores all nodes in MongoDB `nodes` collection with unique node_id (UUID), stores root node_id in session document tree_root_node_id field, and returns tree structure with root_node_id",
+        "Implement tree flattening logic in endpoint to store each node as separate MongoDB document (not nested) — each node doc contains parent_node_id and children_node_ids for relational queries",
+        "Add validation: if tree depth exceeds 3 levels, reject request with HTTP 400 and error message 'Tree depth exceeds maximum of 3 levels'",
+        "Write pytest tests in `tests/test_tree_generation.py` for GPT-4 tree generation, node storage, depth validation, and tree flattening"
+      ],
+      "commit_condition": "Run `pytest tests/test_tree_generation.py -v` — all tree generation and storage tests pass; run `curl -X POST http://127.0.0.1:8000/api/sessions/{session_id}/generate-tree -H 'Content-Type: application/json' -d '{\"extracted_text\": \"Algebra covers variables, equations, and functions...\"}' ` and verify HTTP 200 response contains root_node_id and tree_structure fields; query MongoDB `db.nodes.find({\"session_id\": \"{session_id}\"})` returns 5+ node documents with parent_node_id and children_node_ids fields",
+      "example_input": "Session with session_id '550e8400-e29b-41d4-a716-446655440000' and extracted_text: 'Algebra: Variables, Equations, Functions. Variables: Basics, Operations. Equations: Linear, Quadratic. Functions: Definitions, Graphing.'",
+      "example_output": "POST http://127.0.0.1:8000/api/sessions/550e8400-e29b-41d4-a716-446655440000/generate-tree returns HTTP 200: {\"root_node_id\": \"node_550e8400_0\", \"tree_structure\": {\"node_id\": \"node_550e8400_0\", \"label\": \"Algebra\", \"level\": 0, \"children\": [{\"node_id\": \"node_550e8400_1\", \"label\": \"Variables\", \"level\": 1, \"children\": [{\"node_id\": \"node_550e8400_4\", \"label\": \"Basics\", \"level\": 2, \"is_boss\": true, \"children\": []}]}]}}; MongoDB `nodes` collection contains 7 documents: 1 root, 2 level-1, 4 level-2 boss nodes; each node has parent_node_id and children_node_ids arrays"
+    },
+    {
+      "id": 5,
+      "title": "Question Generation and Mark Scheme Evaluation",
+      "deliverable": "`POST /api/sessions/{session_id}/nodes/{node_id}/questions` accepts {\"node_label\": \"Linear Equations\", \"node_description\": \"...\"} and returns {\"questions\": [{\"question_id\": \"q1\", \"text\": \"Define linear equation\", \"type\": \"Define\"}, ...], \"mark_scheme\": {\"key_points\": [\"...\"]} with 5 questions of mixed types stored in MongoDB `questions` collection",
+      "tasks": [
+        "Create `backend/llm.py` function `generate_questions(node_label, node_description)` using OpenAI GPT-4 API that generates 5 questions with types: Define (1 question), Solve (1 question), Compare (1 question), ELI5 (1 question), Finish the Answer (1 question); each question is a dict with question_id, text, type, and expected_answer_type",
+        "Create `backend/llm.py` function `generate_mark_scheme(node_label, node_description, question_type)` using GPT-4 that generates 3–5 key points for each question type; key points are specific statements the student answer should contain",
+        "Implement `POST /api/sessions/{session_id}/nodes/{node_id}/questions` endpoint that generates 5 questions via GPT-4, generates mark scheme (key points) for each question, stores all questions in MongoDB `questions` collection linked to node_id and session_id, stores mark scheme as separate `mark_schemes` collection document, and returns questions array with question_id, text, and type",
+        "Add question type validation: only accept Define, Solve, Compare, ELI5, Finish the Answer types in responses",
+        "Implement response format enforcement: Finish the Answer questions include `fragment_to_complete` field with partial text the student must complete",
+        "Write pytest tests in `tests/test_questions.py` for question generation, mark scheme generation, question storage, and type validation"
+      ],
+      "commit_condition": "Run `pytest tests/test_questions.py -v` — all question generation and mark scheme tests pass; run `curl -X POST http://127.0.0.1:8000/api/sessions/{session_id}/nodes/{node_id}/questions -H 'Content-Type: application/json' -d '{\"node_label\": \"Linear Equations\", \"node_description\": \"Equations with degree 1\"}' ` and verify HTTP 200 response contains questions array with 5 items (each with question_id, text, type fields); query MongoDB `db.questions.find({\"node_id\": \"{node_id}\"})` returns 5 documents; query `db.mark_schemes.find({\"node_id\": \"{node_id}\"})` returns 5 documents with key_points arrays",
+      "example_input": "Session exists, tree generated, node_id 'node_550e8400_4' with label 'Linear Equations' and description 'Algebraic expressions of degree 1'",
+      "example_output": "POST http://127.0.0.1:8000/api/sessions/550e8400-e29b-41d4-a716-446655440000/nodes/node_550e8400_4/questions returns HTTP 200: {\"questions\": [{\"question_id\": \"q_550e8400_4_1\", \"text\": \"Define a linear equation\", \"type\": \"Define\"}, {\"question_id\": \"q_550e8400_4_2\", \"text\": \"Solve: 2x + 5 = 13\", \"type\": \"Solve\"}, {\"question_id\": \"q_550e8400_4_3\", \"text\": \"Compare linear and quadratic equations\", \"type\": \"Compare\"}, {\"question_id\": \"q_550e8400_4_4\", \"text\": \"Explain like I'm 5: What is a variable?\", \"type\": \"ELI5\"}, {\"question_id\": \"q_550e8400_4_5\", \"text\": \"Finish: A linear equation has variables with power of...\", \"type\": \"Finish the Answer\", \"fragment_to_complete\": \"A linear equation has variables with power of...\"}]}; MongoDB `mark_schemes` collection contains 5 documents, each with key_points: [\"Linear equation definition\", \"Degree one polynomial\", ...]"
+    },
+    {
+      "id": 6,
+      "title": "Answer Submission and Grading Engine",
+      "deliverable": "`POST /api/sessions/{session_id}/nodes/{node_id}/questions/{question_id}/submit` accepts {\"answer\": \"x = 4\"} and returns {\"score\": 85, \"feedback\": \"Good...\", \"matched_key_points\": [\"...\"], \"max_score\": 100} with score persisted in MongoDB `submissions` collection",
+      "tasks": [
+        "Create `backend/llm.py` function `grade_answer(student_answer, question_type, mark_scheme_key_points)` using OpenAI GPT-4 API that compares student answer against key points and returns score (0–100), feedback string, and array of matched key points with confidence estimates",
+        "Implement scoring logic: Grade returns an integer score 0–100; score is based on how many key points are present in student answer; full mark (100) requires at least 80% key point coverage",
+        "Create Pydantic model `Submission` with fields: submission_id (str), session_id (str), node_id (str), question_id (str), student_answer (str), score (int), feedback (str), matched_key_points (list of str), max_score (int, default 100), created_at (datetime)",
+        "Implement `POST /api/sessions/{session_id}/nodes/{node_id}/questions/{question_id}/submit` endpoint that validates student answer is not empty, calls `grade_answer()` with GPT-4, stores submission in MongoDB `submissions` collection, and returns score, feedback, matched_key_points, max_score with HTTP 200",
+        "Add answer format validation: Finish the Answer must include the fragment_to_complete text somewhere in the student answer, otherwise reject with HTTP 400 'Answer must include required fragment'",
+        "Write pytest tests in `tests/test_grading.py` for answer submission, grading logic, key point matching, and answer format validation"
+      ],
+      "commit_condition": "Run `pytest tests/test_grading.py -v` — all grading and submission tests pass; run `curl -X POST http://127.0.0.1:8000/api/sessions/{session_id}/nodes/{node_id}/questions/{question_id}/submit -H 'Content-Type: application/json' -d '{\"answer\": \"A linear equation is an algebraic expression with variables to the power of 1\"}' ` and verify HTTP 200 response contains score (0–100), feedback (string), matched_key_points (array), and max_score (100); query MongoDB `db.submissions.find({\"question_id\": \"{question_id}\"})` returns submission document with all fields",
+      "example_input": "Question 'q_550e8400_4_1' of type 'Define' with mark scheme key points: ['Linear equation', 'degree 1', 'algebraic expression']; student submits answer 'A linear equation is an algebraic expression with variables of degree 1'",
+      "example_output": "POST http://127.0.0.1:8000/api/sessions/550e8400-e29b-41d4-a716-446655440000/nodes/node_550e8400_4/questions/q_550e8400_4_1/submit returns HTTP 200: {\"submission_id\": \"sub_550e8400_4_1\", \"score\": 92, \"feedback\": \"Excellent answer! You correctly identified the key components of a linear equation. You mentioned 'degree 1' and 'algebraic expression' which are essential.\", \"matched_key_points\": [\"algebraic expression\", \"degree 1\"], \"max_score\": 100}; MongoDB document stored in `submissions` collection"
+    },
+    {
+      "id": 7,
+      "title": "Node Unlock Mechanics and Boss Defeat Logic",
+      "deliverable": "`GET /api/sessions/{session_id}/nodes/{parent_node_id}/status` returns {\"all_children_defeated\": true, \"parent_unlocked\": true} after all sibling nodes are defeated; `POST /api/sessions/{session_id}/unlock-node` marks parent unlocked and adds to unlocked_node_ids in session document",
+      "tasks": [
+        "Create `backend/logic.py` function `check_node_defeat_status(session_id, node_id)` that queries MongoDB for all questions linked to node_id, checks if all have submissions with score >= 70, returns bool defeated",
+        "Create `backend/logic.py` function `check_children_all_defeated(session_id, parent_node_id)` that retrieves all children node_ids from parent node document, calls check_node_defeat_status for each child, returns true only if all children are defeated",
+        "Implement `GET /api/sessions/{session_id}/nodes/{node_id}/status` endpoint that calls check_node_defeat_status and returns {\"defeated\": bool, \"num_questions_answered\": int, \"avg_score\": float} for the node",
+        "Implement `GET /api/sessions/{session_id}/nodes/{parent_node_id}/children-status` endpoint that returns array of children with each child containing {\"node_id\": str, \"label\": str, \"defeated\": bool, \"avg_score\": float}",
+        "

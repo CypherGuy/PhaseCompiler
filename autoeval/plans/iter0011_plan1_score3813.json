@@ -1,0 +1,167 @@
+```json
+{
+  "project": {
+    "name": "StudyBattles",
+    "language": "Python 3.11",
+    "runtime": "web",
+    "package_manager": "pip",
+    "framework": "FastAPI 0.111",
+    "database": "MongoDB 7.0",
+    "deployment": "Docker + AWS EC2",
+    "external_services": ["OpenAI GPT-4 API", "AWS S3"]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Backend Environment and Project Foundation",
+      "deliverable": "`python backend/main.py` launches FastAPI server on http://127.0.0.1:8000 and `GET /health` returns {\"status\": \"ok\"}",
+      "tasks": [
+        "Create Python 3.11 virtual environment and install FastAPI 0.111, uvicorn 0.29, python-dotenv 1.0 using pip",
+        "Initialize Git repository with .gitignore excluding __pycache__, .venv, .env, node_modules",
+        "Create backend/ directory structure with main.py, routes/, models/, services/, utils/ subdirectories",
+        "Configure environment variables in .env file for OpenAI API key, AWS S3 bucket name, AWS credentials, and MongoDB URI",
+        "Install MongoDB 7.0 locally or configure cloud MongoDB Atlas URI in .env",
+        "Create FastAPI app instance in backend/main.py with CORS middleware enabled for http://localhost:3000",
+        "Write `GET /health` endpoint in backend/routes/health.py returning {\"status\": \"ok\", \"timestamp\": ISO8601_string}",
+        "Install boto3 3.26, pymongo 4.6, python-multipart 0.0.6, and aiofiles 23.2 into requirements.txt"
+      ],
+      "commit_condition": "Run `python backend/main.py` — terminal prints 'Uvicorn running on http://127.0.0.1:8000'; Run `curl -s http://localhost:8000/health | jq .status` — returns `\"ok\"`",
+      "example_input": "Empty project directory with no files",
+      "example_output": "Run `python backend/main.py` — terminal output: 'INFO: Uvicorn running on http://127.0.0.1:8000'; GET http://localhost:8000/health returns {\"status\": \"ok\", \"timestamp\": \"2024-01-15T10:00:00Z\"}; GET http://localhost:8000/docs shows Swagger UI with /health endpoint listed"
+    },
+    {
+      "id": 2,
+      "title": "MongoDB Schema and Topic Tree Data Models",
+      "deliverable": "MongoDB database contains five collections (users, sessions, topics, nodes, questions) with schema validation; `db.topics.findOne()` returns document with expected structure",
+      "tasks": [
+        "Install pymongo 4.6 and define MongoDB connection in backend/services/db.py with connection pooling",
+        "Create users collection schema with fields: user_id (string, unique), session_token (string), created_at (timestamp), last_accessed (timestamp)",
+        "Create sessions collection schema with fields: session_id (string, unique), user_id (string), topic_id (string), started_at (timestamp), state (object with unlocked_nodes array)",
+        "Create topics collection schema with fields: topic_id (string, unique), user_id (string), title (string), root_node_id (string), upload_filename (string), created_at (timestamp)",
+        "Create nodes collection schema with fields: node_id (string, unique), topic_id (string), parent_node_id (string or null), title (string), depth (number 0-3), defeated (boolean), children_node_ids (array), description (string)",
+        "Create questions collection schema with fields: question_id (string, unique), node_id (string), question_type (enum: Define, Solve, Compare, ELI5, FinishTheAnswer), question_text (string), mark_scheme (string), created_at (timestamp)",
+        "Initialize MongoDB indexes on topic_id, node_id, user_id, and session_id fields for query performance",
+        "Write backend/services/db.py helper functions: create_topic(), create_node(), create_question(), get_topic_tree(), update_node_status()"
+      ],
+      "commit_condition": "Run `python -c \"from backend.services.db import MongoClient; client = MongoClient(); print(list(client.studybattles.list_collection_names()))\"` — output includes ['users', 'sessions', 'topics', 'nodes', 'questions']",
+      "example_input": "MongoDB 7.0 running locally or cloud Atlas URI configured in .env",
+      "example_output": "MongoDB database 'studybattles' contains: users collection (empty), sessions collection (empty), topics collection with sample document {\"topic_id\": \"top_001\", \"user_id\": \"user_123\", \"title\": \"Algebra Basics\", \"root_node_id\": \"node_root_001\", \"created_at\": ISODate(\"2024-01-15T10:00:00Z\")}, nodes collection with hierarchy documents, questions collection (empty); Indexes created on topic_id, node_id"
+    },
+    {
+      "id": 3,
+      "title": "AWS S3 Integration and Document Upload Endpoint",
+      "deliverable": "`POST /api/upload` accepts multipart PPTX/DOCX file, returns JSON with document_id, filename, and status; file stored in AWS S3 at s3://studybattles-bucket/uploads/{user_id}/{document_id}",
+      "tasks": [
+        "Install boto3 3.26 and configure AWS credentials (access key, secret key, region) in .env file",
+        "Create backend/services/s3_client.py with S3 upload function supporting PPTX and DOCX MIME types only",
+        "Create backend/utils/file_handler.py with validate_file_extension() and generate_document_id() functions",
+        "Implement `POST /api/upload` endpoint in backend/routes/documents.py accepting multipart/form-data with file field",
+        "Add error handling for invalid file types, oversized files (>50MB), and S3 connection failures",
+        "Generate unique document_id using UUID and store S3 key path in MongoDB documents collection",
+        "Write endpoint to return {\"document_id\": string, \"filename\": string, \"s3_key\": string, \"status\": \"uploaded\", \"timestamp\": ISO8601}",
+        "Test S3 upload with curl multipart request using a sample DOCX file"
+      ],
+      "commit_condition": "Run `curl -X POST -F 'file=@sample.docx' http://localhost:8000/api/upload | jq .document_id` — returns a non-empty string; Verify file exists in AWS S3 bucket at expected path with `aws s3 ls s3://studybattles-bucket/uploads/ --recursive`",
+      "example_input": "AWS S3 bucket 'studybattles-bucket' created with credentials in .env; sample.docx file in local directory",
+      "example_output": "POST http://localhost:8000/api/upload with file=sample.docx returns HTTP 201: {\"document_id\": \"doc_64a1b2c3\", \"filename\": \"sample.docx\", \"s3_key\": \"uploads/user_123/doc_64a1b2c3.docx\", \"status\": \"uploaded\", \"timestamp\": \"2024-01-15T10:00:00Z\"}; File stored at s3://studybattles-bucket/uploads/user_123/doc_64a1b2c3.docx"
+    },
+    {
+      "id": 4,
+      "title": "OpenAI Topic Tree Generation from Documents",
+      "deliverable": "`POST /api/topics/generate` accepts document_id, calls OpenAI GPT-4 to generate topic tree, stores in MongoDB, returns root topic JSON with nested children structure up to 3 levels deep",
+      "tasks": [
+        "Install openai 1.3 Python package and create backend/services/openai_client.py with GPT-4 integration",
+        "Implement document text extraction from S3-stored PPTX/DOCX files using python-pptx 0.6 and python-docx 0.8.11",
+        "Create backend/services/tree_generator.py with function to send document text to OpenAI GPT-4 and receive structured topic tree as JSON",
+        "Design OpenAI prompt to generate tree with schema: {\"title\": string, \"description\": string, \"children\": [same structure, max 3 levels], \"question_types\": [enum array]}",
+        "Implement topic tree depth validation (max 3 levels) and error handling for malformed OpenAI responses",
+        "Create `POST /api/topics/generate` endpoint accepting {\"document_id\": string}, validating document exists in MongoDB, and initiating tree generation",
+        "Store generated tree structure in MongoDB topics collection with root_node_id pointing to top-level node",
+        "Return endpoint response with topic structure: {\"topic_id\": string, \"title\": string, \"root_node_id\": string, \"tree\": nested object}"
+      ],
+      "commit_condition": "Run `curl -X POST http://localhost:8000/api/topics/generate -H 'Content-Type: application/json' -d '{\"document_id\": \"doc_64a1b2c3\"}' | jq .topic_id` — returns non-empty string; Query MongoDB: `db.topics.findOne({\"topic_id\": \"...\"})`  returns document with root_node_id and tree depth ≤3",
+      "example_input": "Document 'sample.docx' uploaded and stored at s3://studybattles-bucket/uploads/user_123/doc_64a1b2c3.docx with content about 'Photosynthesis'; OpenAI API key configured",
+      "example_output": "POST /api/topics/generate with document_id returns HTTP 201: {\"topic_id\": \"top_64a1b2c3\", \"title\": \"Photosynthesis\", \"root_node_id\": \"node_root_001\", \"tree\": {\"title\": \"Photosynthesis\", \"children\": [{\"title\": \"Light Reactions\", \"children\": [{\"title\": \"Photosystem II\", \"children\": []}]}, {\"title\": \"Calvin Cycle\", \"children\": []}]}}; MongoDB nodes collection contains 5 documents with depth values 0-2 and parent-child relationships established"
+    },
+    {
+      "id": 5,
+      "title": "Question Generation and Mark Scheme Creation via OpenAI",
+      "deliverable": "`POST /api/nodes/{node_id}/generate-questions` generates 5 predetermined question types (Define, Solve, Compare, ELI5, FinishTheAnswer) for each leaf node via OpenAI GPT-4, stores questions and mark schemes in MongoDB",
+      "tasks": [
+        "Create backend/services/question_generator.py with function to generate questions for a given node using OpenAI GPT-4",
+        "Design OpenAI prompt to generate five question types: (1) Define: definition-based, (2) Solve: numerical or problem-solving, (3) Compare: contrast two concepts, (4) ELI5: explain like I'm 5, (5) FinishTheAnswer: complete the sentence",
+        "For each question type, generate question_text (string) and mark_scheme (string with expected key points and mark breakdown)",
+        "Implement `POST /api/nodes/{node_id}/generate-questions` endpoint accepting node_id and validating node exists and is a leaf (no children)",
+        "Store generated questions in MongoDB questions collection with fields: question_id, node_id, question_type, question_text, mark_scheme",
+        "Handle OpenAI API errors gracefully with retry logic (max 3 attempts) and fallback error message",
+        "Implement batch question generation: loop through all leaf nodes in a topic and generate questions for each",
+        "Return endpoint response: {\"node_id\": string, \"questions_generated\": integer, \"questions\": [array of question objects with question_type and question_text]}"
+      ],
+      "commit_condition": "Run `curl -X POST http://localhost:8000/api/nodes/node_leaf_001/generate-questions | jq .questions_generated` — returns 5; Query MongoDB: `db.questions.find({\"node_id\": \"node_leaf_001\"}).count()` returns 5; Verify mark_scheme field populated with non-empty string",
+      "example_input": "Topic 'Photosynthesis' generated with leaf nodes 'Photosystem II' and 'Photolysis' (node_ids: node_leaf_001, node_leaf_002); OpenAI API key active",
+      "example_output": "POST /api/nodes/node_leaf_001/generate-questions returns HTTP 201: {\"node_id\": \"node_leaf_001\", \"questions_generated\": 5, \"questions\": [{\"question_type\": \"Define\", \"question_text\": \"What is photosystem II?\"}, {\"question_type\": \"Solve\", \"question_text\": \"Calculate the maximum wavelength of light absorbed by photosystem II (assume E = hc/λ)...\"}, {\"question_type\": \"Compare\", \"question_text\": \"Compare photosystem I and photosystem II...\"}, {\"question_type\": \"ELI5\", \"question_text\": \"Explain photosystem II in simple terms...\"}, {\"question_type\": \"FinishTheAnswer\", \"question_text\": \"Photosystem II absorbs light at... and releases...\"}]}; MongoDB questions collection contains 5 documents with mark_scheme values like \"Key points: (1) Definition of photosystem II - 2 marks, (2) Light absorption - 1 mark, (3) Water splitting - 2 marks. Total: 5 marks.\""
+    },
+    {
+      "id": 6,
+      "title": "Question Answering Endpoint and LLM-Based Mark Evaluation",
+      "deliverable": "`POST /api/questions/{question_id}/submit-answer` accepts student answer, evaluates against LLM-generated mark scheme via OpenAI GPT-4, returns {\"marks_awarded\": integer, \"max_marks\": integer, \"feedback\": string, \"key_points\": [strings]}",
+      "tasks": [
+        "Create backend/services/answer_evaluator.py with function to send student answer + mark scheme to OpenAI GPT-4 and receive numeric mark and feedback",
+        "Design OpenAI prompt to evaluate answer against mark scheme: compare student response to expected key points, award marks 0 to max_marks, generate feedback string and list of key points covered/missed",
+        "Implement `POST /api/questions/{question_id}/submit-answer` endpoint accepting {\"answer\": string} in request body",
+        "Validate question_id exists in MongoDB and retrieve associated mark_scheme and max_marks (default 5 marks per question)",
+        "Call answer evaluator service and receive marks_awarded (0-5), feedback (string), and identified_key_points (array)",
+        "Store student answer in MongoDB with new answers collection: fields include question_id, answer_text, marks_awarded, max_marks, feedback, key_points, timestamp",
+        "Handle OpenAI timeout (>10s) with fallback 0 marks and error message",
+        "Return endpoint response: {\"question_id\": string, \"marks_awarded\": integer, \"max_marks\": 5, \"feedback\": string, \"key_points\": [array of identified key points], \"timestamp\": ISO8601}"
+      ],
+      "commit_condition": "Run `curl -X POST http://localhost:8000/api/questions/q_001/submit-answer -H 'Content-Type: application/json' -d '{\"answer\": \"Photosystem II absorbs light at 680nm and splits water molecules\"}' | jq '.marks_awarded, .max_marks'` — returns 4 and 5 (example values); Verify marks_awarded is integer 0-5 and feedback is non-empty string",
+      "example_input": "Question q_001 exists in MongoDB with question_text='What is photosystem II?' and mark_scheme='Key points: (1) Definition - 1 mark, (2) Light absorption at 680nm - 2 marks, (3) Water splitting - 2 marks. Total: 5 marks.'; Student submits answer 'Photosystem II absorbs light at 680nm and splits water'",
+      "example_output": "POST /api/questions/q_001/submit-answer with answer='Photosystem II absorbs light at 680nm and splits water' returns HTTP 200: {\"question_id\": \"q_001\", \"marks_awarded\": 4, \"max_marks\": 5, \"feedback\": \"Good answer identifying light absorption wavelength and water splitting process. Missing explicit definition of photosystem II function.\", \"key_points\": [\"Light absorption at 680nm\", \"Water splitting process\"], \"timestamp\": \"2024-01-15T10:30:00Z\"}; MongoDB answers collection stores document with all fields above"
+    },
+    {
+      "id": 7,
+      "title": "Node Unlock Mechanics and Session State Management",
+      "deliverable": "`POST /api/sessions` creates session, `GET /api/sessions/{session_id}/state` returns current unlocked nodes; defeating all children of a parent node unlocks that parent via `PATCH /api/nodes/{node_id}/unlock` endpoint",
+      "tasks": [
+        "Create backend/services/session_manager.py with functions to create sessions, track unlocked nodes, and evaluate unlock conditions",
+        "Design session state schema in MongoDB sessions collection: {\"session_id\": string, \"topic_id\": string, \"unlocked_node_ids\": [strings], \"defeated_node_ids\": [strings], \"created_at\": timestamp}",
+        "Implement `POST /api/sessions` endpoint accepting {\"topic_id\": string}, initializing session with only root node unlocked, returning {\"session_id\": string, \"topic_id\": string, \"unlocked_nodes\": [root]}",
+        "Create unlock logic: when all 5 questions for a leaf node are answered and total marks ≥ 12 (60% of 20), mark node defeated",
+        "Implement `PATCH /api/nodes/{node_id}/unlock` endpoint checking if all child nodes are defeated; if yes, unlock parent node and update session state",
+        "Create `GET /api/sessions/{session_id}/state` endpoint returning current session state: {\"unlocked_node_ids\": [strings], \"defeated_node_ids\": [strings], \"topic_tree\": nested object with defeat/unlock status per node}",
+        "Write helper function to aggregate total marks for a node across all 5 questions answered in that node",
+        "Add validation: only leaf nodes can be defeated; parent nodes unlock only when all direct children defeated"
+      ],
+      "commit_condition": "Run `curl -X POST http://localhost:8000/api/sessions -H 'Content-Type: application/json' -d '{\"topic_id\": \"top_64a1b2c3\"}' | jq .session_id` — returns non-empty string; Manually defeat leaf node by answering all 5 questions with marks ≥12; Run `curl http://localhost:8000/api/sessions/sess_001/state | jq '.defeated_node_ids | length'` — returns 1; Defeat all siblings; Run unlock endpoint; Verify parent node appears in unlocked_node_ids",
+      "example_input": "Session created for topic 'Photosynthesis' with root node unlocked; student answers all 5 questions for leaf node 'Photosystem II' with total marks 13/20; all sibling leaf nodes also defeated with marks ≥12",
+      "example_output": "POST /api/sessions returns {\"session_id\": \"sess_64a1b2c3\", \"topic_id\": \"top_64a1b2c3\", \"unlocked_nodes\": [\"node_root_001\"]}; After defeating 'Photosystem II' node, GET /api/sessions/sess_64a1b2c3/state returns {\"session_id\": \"sess_64a1b2c3\", \"unlocked_node_ids\": [\"node_root_001\", \"node_001\"], \"defeated_node_ids\": [\"node_leaf_001\"], \"topic_tree\": {nested structure with each node showing defeated: true/false and unlocked: true/false}}; PATCH /api/nodes/node_001/unlock (after all children defeated) returns {\"node_id\": \"node_001\", \"unlocked\": true, \"timestamp\": \"2024-01-15T10:45:00Z\"}"
+    },
+    {
+      "id": 8,
+      "title": "React Frontend Setup and Component Architecture",
+      "deliverable": "`npm run dev` starts React 18 development server on http://localhost:3000; `` renders without errors; basic CSS module structure supports responsive layout",
+      "tasks": [
+        "Create React 18 project in frontend/ directory using create-react-app or Vite 5.0",
+        "Install React Router 6 for routing, axios 1.6 for API calls, and zustand 4.4 for client-side state management",
+        "Create frontend/src/components/ directory with component files: UploadForm.jsx, TopicTree.jsx, QuestionPanel.jsx, MarkDisplay.jsx, SessionManager.jsx",
+        "Create frontend/src/services/api.js with axios instance pointing to http://localhost:8000, including helper functions for all API calls",
+        "Initialize client-side session state in zustand store: store topic_id, session_id, unlocked_nodes, current_node_id, answered_questions",
+        "Create frontend/src/pages/ directory with page components: UploadPage.jsx, TreePage.jsx, QuestionPage.jsx",
+        "Set up CSS modules in frontend/src/styles/ with responsive breakpoints (mobile <768px, tablet 768px-1024px, desktop >1024px)",
+        "Configure React Router with routes: /, /upload, /topic/:topic_id, /study/:session_id/:node_id"
+      ],
+      "commit_condition": "Run `cd frontend && npm install && npm run dev` — terminal prints 'Local: http://localhost:3000'; Open browser at http://localhost:3000 — page loads without console errors; Verify Zustand store accessible via React DevTools",
+      "example_input": "React 18 boilerplate initialized; backend running on http://localhost:8000",
+      "example_output": "Frontend loads at http://localhost:3000; page displays header with 'StudyBattles' title and placeholder content; console shows no errors; Zustand DevTools extension shows store with initial state {\"topic_id\": null, \"session_id\": null, \"unlocked_nodes\": [], \"current_node_id\": null}"
+    },
+    {
+      "id": 9,
+      "title": "Document Upload UI and Topic Tree Visualization",
+      "deliverable": "`/upload` page renders file input, upload button, and progress indicator; successful upload redirects to `/topic/{topic_id}` showing interactive topic tree with node cards expandable to 3 levels; tree fetched from `GET /api/topics/{topic_id}`",
+      "tasks": [
+        "Implement UploadForm.jsx component with drag-and-drop file input supporting DOCX and PPTX with client-side validation",
+        "Add loading spinner and progress percentage display during upload via axios onUploadProgress",
+        "Handle upload errors with toast notification and retry button; clear form on successful upload",
+        "Create `POST /api/topics/generate` trigger on successful upload and poll `/api/topics/{topic_id}` for generation status (or use WebSocket)",
+        "Implement TopicTree.jsx component rendering
