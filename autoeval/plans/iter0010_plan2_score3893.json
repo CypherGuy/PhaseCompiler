@@ -1,0 +1,138 @@
+```json
+{
+  "project": {
+    "name": "StudyBattles",
+    "language": "Python 3.11",
+    "runtime": "web (FastAPI backend + React 18 frontend)",
+    "package_manager": "pip (backend), npm (frontend)",
+    "framework": "FastAPI 0.111, React 18.2",
+    "database": "MongoDB 7.0",
+    "deployment": "Docker + AWS EC2",
+    "external_services": ["AWS S3", "OpenAI GPT-4 API"]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Project Foundation & Backend Setup",
+      "deliverable": "Backend server runs on http://localhost:8000 with Swagger UI and health endpoint; frontend dev server runs on http://localhost:3000; MongoDB connection verified",
+      "tasks": [
+        "Initialize FastAPI 0.111 project in `backend/` with requirements.txt: fastapi, uvicorn, pydantic, python-dotenv, pymongo, boto3, openai",
+        "Create `backend/main.py` with FastAPI app instance, CORS middleware for localhost:3000, and GET /health endpoint returning {\"status\": \"ok\"}",
+        "Configure MongoDB 7.0 connection string in `.env` file; write `backend/db.py` with MongoClient initialization and test connection on startup",
+        "Configure AWS S3 credentials in `.env` (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_S3_BUCKET_NAME); write `backend/aws.py` with boto3 S3 client initialization",
+        "Configure OpenAI API key in `.env` (OPENAI_API_KEY); write `backend/llm.py` with OpenAI client initialization using GPT-4",
+        "Initialize React 18.2 frontend in `frontend/` with npm create react-app; install axios, react-router-dom, and tailwindcss",
+        "Create `frontend/src/api.js` with axios instance pointing to http://localhost:8000; create `frontend/src/pages/Dashboard.jsx` as root page (empty placeholder)"
+      ],
+      "commit_condition": "Run `cd backend && uvicorn main:app --reload` — terminal prints 'Uvicorn running on http://127.0.0.1:8000'; Run `curl -s http://localhost:8000/health | jq .status` — returns `\"ok\"`; Run `cd frontend && npm start` — browser opens http://localhost:3000 with React app",
+      "example_input": "Empty project directory with only this brief",
+      "example_output": "Terminal shows FastAPI server running; browser shows React app at localhost:3000 with empty Dashboard page; MongoDB and S3 credentials verified without errors"
+    },
+    {
+      "id": 2,
+      "title": "Database Schema & Core Models",
+      "deliverable": "MongoDB collections 'users', 'sessions', 'topics', 'nodes', and 'attempts' created with validated Pydantic models; insert operations tested",
+      "tasks": [
+        "Define Pydantic model `UserSession` in `backend/models.py`: session_id (unique), device_id (localStorage), created_at, last_accessed_at; create MongoDB 'users' collection with unique index on session_id",
+        "Define Pydantic model `Topic` in `backend/models.py`: topic_id, title, description, root_node_id, s3_file_key, created_at, student_session_id; create MongoDB 'topics' collection with compound index (student_session_id, created_at)",
+        "Define Pydantic model `Node` in `backend/models.py`: node_id, topic_id, title, question_text, question_type (Enum: Define, Solve, Compare, ELI5, FinishAnswer), depth (0-2), parent_node_ids (list), child_node_ids (list), is_unlocked (default False), mark_scheme_json (OpenAI-generated), created_at; create MongoDB 'nodes' collection",
+        "Define Pydantic model `Attempt` in `backend/models.py`: attempt_id, node_id, topic_id, student_session_id, answer_text, mark_achieved (0-100), feedback_json (LLM-generated), created_at; create MongoDB 'attempts' collection with index on (node_id, student_session_id)",
+        "Write `backend/db_utils.py` with insert_user_session(), insert_topic(), insert_node(), insert_attempt(), find_topic_by_id(), find_nodes_by_topic_id(), find_attempt_by_id() functions using pymongo",
+        "Create MongoDB indexes: students drop `db.users.dropIndex()` and recreate in db_utils initialization; write `backend/init_db.py` script to create all collections and indexes on startup"
+      ],
+      "commit_condition": "Run `python backend/init_db.py` — no errors; Run `mongo --eval 'db.users.getIndexes(); db.topics.getIndexes(); db.nodes.getIndexes(); db.attempts.getIndexes()'` — each collection shows expected indexes",
+      "example_input": "MongoDB 7.0 running with empty database; FastAPI server running",
+      "example_output": "MongoDB database contains 4 collections (users, topics, nodes, attempts) with correct indexes; example document in 'nodes': {\"_id\": ObjectId(...), \"node_id\": \"n_1\", \"topic_id\": \"t_1\", \"title\": \"Root\", \"depth\": 0, \"is_unlocked\": true, \"created_at\": ISODate(...)}"
+    },
+    {
+      "id": 3,
+      "title": "File Upload & Topic Tree Generation via OpenAI",
+      "deliverable": "`POST /api/upload` endpoint accepts PPTX/DOCX/MP4 files, stores in S3, extracts text, generates hierarchical topic tree via OpenAI, stores nodes in MongoDB, returns topic_id and root_node_id",
+      "tasks": [
+        "Write `backend/file_extraction.py` with functions: extract_pptx_text(file_path) → str, extract_docx_text(file_path) → str, extract_youtube_transcript(video_url) → str (using youtube-transcript-api library or mock for MVP)",
+        "Write `backend/tree_generation.py` with generate_topic_tree(extracted_text: str) → dict function: calls OpenAI GPT-4 with system prompt 'Generate a 3-level learning hierarchy in JSON format: {\"title\": str, \"children\": [...]}. Leaf nodes include question_type in [Define, Solve, Compare, ELI5, FinishAnswer]'; parses JSON response; returns nested dict",
+        "Write `backend/s3_utils.py` with upload_file_to_s3(file_obj, filename, content_type) → s3_key function using boto3; handles versioning and returns object key",
+        "Create `POST /api/upload` endpoint in `backend/routes/upload.py`: accepts multipart form file, calls extract_*_text(), calls generate_topic_tree(), calls upload_file_to_s3(), creates Topic document, flattens tree into Node documents via recursive function flatten_tree_to_nodes(), inserts all nodes, returns {\"topic_id\": \"...\", \"root_node_id\": \"...\", \"node_count\": int}",
+        "Write `backend/tree_utils.py` with flatten_tree_to_nodes(tree_dict, parent_ids=[], depth=0, topic_id) → list[Node] function: recursively converts nested tree into flat MongoDB documents with parent_node_ids and child_node_ids, stops at depth 2 (max tree depth constraint)",
+        "Install required libraries in requirements.txt: python-pptx, python-docx, youtube-transcript-api; add to backend/main.py imports and test extraction functions with sample files"
+      ],
+      "commit_condition": "Run `curl -X POST http://localhost:8000/api/upload -F 'file=@sample.pptx'` — returns HTTP 201 with {\"topic_id\": \"t_...\", \"root_node_id\": \"n_...\", \"node_count\": 8}; Query MongoDB: `db.topics.findOne({\"_id\": ...})` returns document with s3_file_key and root_node_id; `db.nodes.find({\"topic_id\": \"t_...\"}).count()` returns 8",
+      "example_input": "sample.pptx file (5 slides on 'Photosynthesis'); S3 bucket empty; MongoDB empty",
+      "example_output": "HTTP 201 response: {\"topic_id\": \"t_abc123\", \"root_node_id\": \"n_root\", \"node_count\": 8}; S3 contains object 's3://bucket/uploads/sample_abc123.pptx'; MongoDB 'topics' has document {\"topic_id\": \"t_abc123\", \"title\": \"Photosynthesis\", \"root_node_id\": \"n_root\", \"s3_file_key\": \"...\"}; MongoDB 'nodes' contains 8 documents: 1 root (depth 0, unlocked), 3 children (depth 1, locked), 4 grandchildren (depth 2, locked, each with 2-3 questions)"
+    },
+    {
+      "id": 4,
+      "title": "Question Answering & LLM-Based Marking",
+      "deliverable": "`POST /api/answer` endpoint accepts node_id, answer_text, question_type; validates format; generates mark scheme via OpenAI; evaluates answer; returns mark (0-100), feedback, and unlock status",
+      "tasks": [
+        "Write `backend/marking.py` with generate_mark_scheme(node: Node, extracted_text: str) → dict function: calls OpenAI GPT-4 with system prompt 'You are a strict marking scheme generator. For question_type=[Define|Solve|Compare|ELI5|FinishAnswer] and question=\"[node.question_text]\", generate JSON: {\"rubric\": str, \"key_points\": [str], \"max_mark\": 100}'; caches result in node.mark_scheme_json to avoid repeated API calls",
+        "Write `backend/marking.py` with evaluate_answer(answer_text: str, node: Node) → dict function: retrieves node.mark_scheme_json; calls OpenAI GPT-4 with system prompt 'You are a strict exam marker. Answer=[answer_text], Mark scheme={node.mark_scheme_json}. Return JSON: {\"mark\": int (0-100), \"feedback\": str (max 200 chars), \"key_points_hit\": [str]}'; parses response; returns dict with mark, feedback, key_points_hit",
+        "Create `POST /api/answer` endpoint in `backend/routes/answer.py`: accepts JSON {\"node_id\": str, \"answer_text\": str, \"session_id\": str}; retrieves node from MongoDB; calls evaluate_answer(); saves Attempt document; returns {\"mark\": int, \"feedback\": str, \"key_points_hit\": [str], \"is_node_defeated\": bool}",
+        "Write `backend/unlock_logic.py` with check_and_unlock_parent(node_id: str, topic_id: str) → dict function: queries all child attempts of given node_id; if all children have mark ≥ 50, updates parent node is_unlocked=true, returns {\"unlocked_parent_id\": str or null, \"all_children_defeated\": bool}",
+        "Integrate check_and_unlock_parent() into `POST /api/answer` endpoint: after saving Attempt, call check_and_unlock_parent(); include unlock_result in response; update parent node via MongoDB update operation"
+      ],
+      "commit_condition": "Run `curl -X POST http://localhost:8000/api/answer -H 'Content-Type: application/json' -d '{\"node_id\": \"n_leaf\", \"answer_text\": \"Photosynthesis is the process...\", \"session_id\": \"sess_123\"}'` — returns HTTP 201 with {\"mark\": 75, \"feedback\": \"Good definition, mention chloroplast\", \"key_points_hit\": [...], \"is_node_defeated\": true}; Query `db.attempts.findOne({})` returns document with mark and feedback; Query `db.nodes.findOne({\"_id\": parent_id})` shows is_unlocked: true if all siblings defeated",
+      "example_input": "Node n_leaf in MongoDB with question_type='Define', question_text='Explain photosynthesis'; S3 contains extracted text from uploaded file; student answer: 'Photosynthesis is how plants convert light to chemical energy'",
+      "example_output": "HTTP 201: {\"mark\": 68, \"feedback\": \"Correct process. Add detail: light-dependent and light-independent reactions\", \"key_points_hit\": [\"light to chemical energy\", \"plant process\"], \"is_node_defeated\": true, \"unlock_result\": {\"unlocked_parent_id\": \"n_parent_1\", \"all_children_defeated\": false}}; Attempt document inserted with mark=68, feedback=...; parent node n_parent_1 remains locked (other siblings not yet defeated)"
+    },
+    {
+      "id": 5,
+      "title": "Frontend Topic Tree Display & Navigation",
+      "deliverable": "React component renders hierarchical topic tree with unlock states; clicking nodes opens question modal; styling matches StudyBattles brand (dark mode, game-like visuals)",
+      "tasks": [
+        "Create `frontend/src/components/TopicTree.jsx`: receives topic_id, root_node_id as props; calls `GET /api/topics/{topic_id}/nodes` to fetch all nodes; recursively renders tree structure using nested divs or tree library (react-tree-library); each node displays title, depth, is_unlocked state (visual indicator: locked icon if locked, open if unlocked)",
+        "Style TopicTree.jsx with Tailwind CSS: locked nodes gray with lock icon, unlocked nodes blue with clickable cursor; parent nodes visually stacked above children; depth-based indentation; responsive flex layout",
+        "Create `frontend/src/components/QuestionModal.jsx`: displays node.question_text, question_type badge (Define|Solve|...), text input area, submit button; initially hidden",
+        "Create `frontend/src/pages/StudyPage.jsx`: receives topic_id from URL params; renders TopicTree, initially hidden QuestionModal; on node click, shows QuestionModal with that node's data; on answer submission, calls `POST /api/answer`, displays mark and feedback in modal",
+        "Implement state management in StudyPage using useState: selectedNode, nodes list, currentMark, currentFeedback; on component mount, fetch nodes via `GET /api/topics/{topic_id}/nodes`",
+        "Add `GET /api/topics/{topic_id}` endpoint in `backend/routes/topics.py` returning topic metadata; add `GET /api/topics/{topic_id}/nodes` endpoint returning all nodes for topic with is_unlocked status"
+      ],
+      "commit_condition": "Run frontend on localhost:3000, navigate to `/study/t_test`; browser shows tree visualization with 8 nodes; click a locked leaf node — QuestionModal opens; type answer and submit — modal shows mark (e.g., 'Mark: 75/100') and feedback text; parent node unlock state updates visually",
+      "example_input": "MongoDB contains topic t_test with root_node_id n_root and 8 child nodes; all nodes have is_unlocked=false except root; localStorage empty",
+      "example_output": "Browser at http://localhost:3000/study/t_test shows: header 'Photosynthesis'; tree visualization with root node ('Photosynthesis') centered, 3 children below indented (Light Reactions, Dark Reactions, History), 4 grandchildren at bottom (e.g., 'Define Light Reactions', 'Solve: ATP Production', 'Compare C3 and C4', 'ELI5: Chloroplasts'); root node blue (unlocked), all others gray (locked); click 'Define Light Reactions' node — modal pops with question text, text input field labeled 'Your Answer:', Submit button, close button; type answer, click Submit — modal updates to show 'Mark: 82/100', feedback text, green checkmark; click close — tree view shows that node now blue (unlocked), parent node ('Light Reactions') still gray"
+    },
+    {
+      "id": 6,
+      "title": "Session Persistence & localStorage Integration",
+      "deliverable": "Frontend persists session_id and topic_id in localStorage; page reload restores state and displays correct nodes with accurate unlock status from MongoDB",
+      "tasks": [
+        "Write `frontend/src/utils/session.js` with functions: initSession() → session_id (generates UUID or retrieves from localStorage); saveSession(session_id, topic_id); getSession() → {session_id, topic_id}",
+        "Modify `frontend/src/pages/StudyPage.jsx`: on mount, call getSession(); if no session_id, call initSession() and saveSession(); pass session_id to all API calls",
+        "Update `POST /api/answer` endpoint in `backend/routes/answer.py` to validate session_id; ensure Attempt documents store session_id; validate that node belongs to student's topic",
+        "Modify `GET /api/topics/{topic_id}/nodes` to accept optional session_id query param; if provided, optionally return unlock state for that session (if multi-session support needed); for MVP, assume single session per device",
+        "Add `POST /api/session/new` endpoint: generates session_id server-side (optional), returns session_id to frontend; frontend saves to localStorage",
+        "Write unit test in `frontend/src/utils/session.test.js`: verify initSession() creates UUID, saveSession() writes to localStorage, getSession() retrieves correct values, page reload preserves session"
+      ],
+      "commit_condition": "Run `npm test -- session.test.js` in frontend — all tests pass; Open http://localhost:3000/study/t_test, answer a question (mark appears); refresh page — page reloads, session_id restored from localStorage, same topic_id loads, mark and unlock state from MongoDB display correctly",
+      "example_input": "Browser at http://localhost:3000/study/t_test with QuestionModal open; student types answer, submits, sees mark=82; localStorage empty at start",
+      "example_output": "After submit: localStorage contains {\"session_id\": \"sess_uuid_...\", \"topic_id\": \"t_test\"}; page refresh: StudyPage mounts, retrieves session from localStorage, calls `GET /api/topics/t_test/nodes?session_id=sess_uuid_...\`, MongoDB returns 8 nodes with is_unlocked state reflecting previous answers; tree re-renders showing same unlock state as before refresh; console shows no session initialization errors"
+    },
+    {
+      "id": 7,
+      "title": "MVP Completion: End-to-End Flow Testing",
+      "deliverable": "Full student journey tested end-to-end: upload → tree generation → answer questions → defeat all children → unlock parent → session persists; all 11 acceptance criteria pass",
+      "tasks": [
+        "Write integration test `backend/tests/test_e2e_upload_to_unlock.py`: upload sample.pptx via `POST /api/upload`, verify topic_id and node_count returned, fetch nodes, answer all leaf-node questions with mark ≥ 50, verify parent node is_unlocked=true, verify session persists across endpoint calls",
+        "Write integration test `frontend/tests/e2e.cypress.js` (or Playwright): navigate to upload page, upload sample.pptx, wait for tree render, answer first question via modal, verify feedback displayed, reload page, verify unlock state preserved, answer remaining questions, verify root unlocked",
+        "Run manual walkthrough: upload PPTX on staging, generate tree, click 4 leaf nodes, answer each (score 60-80), verify parents unlock progressively, refresh page, verify state persists, check MongoDB for all Attempt records",
+        "Write smoke test `backend/tests/test_endpoints.py`: verify all endpoints reachable (GET /health, POST /upload, GET /topics/*, POST /answer); no 500 errors",
+        "Document test results in `TEST_RESULTS.md`: list all test cases, pass/fail status, timestamp; confirm all acceptance criteria met",
+        "Create bug log `KNOWN_ISSUES.md` (initially empty if all tests pass); note any minor UI glitches, rate-limiting notes from OpenAI API, S3 access issues"
+      ],
+      "commit_condition": "Run `pytest backend/tests/test_e2e_upload_to_unlock.py -v` — all tests pass; Run `npm run test:e2e` (Cypress/Playwright) — all scenarios pass; Manual walkthrough logs no blocking errors; Open http://localhost:3000, upload test file, complete full flow, verify all 11 criteria met (see completion criteria in brief)",
+      "example_input": "Clean MongoDB, empty S3 bucket, backend and frontend running locally, sample test files available",
+      "example_output": "pytest output: '7 passed in 3.42s'; Cypress output: '5 specs passed'; Manual log: 'Upload > Tree displayed (8 nodes) > Leaf Q1 answered (mark 76) > Leaf Q2 answered (mark 82) > Leaf Q3 answered (mark 68) > Leaf Q4 answered (mark 78) > All children defeated, parent unlocked > Page refresh > Same unlock state visible > ✓ MVP complete'; TEST_RESULTS.md documents all passing tests; KNOWN_ISSUES.md is empty or lists only non-blocking cosmetic issues"
+    },
+    {
+      "id": 8,
+      "title": "Result Display & Feedback Polish",
+      "deliverable": "`GET /api/attempts/{node_id}` returns all previous attempts for a node; frontend displays attempt history with marks, timestamps, and key-point feedback; mark improvement visualization (line chart or badges)",
+      "tasks": [
+        "Create `GET /api/attempts/{node_id}` endpoint in `backend/routes/attempts.py`: returns list of Attempt documents for given node_id, sorted by created_at desc, includes mark, feedback_json, key_points_hit, created_at; filters by session_id from query param",
+        "Create `frontend/src/components/AttemptHistory.jsx`: displays table of previous attempts with columns: Attempt #, Date, Mark, Feedback, Key Points Hit; styled with Tailwind; conditionally shown in QuestionModal after first answer",
+        "Add mark progression visualization in `frontend/src/components/MarkChart.jsx`: small line chart (using chart.js or recharts) showing mark over attempts for a single node; updates in real-time as new answers submitted",
+        "Enhance QuestionModal to show: current node title, question text, input area, submit button, AND (after first submit) attempt history panel and mark chart side-by-side; responsive layout stacks on mobile",
+        "Add `GET /api/topics/{topic_id}/summary` endpoint: returns aggregate stats {\"total_nodes\": int, \"unlocked_nodes\": int, \"average_mark\": float, \"attempts_count\": int} for dashboard overview",
+        "Create `frontend/src/components/TopicSummary.jsx`: displays stats card showing 'Progress: 4/8 nodes unlocked', 'Average Mark: 72%', 'Total Attempts: 12'; updates after each answer"
+      ],
+      "commit_condition": "Run `curl -s http://localhost:8000/api/attempts/n_leaf | jq .` — returns array with ≥1 attempt documents, each with mark, feedback, key_points_hit; Open http://localhost:3000/study/t_test, answer a node question twice with different answers, open QuestionModal — displays attempt history table showing both marks, 'Attempt 1: 76/100 on 2024-01-15T10:00:00Z', 'Attempt 2: 82/100 on 2024-01-15T10:05:00Z'; line chart shows progression from 76 to 
