@@ -1,0 +1,137 @@
+```json
+{
+  "project": {
+    "name": "StudyBattles",
+    "language": "Python 3.11",
+    "runtime": "web (FastAPI backend + React 18 frontend)",
+    "package_manager": "pip (backend), npm (frontend)",
+    "framework": "FastAPI 0.111 (backend), React 18 (frontend)",
+    "database": "MongoDB 7.0",
+    "deployment": "Docker Compose (local dev), AWS EC2 + S3 (production)",
+    "external_services": [
+      "OpenAI GPT-4 API",
+      "AWS S3 (document storage)",
+      "MongoDB Atlas (cloud database option)"
+    ]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Backend and Database Foundation Setup",
+      "deliverable": "`python backend/main.py` starts Uvicorn on http://127.0.0.1:8000; `GET /health` returns `{\"status\": \"ok\", \"db\": \"connected\"}`",
+      "tasks": [
+        "Initialize FastAPI 0.111 project in `backend/` directory with CORS middleware configured for http://localhost:3000",
+        "Install dependencies: uvicorn 0.29, pymongo 4.6, python-multipart 0.0.6, python-dotenv 1.0, pydantic 2.5, aiofiles 23.2, boto3 1.33 into `backend/requirements.txt`",
+        "Configure MongoDB 7.0 connection via `.env` file with `MONGO_URI` pointing to local `mongodb://localhost:27017` or MongoDB Atlas connection string",
+        "Create `backend/database/mongodb.py` with MongoClient initialization, connection validation, and `get_database()` function returning a connected client",
+        "Create `backend/routes/health.py` with `GET /health` endpoint that queries MongoDB and returns `{\"status\": \"ok\", \"db\": \"connected\"}` on success",
+        "Create `backend/main.py` that mounts health router, initializes CORS middleware, and configures Uvicorn to listen on 0.0.0.0:8000",
+        "Initialize AWS S3 credentials in `.env` with `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_S3_BUCKET` (create bucket manually or via Terraform)",
+        "Create `backend/config.py` to centralize all environment variables (MONGO_URI, OpenAI API key, AWS credentials, S3 bucket name) with pydantic BaseSettings"
+      ],
+      "commit_condition": "Run `cd backend && pip install -r requirements.txt && python main.py` — Uvicorn starts on http://127.0.0.1:8000 with no errors; Run `curl -s http://localhost:8000/health | jq .status` — returns `\"ok\"`",
+      "example_input": "Empty project directory with Python 3.11 installed; MongoDB listening on localhost:27017; AWS S3 bucket created with empty credentials in `.env`",
+      "example_output": "Backend runs on http://127.0.0.1:8000; GET /health returns HTTP 200 with `{\"status\": \"ok\", \"db\": \"connected\"}`; no database tables/collections created yet"
+    },
+    {
+      "id": 2,
+      "title": "MongoDB Schema and Core Data Models",
+      "deliverable": "MongoDB collections `sessions`, `topics`, `nodes`, and `responses` created with Pydantic models in `backend/models/` and indexed on all query fields",
+      "tasks": [
+        "Create `backend/models/schemas.py` with Pydantic models: `Session` (id, created_at, updated_at), `Topic` (id, name, subject, root_node_id, created_at), `Node` (id, topic_id, parent_id, children_ids, name, description, level, is_defeated, created_at), `Response` (id, node_id, session_id, user_answer, marks, max_marks, key_points, created_at)",
+        "Create `backend/database/init.py` with MongoDB collection initialization function that creates `sessions`, `topics`, `nodes`, `responses` collections with schema validation and indexes on `topic_id`, `session_id`, `node_id`, `parent_id`",
+        "Create `backend/utils/id_generator.py` with utility functions to generate short IDs using uuid4 prefix (e.g., `topic_64a1b2c3...`)",
+        "Create `backend/services/session_service.py` with functions `create_session()` returning `{\"session_id\": \"...\", \"created_at\": \"...\"}` and `get_session(session_id)` validating session exists in MongoDB",
+        "Create `backend/services/topic_service.py` with function `create_topic(name, subject)` storing document in `topics` collection and returning topic object with root_node_id (initially null)",
+        "Create `backend/services/node_service.py` with functions `create_node(topic_id, parent_id, name, description, level)`, `get_node(node_id)`, `get_children(node_id)`, and `update_node_defeated(node_id)` interfacing with MongoDB `nodes` collection",
+        "Write pytest tests in `tests/test_database.py` validating CRUD operations on all collections — insert, retrieve, update, delete operations complete without errors"
+      ],
+      "commit_condition": "Run `pytest tests/test_database.py -v` — all 15 tests pass (CRUD on 4 collections × 3 operations each + 3 integration tests); Run `mongo localhost:27017 --eval 'db.sessions.indexes().length'` — returns at least 2 indexes (default _id + custom index)",
+      "example_input": "MongoDB running on localhost:27017; `backend/requirements.txt` already includes pymongo; `.env` has MONGO_URI set",
+      "example_output": "MongoDB database contains 4 collections: `sessions`, `topics`, `nodes`, `responses` with compound indexes on topic_id, session_id, node_id; Pydantic models in `backend/models/schemas.py` define all document shapes"
+    },
+    {
+      "id": 3,
+      "title": "Document Upload and File Storage Pipeline",
+      "deliverable": "`POST /api/documents/upload` accepts multipart form data (file + metadata), stores file in AWS S3, returns `{\"document_id\": \"...\", \"filename\": \"...\", \"size_bytes\": ..., \"s3_url\": \"...\"}` with HTTP 201",
+      "tasks": [
+        "Create `backend/services/s3_service.py` with `upload_file_to_s3(file, bucket_name, prefix)` using boto3 client, returning S3 URL and metadata (size, content-type, etag)",
+        "Create `backend/routes/documents.py` with `POST /api/documents/upload` endpoint accepting multipart form data: file (PPTX, DOCX, or video URL), optional metadata (subject, description)",
+        "Implement file validation in upload route: check file type (`.pptx`, `.docx` only for local; YouTube regex for URLs), file size ≤ 50MB, and reject invalid types with HTTP 400 and error message",
+        "Create `backend/services/document_service.py` with `create_document_record(filename, s3_url, size, content_type)` storing metadata in MongoDB `documents` collection (schema: id, filename, s3_url, size_bytes, content_type, created_at)",
+        "Implement error handling in upload route: catch S3 exceptions (access denied, bucket not found) and return HTTP 500 with `{\"error\": \"S3 upload failed\", \"details\": \"...\"}`, catch file read errors and return HTTP 400",
+        "Create `backend/routes/documents.py` with `GET /api/documents/{document_id}` endpoint returning document metadata without re-downloading from S3",
+        "Write pytest tests in `tests/test_upload.py` mocking boto3: test successful upload returns HTTP 201 with correct S3 URL, test file type validation rejects .txt, test oversized file returns HTTP 400, test S3 connection error returns HTTP 500"
+      ],
+      "commit_condition": "Run `pytest tests/test_upload.py -v` — all 8 tests pass; Run `curl -X POST http://localhost:8000/api/documents/upload -F 'file=@test.pptx' -F 'subject=Math'` (with mocked S3) — returns HTTP 201 with `document_id` and `s3_url` fields",
+      "example_input": "S3 bucket configured in `.env`; boto3 client mocked in tests; multipart file ready (test.pptx, 5MB)",
+      "example_output": "HTTP 201 response: `{\"document_id\": \"doc_64a1b2\", \"filename\": \"algebra_101.pptx\", \"size_bytes\": 5242880, \"s3_url\": \"https://bucket.s3.amazonaws.com/documents/...\", \"created_at\": \"2024-01-15T10:00:00Z\"}`; document record stored in MongoDB `documents` collection"
+    },
+    {
+      "id": 4,
+      "title": "OpenAI Topic Tree Generation and Node Creation",
+      "deliverable": "`POST /api/topics/generate-tree` accepts `{\"document_id\": \"...\", \"subject\": \"...\"}`, calls OpenAI GPT-4 to generate 3-level hierarchy, stores all nodes in MongoDB, returns `{\"topic_id\": \"...\", \"root_node_id\": \"...\", \"node_count\": ...}` with HTTP 201",
+      "tasks": [
+        "Install openai 1.3 library into `backend/requirements.txt` and create `backend/services/openai_service.py` initializing OpenAI client with API key from `.env`",
+        "Create `backend/services/tree_generator.py` with `generate_topic_tree(document_metadata, subject)` function that constructs OpenAI prompt: `\"Given a document about {subject}, generate a 3-level topic hierarchy. Format output as JSON: {\\\"name\\\": \\\"Topic\\\", \\\"description\\\": \\\"...\\\", \\\"children\\\": [...]}. Max 4 children per node, max 3 levels deep.\"` using GPT-4",
+        "Implement JSON parsing in `generate_topic_tree()` to extract OpenAI response, validate structure (max depth 3, max 4 children per node), and retry on malformed JSON up to 2 times",
+        "Create recursive function `create_nodes_from_tree(topic_id, tree_dict, parent_id=None, level=0)` that inserts all nodes into MongoDB `nodes` collection, assigning parent_id and children_ids relationships, returning root_node_id",
+        "Update MongoDB `topics` collection document to set `root_node_id` after tree generation completes",
+        "Create `backend/routes/topics.py` with `POST /api/topics/generate-tree` endpoint accepting request body `{\"document_id\": \"...\", \"subject\": \"...\"}`, validating document exists, calling tree generator, and returning response with HTTP 201",
+        "Implement error handling: catch OpenAI API errors (rate limit, auth failure) and return HTTP 500 with `{\"error\": \"Tree generation failed\", \"reason\": \"...\"}`, catch MongoDB write errors and return HTTP 500",
+        "Write pytest tests in `tests/test_tree_generation.py` mocking OpenAI: test valid tree generates 3 levels with correct node relationships, test invalid JSON from OpenAI triggers retry and eventually fails with HTTP 500, test deep tree (depth > 3) is truncated to 3 levels, test tree with >4 children per node is capped at 4"
+      ],
+      "commit_condition": "Run `pytest tests/test_tree_generation.py -v` — all 10 tests pass; Run `curl -X POST http://localhost:8000/api/topics/generate-tree -H 'Content-Type: application/json' -d '{\"document_id\": \"doc_123\", \"subject\": \"Algebra\"}' ` (with mocked OpenAI) — returns HTTP 201 with `node_count` ≥ 5 and ≤ 50",
+      "example_input": "Document `doc_64a1b2` exists in MongoDB; OpenAI API key in `.env`; mocked OpenAI response: 3-level tree with Math topic → Algebra → Quadratic Equations, Linear Equations, Polynomials",
+      "example_output": "HTTP 201: `{\"topic_id\": \"topic_64a1\", \"root_node_id\": \"node_root_64a1\", \"node_count\": 12, \"tree_depth\": 3}`; MongoDB `nodes` collection contains 12 documents with parent-child relationships and all nodes have `is_defeated: false`"
+    },
+    {
+      "id": 5,
+      "title": "Question Generation for Each Leaf Node",
+      "deliverable": "`POST /api/nodes/{node_id}/generate-questions` generates 1 question per predefined type (Define, Solve, Compare, ELI5, Finish the Answer), stores in MongoDB `questions` collection, returns `{\"node_id\": \"...\", \"questions\": [...], \"question_count\": 5}` with HTTP 201",
+      "tasks": [
+        "Create `backend/models/schemas.py` extension with `Question` Pydantic model: id, node_id, question_text, question_type (enum: DEFINE, SOLVE, COMPARE, ELI5, FINISH_ANSWER), difficulty_indicator, created_at",
+        "Create `backend/services/question_generator.py` with `generate_questions_for_node(node_id, node_name, node_description)` function that calls OpenAI GPT-4 five times (one per question type) with templated prompts",
+        "Implement prompt templates for each question type: Define — `\"Define {node_name} in 1-2 sentences.\"`, Solve — `\"Solve a problem involving {node_name}.\"` (problem embedded by GPT), Compare — `\"Compare and contrast {node_name} with a related concept.\"`, ELI5 — `\"Explain {node_name} as if to a 5-year-old.\"`, Finish the Answer — `\"Complete: {node_name} is important because...\"` ",
+        "Create `backend/routes/questions.py` with `POST /api/nodes/{node_id}/generate-questions` endpoint validating node exists and is a leaf node (children_ids is empty), calling question generator, storing questions in MongoDB `questions` collection, returning HTTP 201",
+        "Implement batch OpenAI calls using concurrent.futures.ThreadPoolExecutor to generate all 5 questions in parallel, with timeout of 30 seconds per request",
+        "Add error handling: if node is not a leaf node, return HTTP 400 with `{\"error\": \"Only leaf nodes can have questions\"}`, if OpenAI fails for any question type, retry up to 2 times, if all retries fail, return HTTP 500",
+        "Write pytest tests in `tests/test_question_generation.py` mocking OpenAI: test generates exactly 5 questions with correct types, test non-leaf node returns HTTP 400, test OpenAI timeout triggers retry, test all 5 questions are stored in MongoDB with node_id reference"
+      ],
+      "commit_condition": "Run `pytest tests/test_question_generation.py -v` — all 8 tests pass; Run `curl -X POST http://localhost:8000/api/nodes/leaf_node_123/generate-questions` (with mocked OpenAI) — returns HTTP 201 with `question_count: 5` and all 5 question types present",
+      "example_input": "Leaf node `node_leaf_64a1` exists in MongoDB with name='Quadratic Equations', description='Equations of the form ax^2+bx+c=0'; OpenAI API ready",
+      "example_output": "HTTP 201: `{\"node_id\": \"node_leaf_64a1\", \"questions\": [{\"id\": \"q_1\", \"type\": \"DEFINE\", \"text\": \"Define Quadratic Equations...\"}, {...}], \"question_count\": 5}`; MongoDB `questions` collection contains 5 documents with node_id reference"
+    },
+    {
+      "id": 6,
+      "title": "Answer Submission, Mark Scheme Generation, and Marking Logic",
+      "deliverable": "`POST /api/responses/submit-answer` accepts `{\"session_id\": \"...\", \"node_id\": \"...\", \"question_id\": \"...\", \"user_answer\": \"...\"}`, generates mark scheme via OpenAI, evaluates answer, returns `{\"marks\": ..., \"max_marks\": 10, \"key_points\": [...], \"feedback\": \"...\"}` with HTTP 200",
+      "tasks": [
+        "Create `backend/models/schemas.py` extension with `MarkScheme` Pydantic model: id, question_id, mark_scheme_text, key_points (list of strings), max_marks (default 10), created_at",
+        "Create `backend/services/mark_scheme_generator.py` with `generate_mark_scheme(question_text, question_type)` function that calls OpenAI GPT-4 with prompt: `\"For the question: {question_text}, generate a mark scheme. Return JSON: {\\\"key_points\\\": [\\\"point1\\\", \\\"point2\\\"], \\\"max_marks\\\": 10}\"` ",
+        "Create `backend/services/answer_evaluator.py` with `evaluate_answer(user_answer, question_type, mark_scheme, key_points)` function that calls OpenAI GPT-4 with prompt: `\"Grade this {question_type} answer: {user_answer} against key points: {key_points}. Return JSON: {\\\"marks\\\": ..., \\\"feedback\\\": \\\"...\\\"}\"` , returning marks (0-10) and feedback string",
+        "Create `backend/routes/responses.py` with `POST /api/responses/submit-answer` endpoint accepting session_id, node_id, question_id, user_answer, validating all IDs exist in MongoDB, generating mark scheme if not cached, evaluating answer, storing response in MongoDB `responses` collection, returning HTTP 200",
+        "Implement mark scheme caching in MongoDB `mark_schemes` collection: check if mark scheme exists for question_id before generating, reuse cached version if present (assume mark schemes don't change)",
+        "Add validation in answer submission: reject empty user_answer (return HTTP 400), validate question_id belongs to node_id (return HTTP 400), validate session_id exists (return HTTP 400)",
+        "Implement error handling: OpenAI rate limit → return HTTP 429 with `{\"error\": \"Rate limited, retry in 60 seconds\"}`, OpenAI parsing failure → return HTTP 500, MongoDB write failure → return HTTP 500",
+        "Write pytest tests in `tests/test_marking.py` mocking OpenAI: test mark scheme generates with correct key_points, test answer evaluates and returns marks 0-10, test empty answer rejected with HTTP 400, test mark scheme cached on second call to same question, test invalid node_id returns HTTP 400"
+      ],
+      "commit_condition": "Run `pytest tests/test_marking.py -v` — all 10 tests pass; Run `curl -X POST http://localhost:8000/api/responses/submit-answer -H 'Content-Type: application/json' -d '{\"session_id\": \"sess_123\", \"node_id\": \"node_leaf\", \"question_id\": \"q_1\", \"user_answer\": \"x squared plus 2x plus 1\"}'` (with mocked OpenAI) — returns HTTP 200 with `marks` (int 0-10), `feedback` (string), `key_points` (array)",
+      "example_input": "Session `sess_64a1` exists; leaf node `node_leaf_64a1` has question `q_1` of type DEFINE; user submits answer 'Quadratic Equations are equations with x^2 term'; OpenAI ready",
+      "example_output": "HTTP 200: `{\"marks\": 8, \"max_marks\": 10, \"key_points\": [\"Contains x^2 term\", \"Form ax^2+bx+c=0\"], \"feedback\": \"Good understanding of the form, but didn't mention the solution methods.\"}`; MongoDB `responses` collection stores the record; MongoDB `mark_schemes` collection caches the mark scheme"
+    },
+    {
+      "id": 7,
+      "title": "Node Unlock Mechanics and Parent-Child Defeat Logic",
+      "deliverable": "`POST /api/nodes/{node_id}/check-unlock` verifies all child nodes are defeated, unlocks parent node, returns `{\"parent_unlocked\": true/false, \"node_status\": \"...\"}` with HTTP 200; `GET /api/nodes/{node_id}/status` returns `{\"is_defeated\": true/false, \"children_defeated_count\": ..., \"required_to_unlock_parent\": ...}` with HTTP 200",
+      "tasks": [
+        "Create `backend/services/node_unlock_service.py` with function `mark_node_defeated(node_id, session_id)` that sets `is_defeated: true` for node_id after ALL questions for that node have been answered (at least 5 responses with marks > 0)",
+        "Create function `check_parent_unlock(node_id)` that queries MongoDB: count defeated children of node_id's parent, if count equals total children, set parent `is_defeated: false` and return `{\"parent_unlocked\": true}`, else return `{\"parent_unlocked\": false}`",
+        "Implement defeat criteria: a node is defeated only after student has answered all 5 question types (one per type) AND average marks across 5 questions ≥ 6/10 (60%)",
+        "Create `backend/routes/nodes.py` with `GET /api/nodes/{node_id}/status` endpoint returning `{\"node_id\": \"...\", \"is_defeated\": true/false, \"children_defeated_count\": ..., \"children_total_count\": ..., \"responses_answered\": ..., \"required_to_unlock_parent\": \"All children must be defeated\"}` with HTTP 200",
+        "Create `backend/routes/nodes.py` with `POST /api/nodes/{node_id}/check-unlock` endpoint that calls `check_parent_unlock()` and returns `{\"parent_unlocked\": true/false, \"parent_node_id\": \"...\", \"message\": \"Parent node is now available!\"}` with HTTP 200",
+        "Add validation in check-unlock endpoint: node must have a parent (not root), must have all children defeated, must not already be defeated (idempotent)",
+        "Implement cascade unlock logic: when parent is unlocked, do NOT automatically unlock its parent — only unlock when explicitly checking that parent (on-demand unlock)",
+        "Write pytest tests in `tests/test_unlock_mechanics.py`: test node marked defeated after 5 answers with avg ≥60%, test node NOT defeated if avg <60%, test parent unlocks when all children defeated, test check-unlock is idempotent (calling twice returns same result), test only 5-10 responses per node required (not unlimited)"
+      ],
+      "commit_condition": "Run `pytest tests/test_unlock_mechanics.py -v` — all 12 tests pass; Run `curl -X POST http://localhost:8000/api/nodes/parent_123/check-unlock` — returns HTTP 200 with `parent_unlocked` field as boolean; Run `curl http://localhost:8000/api/nodes/child_123/status` — returns `is_defeated` as boolean and `children_defeated_count`

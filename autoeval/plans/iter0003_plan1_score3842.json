@@ -1,0 +1,139 @@
+```json
+{
+  "project": {
+    "name": "StudyBattles",
+    "language": "Python 3.11",
+    "runtime": "web (FastAPI backend + React 18 frontend)",
+    "package_manager": "pip (backend), npm (frontend)",
+    "framework": "FastAPI 0.111 (backend), React 18 (frontend)",
+    "database": "MongoDB 7.0",
+    "deployment": "Docker Compose (local development), AWS EC2 + S3 (production)",
+    "external_services": [
+      "OpenAI GPT-4 API (tree generation, question generation, answer evaluation)",
+      "AWS S3 (document storage)",
+      "youtube-transcript-api (YouTube transcript extraction)"
+    ]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Environment Setup and Backend Scaffolding",
+      "deliverable": "`python backend/main.py` starts Uvicorn on http://127.0.0.1:8000; `GET /health` returns `{\"status\": \"ok\", \"db\": \"connected\", \"openai\": \"configured\"}`",
+      "tasks": [
+        "Initialize Python 3.11 virtual environment using venv in `backend/` directory",
+        "Create `backend/requirements.txt` with FastAPI 0.111, uvicorn 0.29, pydantic 2.5, motor 3.3 (MongoDB async driver), python-dotenv 1.0, openai 1.7, boto3 1.34, python-multipart 0.0.6",
+        "Install all dependencies via `pip install -r backend/requirements.txt`",
+        "Create `backend/.env` template with placeholders for OPENAI_API_KEY, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_S3_BUCKET, MONGODB_URI",
+        "Create `backend/main.py` with FastAPI app instance, CORS middleware enabled for localhost:3000, and request logging middleware",
+        "Create `backend/config.py` with Pydantic Settings to load environment variables and validate required keys at startup",
+        "Create `backend/database.py` with MongoDB AsyncClient connection pool and health check function",
+        "Create `backend/routes/health.py` with `GET /health` endpoint that checks MongoDB connectivity and OpenAI API key presence"
+      ],
+      "commit_condition": "Run `python backend/main.py` — terminal prints 'Uvicorn running on http://127.0.0.1:8000'; in another terminal run `curl -s http://localhost:8000/health | jq .` — returns `{\"status\": \"ok\", \"db\": \"connected\", \"openai\": \"configured\"}`",
+      "example_input": "Empty `backend/` directory with no Python files",
+      "example_output": "`backend/main.py`, `backend/config.py`, `backend/database.py`, `backend/routes/health.py` exist; terminal shows 'Uvicorn running on http://127.0.0.1:8000'; `GET /health` returns 200 with status, db, and openai keys"
+    },
+    {
+      "id": 2,
+      "title": "MongoDB Schema and Data Models",
+      "deliverable": "`python backend/scripts/init_db.py` creates MongoDB collections with indexes; `db.getCollection('users').findOne()` returns a document matching the User schema",
+      "tasks": [
+        "Create `backend/models.py` with Pydantic models: User (session_id, created_at), Document (user_id, filename, file_type, s3_key, upload_time, status), TopicNode (node_id, label, parent_id, children_ids, depth, is_defeated, defeated_by_user_count, boss_questions list), BossQuestion (question_id, node_id, question_text, question_type, correct_mark_scheme, attempt_count, user_mark, user_answer)",
+        "Create `backend/database.py` extensions with async functions: `create_user(session_id)`, `get_user(session_id)`, `create_document(user_id, filename, s3_key)`, `create_topic_node(user_id, data)`, `create_boss_question(node_id, data)`",
+        "Create `backend/scripts/init_db.py` that connects to MongoDB and creates collections: users, documents, topic_nodes, boss_questions with indexes on user_id, session_id, node_id, parent_id, s3_key",
+        "Run `python backend/scripts/init_db.py` to initialize MongoDB",
+        "Create `backend/models.py` Pydantic export function `to_dict()` for each model to handle datetime serialization and ObjectId conversion to string"
+      ],
+      "commit_condition": "Run `python backend/scripts/init_db.py` — outputs 'Collections and indexes created successfully'; connect to MongoDB with `mongosh` and run `db.users.find().pretty()` — collection exists and is empty; run `db.topic_nodes.getIndexes()` — returns index on user_id and parent_id",
+      "example_input": "MongoDB server running (local or Atlas); backend models not yet defined",
+      "example_output": "MongoDB collections: users (empty), documents (empty), topic_nodes (empty), boss_questions (empty); each collection has indexes on relevant fields; Python models in `backend/models.py` match MongoDB schema"
+    },
+    {
+      "id": 3,
+      "title": "Document Upload and S3 Storage Integration",
+      "deliverable": "`POST /api/documents/upload` accepts multipart form with PPTX/DOCX/MP4, stores in AWS S3, returns `{\"document_id\": \"...\", \"status\": \"processing\", \"filename\": \"...\"}`",
+      "tasks": [
+        "Create `backend/services/s3_service.py` with S3Client wrapper: `upload_file(file_bytes, filename, content_type)` returns s3_key, `download_file(s3_key)` returns file_bytes",
+        "Create `backend/routes/documents.py` with `POST /api/documents/upload` endpoint: accepts multipart file (PPTX, DOCX, MP4), validates file type, calls s3_service.upload_file(), creates Document record in MongoDB with status='processing', returns 201 with document_id and s3_key",
+        "Add `GET /api/documents/{document_id}` endpoint returning Document details (filename, status, upload_time) with 200 or 404",
+        "Add `DELETE /api/documents/{document_id}` endpoint that deletes from MongoDB and S3, returns 204",
+        "Create `backend/services/file_service.py` with utility functions: `validate_file_extension(filename)` returns bool, `extract_file_metadata(file_bytes, filename)` returns dict with file_type and page_count (for PPTX/DOCX using python-pptx or python-docx libraries, approximate for videos)",
+        "Add python-pptx 0.6.23 and python-docx 0.8.11 to requirements.txt"
+      ],
+      "commit_condition": "Run `curl -X POST -F 'file=@sample.pptx' http://localhost:8000/api/documents/upload` — returns HTTP 201 with {\"document_id\": \"...\", \"status\": \"processing\", \"filename\": \"sample.pptx\"}; verify file exists in AWS S3 bucket with correct key; query MongoDB: `db.documents.findOne({filename: 'sample.pptx'})` — returns document with s3_key and upload_time",
+      "example_input": "Empty S3 bucket; no documents in MongoDB; backend running with AWS credentials configured",
+      "example_output": "File uploaded to S3 at `s3://bucket-name/uploads/user_123/sample.pptx`; MongoDB document: `{\"_id\": \"...\", \"user_id\": \"user_123\", \"filename\": \"sample.pptx\", \"file_type\": \"pptx\", \"s3_key\": \"uploads/user_123/sample.pptx\", \"status\": \"processing\", \"upload_time\": \"2024-01-15T10:00:00Z\"}`"
+    },
+    {
+      "id": 4,
+      "title": "Topic Tree Generation from Documents",
+      "deliverable": "`POST /api/documents/{document_id}/generate-tree` returns `{\"tree_id\": \"...\", \"root\": {\"node_id\": \"...\", \"label\": \"...\", \"children\": [...]}}` with max 3 levels of nodes",
+      "tasks": [
+        "Create `backend/services/document_parser.py` with functions: `extract_pptx_text(file_bytes)` returns text, `extract_docx_text(file_bytes)` returns text, `extract_youtube_transcript(video_url)` calls youtube-transcript-api and returns text, `parse_document(document_id, s3_key, file_type)` downloads from S3 and returns extracted text",
+        "Create `backend/services/openai_service.py` with OpenAI client wrapper: `generate_topic_tree(extracted_text, max_depth=3)` calls GPT-4 with system prompt: 'You are an educational content expert. Analyze the provided text and generate a hierarchical topic tree with max 3 levels. Each node must be a single concept. Return JSON with structure: {\"root\": {\"label\": \"...\", \"children\": [...]}}. Include 3-8 children per node.',  parses response JSON and validates structure",
+        "Create `backend/routes/tree.py` with `POST /api/documents/{document_id}/generate-tree` endpoint: validates document exists and has status='processing', calls document_parser.parse_document(), calls openai_service.generate_topic_tree(), stores resulting tree in MongoDB with collection topic_nodes, sets document status='ready', returns 200 with tree structure",
+        "Add youtube-transcript-api 0.4.13 to requirements.txt",
+        "Create `backend/models.py` Tree schema as nested Pydantic model with recursive children structure",
+        "Write `backend/utils/tree_validator.py` with function `validate_tree_structure(tree_dict)` checking max depth 3, min 1 and max 8 children per node, all nodes have unique labels"
+      ],
+      "commit_condition": "Upload a PPTX about 'Photosynthesis' with 3 slides; run `curl -X POST http://localhost:8000/api/documents/{doc_id}/generate-tree` — returns HTTP 200 with tree_id and nested JSON structure showing root node 'Photosynthesis' with 3-5 child nodes (e.g., 'Light-Dependent Reactions', 'Light-Independent Reactions', 'Chloroplast Structure') and grandchildren; query MongoDB: `db.topic_nodes.find({user_id: '...'}).count()` — returns count ≥ 7 (root + children + grandchildren)",
+      "example_input": "Document in S3 with PPTX content about Photosynthesis; document status='processing' in MongoDB",
+      "example_output": "MongoDB topic_nodes documents created in tree structure: root node 'Photosynthesis' (depth=0, parent_id=null, children_ids=[...]), 4 level-1 children (depth=1, parent_id=root), 8 level-2 grandchildren (depth=2, parent_id=level-1); API returns: `{\"tree_id\": \"...\", \"root\": {\"node_id\": \"...\", \"label\": \"Photosynthesis\", \"depth\": 0, \"children\": [...]}}`; document status updated to 'ready'"
+    },
+    {
+      "id": 5,
+      "title": "Boss Question Generation and Mark Scheme Creation",
+      "deliverable": "`POST /api/nodes/{node_id}/generate-questions` returns `{\"node_id\": \"...\", \"questions\": [{\"question_id\": \"...\", \"question_text\": \"...\", \"question_type\": \"Define\", \"mark_scheme\": \"...\"}]}` with 5 question types and LLM mark schemes",
+      "tasks": [
+        "Create `backend/services/question_service.py` with `generate_questions_for_node(node_label, topic_context)` calling GPT-4 with prompt: 'Generate 5 educational questions for the topic \"{node_label}\" using these exact question types: Define (definition question), Solve (calculation/problem), Compare (compare two concepts), ELI5 (explain simply), Finish the Answer (fill-in-the-blank). For each, provide the question text, question_type, and a detailed mark scheme (0-5 points with rubric). Return JSON array of objects with keys: question_text, question_type, mark_scheme.'",
+        "Extend `backend/services/openai_service.py` with `generate_mark_scheme(question_text, question_type)` returning a structured rubric string (e.g., '5pts: All key points correct, 3pts: 70% correct, 0pts: Blank or irrelevant')",
+        "Create `backend/routes/questions.py` with `POST /api/nodes/{node_id}/generate-questions` endpoint: validates node exists, calls question_service.generate_questions_for_node() with node_label and parent labels as context, stores BossQuestion documents in MongoDB for that node_id, returns 201 with list of generated questions including mark schemes",
+        "Add `GET /api/nodes/{node_id}/questions` endpoint returning all BossQuestion documents for that node_id with 200",
+        "Create validation in models.py that question_type is one of ['Define', 'Solve', 'Compare', 'ELI5', 'Finish the Answer']",
+        "Store mark_scheme as plain text string in BossQuestion model (not parsed, for display to user when feedback is shown)"
+      ],
+      "commit_condition": "Run `curl -X POST http://localhost:8000/api/nodes/{node_id}/generate-questions` (node_id='Chloroplast Structure') — returns HTTP 201 with 5 questions, each with unique question_type from ['Define', 'Solve', 'Compare', 'ELI5', 'Finish the Answer']; query MongoDB: `db.boss_questions.find({node_id: '...'}).pretty()` — returns 5 documents with mark_scheme text containing point values (e.g., '5pts', '3pts')",
+      "example_input": "TopicNode 'Chloroplast Structure' exists in MongoDB with node_id='node_456', parent node 'Photosynthesis' exists",
+      "example_output": "5 BossQuestion documents created: {\"_id\": \"...\", \"node_id\": \"node_456\", \"question_text\": \"Define the function of the thylakoid in chloroplasts\", \"question_type\": \"Define\", \"mark_scheme\": \"5pts: Mentions light capture and electron transport; 3pts: Mentions light or electrons; 0pts: Blank or incorrect\", \"attempt_count\": 0}, {...similar for Solve, Compare, ELI5, Finish the Answer...}; API response includes all 5 questions with their mark schemes"
+    },
+    {
+      "id": 6,
+      "title": "Question Answering and LLM-Based Marking",
+      "deliverable": "`POST /api/nodes/{node_id}/submit-answer` accepts answer object, calls GPT-4 to score against mark scheme, returns `{\"question_id\": \"...\", \"user_mark\": 4, \"max_mark\": 5, \"feedback\": \"...\", \"key_points\": \"...\"}`",
+      "tasks": [
+        "Create `backend/services/marking_service.py` with `score_answer(question_text, question_type, user_answer, mark_scheme)` calling GPT-4 with prompt: 'You are an expert education marker. Grade this student answer against the mark scheme. Question: \"{question_text}\", Question Type: {question_type}, Student Answer: \"{user_answer}\", Mark Scheme: \"{mark_scheme}\". Respond with JSON: {\"score\": <int 0-5>, \"feedback\": \"<short explanation>\", \"key_points_hit\": [<list of mark scheme key points the answer demonstrated>]}. Be fair but rigorous.'",
+        "Extend `backend/services/openai_service.py` with helper `call_gpt4_json(prompt, max_tokens=500)` to handle JSON parsing and retry logic",
+        "Create `backend/routes/answers.py` with `POST /api/nodes/{node_id}/submit-answer` endpoint: accepts JSON body with {\"question_id\": \"...\", \"user_answer\": \"...\", \"attempt_number\": 1}, validates question exists, calls marking_service.score_answer(), updates BossQuestion document with user_mark and user_answer, increments attempt_count, returns 200 with score, feedback, and key_points",
+        "Add `GET /api/nodes/{node_id}/answer-history` endpoint returning list of all BossQuestion documents for that node with user_mark, user_answer, feedback for historical review",
+        "Create `backend/models.py` AnswerSubmission and AnswerResponse Pydantic schemas",
+        "Add validation: enforce max_attempts=3 per BossQuestion (reject further submissions after 3 attempts with 429 status)"
+      ],
+      "commit_condition": "Run `curl -X POST http://localhost:8000/api/nodes/node_456/submit-answer -H 'Content-Type: application/json' -d '{\"question_id\": \"q1\", \"user_answer\": \"The thylakoid captures light energy and transfers electrons in the light reactions\", \"attempt_number\": 1}'` — returns HTTP 200 with `{\"question_id\": \"q1\", \"user_mark\": 4, \"max_mark\": 5, \"feedback\": \"Good answer with strong understanding...\", \"key_points\": [\"light capture\", \"electron transport\"]}`; query MongoDB: `db.boss_questions.findOne({_id: ObjectId('q1')})` — returns document with user_mark=4, user_answer populated, attempt_count=1",
+      "example_input": "BossQuestion q1 'Define the function of the thylakoid' with mark_scheme text exists; user submits answer 'The thylakoid captures light energy and transfers electrons in the light reactions'",
+      "example_output": "HTTP 200: `{\"question_id\": \"q1\", \"user_mark\": 4, \"max_mark\": 5, \"feedback\": \"Strong answer. You identified light capture and electron transport, which are key functions. The thylakoid also produces ATP and NADPH, which you could mention next time.\", \"key_points\": [\"light energy capture\", \"electron transport\"]}`. MongoDB BossQuestion updated: `{..., \"user_mark\": 4, \"user_answer\": \"The thylakoid captures light energy...\", \"attempt_count\": 1}`"
+    },
+    {
+      "id": 7,
+      "title": "Node Unlock Mechanics and Backend Tree State",
+      "deliverable": "`GET /api/nodes/{parent_id}/status` returns `{\"parent_id\": \"...\", \"is_defeated\": true, \"children\": [{\"node_id\": \"...\", \"is_defeated\": true, ...}], \"unlock_requirement_met\": true}` reflecting all-children-defeated unlock condition",
+      "tasks": [
+        "Create `backend/services/unlock_service.py` with `check_node_defeated(node_id)` querying all BossQuestion records for that node and returning true if all questions have user_mark >= 3 (passing threshold), `check_parent_unlocked(parent_id)` calling check_node_defeated() for all children and returning true if ALL children are defeated, `unlock_parent_node(parent_id)` updating parent TopicNode document setting is_defeated=true if unlock condition met",
+        "Extend `backend/routes/answers.py` `POST /api/nodes/{node_id}/submit-answer` endpoint to call `unlock_service.check_node_defeated(node_id)` after marking, and if true, call `unlock_service.check_parent_unlocked(parent_id)` for the parent and update parent if all children defeated; return unlock status in response body",
+        "Create `backend/routes/nodes.py` with `GET /api/nodes/{node_id}/status` endpoint returning TopicNode data plus computed fields: `is_defeated` (bool), `children_statuses` (list of child nodes with their is_defeated status), `all_children_defeated` (bool), `parent_unlock_requirement_met` (bool if parent exists and is not already defeated)",
+        "Add `GET /api/nodes/{node_id}/children` endpoint returning immediate children nodes with their defeated status and question count",
+        "Add `GET /api/trees/{tree_id}/status` endpoint returning full tree structure with is_defeated status for every node",
+        "Create validation: a node can only be marked defeated if ALL its BossQuestions have been answered with user_mark >= 3; store defeated_by_user_count counter in TopicNode (for future leaderboard feature)"
+      ],
+      "commit_condition": "Submit answers to all 5 questions in node 'Chloroplast Structure' (node_456), achieving marks 5, 4, 5, 3, 4 (all ≥3); run `curl http://localhost:8000/api/nodes/node_456/status` — returns `{\"node_id\": \"node_456\", \"is_defeated\": true, ...}`; run `curl http://localhost:8000/api/nodes/node_parent/status` — if all sibling nodes are also defeated, returns `{\"node_id\": \"node_parent\", \"is_defeated\": true, ...}`, otherwise `{\"node_id\": \"node_parent\", \"is_defeated\": false, \"all_children_defeated\": false, ...}`",
+      "example_input": "TopicNode tree with structure: root 'Photosynthesis' > 4 children (e.g., 'Light Reactions', 'Calvin Cycle', 'Chloroplast Structure', 'History') > each child has 5 BossQuestions; user has answered all 5 questions in 'Chloroplast Structure' with marks [5, 4, 5, 3, 4]",
+      "example_output": "MongoDB TopicNode 'Chloroplast Structure' (node_456): `{\"node_id\": \"node_456\", \"is_defeated\": true, ...}`; MongoDB TopicNode 'Photosynthesis' (root): still `{\"is_defeated\": false}` because siblings 'Light Reactions', 'Calvin Cycle', 'History' are not yet defeated; API `GET /api/nodes/node_456/status` returns `{\"node_id\": \"node_456\", \"is_defeated\": true, \"label\": \"Chloroplast Structure\", \"children\": [], \"all_questions_answered\": true}`"
+    },
+    {
+      "id": 8,
+      "title": "React Frontend Setup and Component Architecture",
+      "deliverable": "`npm run dev` starts React dev server on http://localhost:3000; browser loads without errors; `npm test` runs unit tests covering 5+ components",
+      "tasks": [
+        "Initialize React 18 frontend with Vite: run `npm create vite@latest frontend -- --template react`",
+        "Create `frontend/src/config/api.js` with axios instance configured for `http://localhost:8000/api`; export configured axios client",
+        "Create folder structure: `frontend/src/components/`, `frontend/src/pages/`, `frontend/src/hooks/`, `frontend/src/utils/`, `frontend/src/styles/`",
+        "Create `frontend/src/App.jsx` with React Router (react-router-dom 
