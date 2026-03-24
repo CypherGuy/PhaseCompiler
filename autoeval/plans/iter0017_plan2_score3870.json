@@ -1,0 +1,174 @@
+```json
+{
+  "project": {
+    "name": "StudyBattles",
+    "language": "Python 3.11",
+    "runtime": "web (REST API backend + React SPA frontend)",
+    "package_manager": "pip (backend), npm (frontend)",
+    "framework": "FastAPI 0.111 (backend), React 18 (frontend)",
+    "database": "MongoDB 7.0",
+    "deployment": "Docker + AWS EC2",
+    "external_services": [
+      "OpenAI GPT-4 API (tree generation, question generation, answer evaluation)",
+      "AWS S3 (document storage and retrieval)",
+      "python-pptx (PPTX parsing)",
+      "python-docx (DOCX parsing)",
+      "youtube-transcript-api (YouTube transcript extraction)"
+    ]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Project Setup and Environment Configuration",
+      "deliverable": "`python backend/main.py` runs without errors and `curl http://localhost:8000/health` returns {\"status\": \"ok\"}; frontend runs via `npm start` at http://localhost:3000",
+      "tasks": [
+        "Create project structure with `backend/` and `frontend/` directories, initialize monorepo with README.md listing tech stack and file layout",
+        "Install Python 3.11, set up virtual environment, and generate `backend/requirements.txt` with FastAPI 0.111, uvicorn 0.29, python-dotenv 1.0, pymongo 4.6, openai 1.3, boto3 1.28, python-pptx 0.6, python-docx 0.8, youtube-transcript-api 0.6, pytest 7.4, pydantic 2.5",
+        "Create `backend/.env.example` with placeholders for OPENAI_API_KEY, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_S3_BUCKET, MONGODB_URI, and populate `backend/.env` with test values",
+        "Create `backend/main.py` with FastAPI app instance, CORS middleware configured for http://localhost:3000, and a GET /health endpoint returning {\"status\": \"ok\"}",
+        "Initialize React 18 frontend with `npx create-react-app frontend`, install axios 1.6, react-router-dom 6.20, and tailwindcss 3.4",
+        "Configure MongoDB 7.0 connection in `backend/config.py` using MongoClient and test connectivity via `python -c \"import config; print(config.get_db_status())\"` returning connection confirmation",
+        "Create `frontend/.env` with REACT_APP_API_URL=http://localhost:8000 and set up proxy in `frontend/package.json` for development",
+        "Initialize git repository in project root with `.gitignore` excluding venv/, node_modules/, .env, __pycache__/"
+      ],
+      "commit_condition": "Run `python backend/main.py` in one terminal (output: 'Uvicorn running on http://127.0.0.1:8000'); in another, run `curl http://localhost:8000/health` and receive {\"status\": \"ok\"}. Run `npm start` in frontend/ and verify http://localhost:3000 loads without errors in browser console.",
+      "example_input": "Blank project directory with no dependencies installed; Python 3.11 and Node.js available",
+      "example_output": "Backend: `curl http://localhost:8000/docs` returns Swagger UI. Frontend: `curl http://localhost:3000` returns index.html; browser at http://localhost:3000 renders a blank React page with no errors in DevTools console. MongoDB at mongodb://localhost:27017 responds to connection test."
+    },
+    {
+      "id": 2,
+      "title": "Document Ingestion Pipeline (PPTX, DOCX, YouTube)",
+      "deliverable": "`POST /api/documents/upload` accepts multipart form data with file or YouTube URL, stores file in AWS S3, extracts text, stores metadata in MongoDB documents collection, and returns {\"document_id\": \"...\", \"extracted_text\": \"...\", \"file_size\": ...}",
+      "tasks": [
+        "Create `backend/services/document_service.py` with functions parse_pptx(file_path) returning list of slide texts, parse_docx(file_path) returning document text, and extract_youtube_transcript(video_url) returning transcript text",
+        "Create `backend/services/s3_service.py` with upload_file(file_obj, key) uploading to AWS S3 bucket and returning file_url, and download_file(key) retrieving and returning file bytes from S3",
+        "Create `backend/routes/documents.py` with POST /api/documents/upload endpoint accepting file (PPTX, DOCX) or YouTube URL, calling document_service and s3_service, storing document metadata ({\"file_name\": \"...\", \"source_type\": \"pptx|docx|youtube\", \"extracted_text\": \"...\", \"s3_key\": \"...\", \"created_at\": \"...\"}) in MongoDB documents collection, returning document_id and extracted_text",
+        "Install dependencies in `backend/requirements.txt`: python-pptx 0.6, python-docx 0.8, youtube-transcript-api 0.6, boto3 1.28",
+        "Create `backend/tests/test_document_upload.py` with tests for parsing PPTX, DOCX, YouTube transcripts, and S3 upload using mock files and boto3 mocks",
+        "Create `frontend/src/components/DocumentUpload.jsx` with form accepting file input or YouTube URL text field, displaying file name and upload button, and button states (uploading, success, error)"
+      ],
+      "commit_condition": "Run `pytest backend/tests/test_document_upload.py -v` — all tests pass. Run `curl -X POST http://localhost:8000/api/documents/upload -F 'file=@test_sample.docx'` and receive {\"document_id\": \"...\", \"extracted_text\": \"...\", \"file_size\": ...} with HTTP 200. Verify AWS S3 bucket contains uploaded file.",
+      "example_input": "Sample DOCX, PPTX, and YouTube video URL available for testing; AWS S3 bucket and MongoDB documents collection created; FastAPI /health endpoint verified",
+      "example_output": "POST /api/documents/upload with test_document.docx returns HTTP 201: {\"document_id\": \"64a1b2c3d4e5f6g7h8i9j0k1\", \"extracted_text\": \"Chapter 1: Introduction...\", \"file_size\": 204800}. Verify db.documents.findOne({\"_id\": \"64a1b2c3d4e5f6g7h8i9j0k1\"}) returns document with s3_key and created_at fields."
+    },
+    {
+      "id": 3,
+      "title": "Topic Hierarchy Generation via OpenAI",
+      "deliverable": "`POST /api/topics/generate` accepts document_id, calls OpenAI GPT-4 to generate a 3-level boss tree, stores tree in MongoDB, and returns {\"tree_id\": \"...\", \"root\": {...}} with full nested structure (each node has id, name, description, level, children, is_defeated=false)",
+      "tasks": [
+        "Create `backend/services/openai_service.py` with generate_topic_tree(extracted_text, max_depth=3) calling OpenAI GPT-4 with prompt instructing it to generate a JSON hierarchical topic tree with max 3 levels, max 3 children per node, each node containing {\"name\": \"...\", \"description\": \"...\", \"children\": [...]}",
+        "Create MongoDB schema in `backend/models/topics.py` defining TopicNode (id, name, description, level, children: list of TopicNode, is_defeated: bool, parent_id: str|null) and TopicTree (tree_id, document_id, root: TopicNode, created_at)",
+        "Create `backend/routes/topics.py` with POST /api/topics/generate accepting document_id, fetching document from db.documents, extracting text, calling openai_service.generate_topic_tree(), storing result in MongoDB topics collection, returning tree_id and root node structure",
+        "Create `backend/tests/test_topic_generation.py` with tests for OpenAI response parsing, tree structure validation, and MongoDB storage using mock OpenAI responses",
+        "Create `frontend/src/components/TopicTree.jsx` displaying nested tree structure with expandable/collapsible nodes, showing node names and descriptions, rendering a 'Start Quiz' button on leaf nodes (level 2)"
+      ],
+      "commit_condition": "Run `pytest backend/tests/test_topic_generation.py -v` — all tests pass. Run `curl -X POST http://localhost:8000/api/topics/generate -H 'Content-Type: application/json' -d '{\"document_id\": \"64a1b2c3d4e5f6g7h8i9j0k1\"}'` and receive {\"tree_id\": \"...\", \"root\": {\"name\": \"...\", \"description\": \"...\", \"children\": [...]}} with HTTP 201. Verify db.topics.findOne({\"tree_id\": \"...\"}) returns complete tree structure with 3 levels.",
+      "example_input": "Document with extracted_text stored in db.documents from Phase 2; OpenAI API key configured in .env; FastAPI running",
+      "example_output": "curl -X POST http://localhost:8000/api/topics/generate -H 'Content-Type: application/json' -d '{\"document_id\": \"64a1b2c3d4e5f6g7h8i9j0k1\"}' returns HTTP 201: {\"tree_id\": \"64a2c3d4e5f6g7h8i9j0k1l2\", \"root\": {\"id\": \"root_1\", \"name\": \"Biology\", \"description\": \"Study of living organisms\", \"level\": 0, \"is_defeated\": false, \"children\": [{\"id\": \"node_1\", \"name\": \"Cells\", \"description\": \"Basic unit of life\", \"level\": 1, \"is_defeated\": false, \"children\": [{\"id\": \"node_1_1\", \"name\": \"Cell Structure\", \"level\": 2, \"is_defeated\": false, \"children\": []}]}]}}. Verify db.topics.findOne({\"tree_id\": \"64a2c3d4e5f6g7h8i9j0k1l2\"}) returns the same tree."
+    },
+    {
+      "id": 4,
+      "title": "Question Generation and Question Type System",
+      "deliverable": "`POST /api/questions/generate` accepts tree_id and node_id, generates 5 questions in predetermined formats (Define, Solve, Compare, ELI5, Finish the Answer), stores questions with mark schemes in MongoDB questions collection, and returns {\"questions\": [{\"id\": \"...\", \"type\": \"Define\", \"prompt\": \"...\", \"format\": \"short_text\"}]}",
+      "tasks": [
+        "Create `backend/models/questions.py` defining Question (id, node_id, type: Enum(Define, Solve, Compare, ELI5, FinishTheAnswer), prompt: str, expected_format: str, mark_scheme: str) and store in MongoDB questions collection",
+        "Create `backend/services/question_service.py` with generate_questions_for_node(tree_id, node_id, node_description) calling OpenAI GPT-4 with prompt requesting 1 question per type (Define, Solve, Compare, ELI5, Finish the Answer) with constraints on word count and format; returning list of Question objects with prompts and mark schemes",
+        "Create `backend/routes/questions.py` with POST /api/questions/generate accepting tree_id and node_id, calling question_service.generate_questions_for_node(), storing questions in db.questions, returning list of questions with id, type, prompt, expected_format fields (NOT mark_scheme)",
+        "Create `backend/tests/test_question_generation.py` with tests for question type validation, OpenAI response parsing, mark scheme generation, and MongoDB storage using mock OpenAI responses",
+        "Create `frontend/src/components/QuestionSet.jsx` displaying one question at a time from a list, showing question type badge (Define, Solve, Compare, ELI5, Finish the Answer), prompt text, and rendering appropriate input component based on type (textarea, number input, etc.)"
+      ],
+      "commit_condition": "Run `pytest backend/tests/test_question_generation.py -v` — all tests pass. Run `curl -X POST http://localhost:8000/api/questions/generate -H 'Content-Type: application/json' -d '{\"tree_id\": \"64a2c3d4e5f6g7h8i9j0k1l2\", \"node_id\": \"node_1_1\"}'` and receive {\"questions\": [{\"id\": \"...\", \"type\": \"Define\", \"prompt\": \"...\", \"expected_format\": \"short_text\"}, ...]} with HTTP 201 and exactly 5 questions.",
+      "example_input": "Topic tree stored in MongoDB topics collection from Phase 3; node_id references leaf node at level 2; OpenAI API key configured",
+      "example_output": "curl -X POST http://localhost:8000/api/questions/generate -H 'Content-Type: application/json' -d '{\"tree_id\": \"64a2c3d4e5f6g7h8i9j0k1l2\", \"node_id\": \"node_1_1\"}' returns HTTP 201: {\"questions\": [{\"id\": \"q1\", \"type\": \"Define\", \"prompt\": \"Define what a mitochondrion is\", \"expected_format\": \"short_text\"}, {\"id\": \"q2\", \"type\": \"Solve\", \"prompt\": \"If a cell has 10 mitochondria and produces 2 ATP per mitochondrion, how many ATP total?\", \"expected_format\": \"number\"}, {\"id\": \"q3\", \"type\": \"Compare\", \"prompt\": \"Compare mitochondria and chloroplasts\", \"expected_format\": \"long_text\"}, {\"id\": \"q4\", \"type\": \"ELI5\", \"prompt\": \"Explain mitochondria like I'm 5\", \"expected_format\": \"short_text\"}, {\"id\": \"q5\", \"type\": \"FinishTheAnswer\", \"prompt\": \"The mitochondrion is called the ... of the cell\", \"expected_format\": \"short_text\"}]}. Verify db.questions.findOne({\"_id\": \"q1\"}) returns document with mark_scheme field."
+    },
+    {
+      "id": 5,
+      "title": "Answer Submission and LLM-Based Marking",
+      "deliverable": "`POST /api/answers/submit` accepts question_id and student_answer, evaluates answer against OpenAI-generated mark scheme using GPT-4, returns {\"question_id\": \"...\", \"score\": 0-100, \"feedback\": \"...\", \"key_points\": [...]}; stores submission in MongoDB answers collection",
+      "tasks": [
+        "Create `backend/models/answers.py` defining Answer (id, question_id, student_answer: str, score: int 0-100, feedback: str, key_points: list[str], submitted_at) stored in MongoDB answers collection",
+        "Create `backend/services/marking_service.py` with evaluate_answer(question_id, student_answer) fetching question and mark_scheme from db.questions, calling OpenAI GPT-4 with prompt comparing student_answer to mark_scheme using rubric, returning {\"score\": 0-100, \"feedback\": \"...\", \"key_points\": [...]}",
+        "Create `backend/routes/answers.py` with POST /api/answers/submit accepting question_id and student_answer, calling marking_service.evaluate_answer(), storing answer document in db.answers, returning score, feedback, key_points (NOT storing answer in response; return evaluation only)",
+        "Create `backend/tests/test_answer_marking.py` with tests for answer submission, LLM marking logic, score calculation, and MongoDB storage using mock OpenAI responses and sample answers",
+        "Create `frontend/src/components/QuestionResponse.jsx` displaying score (0-100 as percentage bar), feedback text, and list of key_points as bullet points after student submits answer",
+        "Create `frontend/src/pages/QuizSession.jsx` managing quiz state: displays current question, captures student answer input, submits via POST /api/answers/submit, displays marking response, and provides 'Next Question' button to cycle through remaining questions"
+      ],
+      "commit_condition": "Run `pytest backend/tests/test_answer_marking.py -v` — all tests pass. Run `curl -X POST http://localhost:8000/api/answers/submit -H 'Content-Type: application/json' -d '{\"question_id\": \"q1\", \"student_answer\": \"A mitochondrion is the powerhouse of the cell\"}'` and receive {\"question_id\": \"q1\", \"score\": 85, \"feedback\": \"Good definition...\", \"key_points\": [\"powerhouse of the cell\", \"produces ATP\"]} with HTTP 201.",
+      "example_input": "Questions generated and stored in db.questions from Phase 4; question_id references a specific question with mark_scheme; student enters text in QuestionResponse textarea",
+      "example_output": "curl -X POST http://localhost:8000/api/answers/submit -H 'Content-Type: application/json' -d '{\"question_id\": \"q1\", \"student_answer\": \"Mitochondrion is an organelle that generates energy\"}' returns HTTP 201: {\"question_id\": \"q1\", \"score\": 75, \"feedback\": \"Partially correct. You identified the organelle and energy generation, but missed the ATP detail.\", \"key_points\": [\"Organelle in cells\", \"Produces ATP through cellular respiration\", \"Double-membraned structure\"]}. Verify db.answers.findOne({\"question_id\": \"q1\"}) contains the student_answer, score, and feedback."
+    },
+    {
+      "id": 6,
+      "title": "Node Unlock Mechanics and Boss Defeat Logic",
+      "deliverable": "`POST /api/nodes/check-unlock` accepts node_id and tree_id, queries db.answers for all child questions answered, calculates unlock status (all children defeated → parent unlocked), updates node is_defeated status in MongoDB topics collection, and returns {\"node_id\": \"...\", \"unlocked\": true|false, \"parent_id\": \"...\", \"status\": \"Parent unlocked!\" | \"X/Y questions remaining\"}",
+      "tasks": [
+        "Create `backend/services/unlock_service.py` with check_children_defeated(tree_id, node_id) querying db.answers for all questions belonging to child nodes, checking if all child questions have score >= 70, returning boolean; and unlock_parent(tree_id, node_id) updating parent node is_defeated=true in db.topics if all children defeated",
+        "Create `backend/routes/nodes.py` with POST /api/nodes/check-unlock accepting node_id and tree_id, calling unlock_service to evaluate unlock status, returning {\"node_id\": \"...\", \"unlocked\": true|false, \"parent_id\": \"...\", \"defeated_children\": int, \"total_children\": int, \"status_message\": \"...\"} and HTTP 200",
+        "Modify `backend/routes/topics.py` GET /api/topics/{tree_id} to return full tree with current is_defeated status for each node reflecting MongoDB state",
+        "Create `backend/tests/test_unlock_mechanics.py` with tests for child defeat detection, unlock propagation, parent node updates, and edge cases (single child, all children defeated, partial defeat)",
+        "Create `frontend/src/utils/treeUtils.js` with function calculateNodeStatus(node, answersMap) checking if node is locked (any child unanswered) or unlocked (all children defeated), returning {\"status\": \"locked|unlocked|available\", \"progress\": \"X/Y\"}",
+        "Modify `frontend/src/components/TopicTree.jsx` to display node status badges (Locked, Available, Defeated) and disable 'Start Quiz' button on locked leaf nodes"
+      ],
+      "commit_condition": "Run `pytest backend/tests/test_unlock_mechanics.py -v` — all tests pass. Given a node with 2 children, submit answers to both child questions with score >= 70 each, then run `curl -X POST http://localhost:8000/api/nodes/check-unlock -H 'Content-Type: application/json' -d '{\"tree_id\": \"...\", \"node_id\": \"...'` and receive {\"unlocked\": true, \"status_message\": \"Parent unlocked!\"} with HTTP 200. Verify db.topics.findOne({\"_id\": \"...\"}) shows parent node with is_defeated=true.",
+      "example_input": "Topic tree with 2-3 nodes per level stored in db.topics; questions answered for child nodes with scores stored in db.answers; POST /api/nodes/check-unlock called with parent node_id",
+      "example_output": "curl -X POST http://localhost:8000/api/nodes/check-unlock -H 'Content-Type: application/json' -d '{\"tree_id\": \"64a2c3d4e5f6g7h8i9j0k1l2\", \"node_id\": \"node_1\"}' (parent with 3 children) returns HTTP 200: {\"node_id\": \"node_1\", \"unlocked\": false, \"parent_id\": \"root_1\", \"defeated_children\": 2, \"total_children\": 3, \"status_message\": \"1 more question to unlock parent!\"}. After submitting answer to 3rd child with score 75, same endpoint returns {\"node_id\": \"node_1\", \"unlocked\": true, \"parent_id\": \"root_1\", \"defeated_children\": 3, \"total_children\": 3, \"status_message\": \"Parent unlocked!\"}"
+    },
+    {
+      "id": 7,
+      "title": "Complete Quiz Flow UI and End-to-End Integration",
+      "deliverable": "Full quiz flow in React from selecting a node to completing all questions: `GET /api/trees/{tree_id}` returns tree, clicking node opens quiz, questions display one-by-one with input matching type, answers submitted, scores displayed with feedback, unlock checks trigger, tree updates; browser at http://localhost:3000/quiz/:tree_id renders all components without errors",
+      "tasks": [
+        "Create `frontend/src/pages/TreeViewer.jsx` displaying full topic tree from API, supporting node expansion/collapse, highlighting unlocked/locked/defeated status visually, and routing to QuizSession on leaf node click",
+        "Create `frontend/src/pages/QuizSession.jsx` managing quiz state: fetches questions for selected node via GET /api/questions/generate, displays questions sequentially, captures answers, submits to POST /api/answers/submit, displays marking response with feedback and key_points, moves to next question on 'Next Question' button click",
+        "Create `frontend/src/components/QuestionInput.jsx` as polymorphic component rendering different input types based on question.type: textarea for Define/Compare/ELI5, number input for Solve, text input for FinishTheAnswer",
+        "Create `frontend/src/components/QuestionResult.jsx` displaying score as percentage (0-100) with color-coded bar (red <50, yellow 50-74, green 75-100), feedback text, and key_points as collapsible list",
+        "Add quiz completion handler in QuizSession: after all questions answered, call POST /api/nodes/check-unlock with node_id and tree_id, store unlock result, and display unlock message or button to return to tree",
+        "Create `frontend/src/api/client.js` with axios instance and helper functions getTree(tree_id), submitAnswer(question_id, answer), checkNodeUnlock(tree_id, node_id), generateQuestions(tree_id, node_id), all with error handling",
+        "Implement 'Return to Tree' button after quiz completion, refreshing tree view to show updated node statuses"
+      ],
+      "commit_condition": "Run backend and frontend. Navigate to http://localhost:3000, upload document (Phase 2), generate tree (Phase 3), click leaf node, complete all 5 questions with scores >= 70, and verify: (1) All questions render correctly based on type, (2) Feedback displays after each submission with score and key_points, (3) After quiz, node shows as 'Defeated' in tree, (4) Parent node status updates to 'Available' if all children defeated. Run `curl -X POST http://localhost:8000/api/nodes/check-unlock ...` and verify HTTP 200 with updated node status.",
+      "example_input": "Topic tree stored in db.topics; questions generated in db.questions from Phase 4; browser at http://localhost:3000/quiz/64a2c3d4e5f6g7h8i9j0k1l2 (tree_id)",
+      "example_output": "Browser at http://localhost:3000/quiz/64a2c3d4e5f6g7h8i9j0k1l2 renders: (1) TopicTree component showing root 'Biology' with expandable children (Cells, Genetics, Evolution); clicking 'Cell Structure' (leaf node) navigates to QuizSession. (2) QuizSession displays 'Question 1/5: Define what a mitochondrion is' with textarea input and 'Submit' button. (3) After submit, QuestionResult shows 'Score: 85%' with green bar, feedback 'Good definition...', and key_points list. (4) 'Next Question' button shows Question 2/5. After Question 5 submitted, 'Return to Tree' button appears. Clicking it shows tree with 'Cell Structure' node badge changed from 'Available' to 'Defeated'; parent 'Cells' node badge changed to 'Available'."
+    },
+    {
+      "id": 8,
+      "title": "Session Persistence via localStorage and State Hydration",
+      "deliverable": "Quiz state (tree_id, node_id, current_question_index, answers_submitted_map) persists to localStorage on every state change; page reload at any point in quiz restores state via `GET /api/quiz-state/{session_id}` retrieving session from MongoDB, displaying correct question with submitted answers grayed out, allowing resume; session_id sent as query param in URL",
+      "tasks": [
+        "Create `backend/models/sessions.py` defining QuizSession (session_id, tree_id, node_id, current_question_index, answers_submitted: {question_id: {score, feedback, key_points}}, started_at, last_activity_at, completed_at|null) stored in MongoDB sessions collection",
+        "Create `backend/routes/sessions.py` with POST /api/sessions/start accepting tree_id and node_id, creating new session document in db.sessions, returning {\"session_id\": \"...\"}; GET /api/sessions/{session_id} returning full session state; PUT /api/sessions/{session_id} accepting updates to current_question_index and answers_submitted, persisting to MongoDB",
+        "Create `frontend/src/utils/sessionStorage.js` with functions saveSessionState(session_id, state), loadSessionState(session_id), clearSessionState(); useEffect hook in QuizSession listening to quiz state changes and calling saveSessionState after each answer submission",
+        "Modify `frontend/src/pages/QuizSession.jsx` to check URL query param for session_id; if present, call GET /api/sessions/{session_id}, hydrate state with tree_id, node_id, current_question_index; render previously answered questions as read-only (grayed out with score and feedback displayed, next button auto-clicking); resume from current unanswered question",
+        "Create localStorage key structure: studybattles_session_{session_id} storing JSON {tree_id, node_id, current_question_index, answers_map}",
+        "Create `frontend/src/components/SessionResume.jsx` displaying message 'Quiz in progress - resuming from Question X/5' if session partially completed, with visual indication of completed vs. pending questions"
+      ],
+      "commit_condition": "Start quiz at http://localhost:3000/quiz/{tree_id}, answer Question 1, verify localStorage contains studybattles_session_{session_id}. Reload page, verify page restores to same state (Question 1 answered, showing result), allows proceeding to Question 2. Interrupt mid-quiz after Question 3, copy URL with session_id, close tab, reopen in new tab, paste URL, verify state restored to Question 4 with Questions 1-3 marked complete.",
+      "example_input": "QuizSession component running; student answers Question 1, localStorage empty; page reload triggered after Question 3 answered",
+      "example_output": "After answering Question 1, localStorage contains: {\"studybattles_session_abc123\": \"{\\\"tree_id\\\": \\\"64a2c3d4e5f6g7h8i9j0k1l2\\\", \\\"node_id\\\": \\\"node_1_1\\\", \\\"current_question_index\\\": 1, \\\"answers_submitted\\\": {\\\"q1\\\": {\\\"score\\\": 85, \\\"feedback\\\": \\\"...\\\", \\\"key_points\\\": [...]}}}}\". On page reload, QuizSession fetches GET /api/sessions/abc123 returning {\"session_id\": \"abc123\", \"tree_id\": \"64a2c3d4e5f6g7h8i9j0k1l2\", \"node_id\": \"node_1_1\", \"current_question_index\": 1, \"answers_submitted\": {...}}. Browser renders Question 2 with Question 1 visible above in read-only mode (grayed, showing score 85% and feedback). SessionResume component displays 'Quiz in progress - resuming from Question 2/5'."
+    },
+    {
+      "id": 9,
+      "title": "Frontend Polish: Loading States, Error Handling, and Responsive Layout",
+      "deliverable": "All pages render with Tailwind CSS responsive grid layout (mobile/tablet/desktop), display loading spinners during API calls (document upload, tree generation, answer submission), show error toasts on API failures (network timeout, 500 errors, validation errors), and gracefully degrade on edge cases (empty tree, no questions generated)",
+      "tasks": [
+        "Create `frontend/src/components/LoadingSpinner.jsx` displaying centered Tailwind spinner animation during async operations (file upload, tree generation, question fetch, answer submission)",
+        "Create `frontend/src/components/ErrorToast.jsx` displaying dismissible error message at top-right corner with Tailwind styling (red background, white text, close button) for 4 seconds or until dismissed manually",
+        "Modify all API calls in `frontend/src/api/client.js` to catch errors, extract error message, and trigger error toast with user-friendly message (e.g., 'Failed to upload document. Check file format.' instead of raw 500 error)",
+        "Update `frontend/src/pages/TreeViewer.jsx` to display LoadingSpinner while fetching tree, ErrorToast on 404 (tree not found), and graceful message if tree has no nodes",
+        "Update `frontend/src/pages/QuizSession.jsx` to display LoadingSpinner while fetching questions, submitting answers, checking unlock status; show ErrorToast on submission failures with retry button",
+        "Update `frontend/src/components/DocumentUpload.jsx` with progress bar during upload (using axios onUploadProgress), disabled button while uploading, success message on completion",
+        "Apply Tailwind responsive classes to all components: DocumentUpload form max-w-md on mobile, md:max-w-2xl on tablet; TreeViewer grid-cols-1 on mobile, md:grid-cols-2 lg:grid-cols-3 for node cards; QuizSession full-width on mobile with left-aligned text, centered on desktop",
+        "Create `frontend/src/contexts/NotificationContext.jsx` with useNotification hook for centralized error/success/warning toast management across app"
+      ],
+      "commit_condition": "Run frontend with network throttling (DevTools: Slow 3G). Upload document and verify LoadingSpinner displays during upload (at least 2 seconds visible). Generate tree and verify spinner; toggle Slow 3G to simulate 500 error and verify ErrorToast appears with error message. Reload http://localhost:3000 on mobile device view (DevTools responsive mode 375px width) and verify layout reflows without horizontal scroll; all buttons and inputs clickable.",
+      "example_input": "All API routes from Phases 1-8 implemented and running; QuizSession and TreeViewer components in place; Tailwind CSS installed in frontend/",
+      "example_output": "Browser at http://localhost:3000 mobile view (375px): DocumentUpload form renders full-width with 'Choose File' button above 'Paste YouTube URL' input, centered with padding. Clicking upload shows centered LoadingSpinner for 3 seconds, then success message 'Document uploaded successfully'. Clicking 'Generate Tree' shows LoadingSpinner; tree renders as single-column list of root node expanded to show all children. Tablet view (768px): tree renders as 2-column grid. Desktop (1024px): 3-column grid. Browser at http://localhost:3000/quiz/:tree_id: QuizSession shows question on left (max-width 400px) on desktop, centered and full-width on mobile. Submitting answer shows LoadingSpinner for 1 second. Simulating network error (DevTools offline) and submitting answer triggers ErrorToast (red background, white text 'Failed to submit answer. Please check your connection.') at top-right for 4 seconds."
+    },
+    {
+      "id": 10,
+      "title": "Result Summary Display with Key-Point Feedback and Metrics",
+      "deliverable": "`GET /api/sessions/{session_id}/summary` returns {\"node_name\": \"...\", \"total_questions\": 5, \"questions_answered\": 5, \"average_score\": 82, \"results\": [{\"question_id\": \"...\", \"type\": \"Define\", \"score\": 85, \"feedback\": \"...\", \"key_points\": [...]}]}; new page ResultsSummary displays results as cards, aggregated metrics (avg score, completion %), and collapsible key-points per question",
+      "tasks": [
+        "Create `backend/routes/sessions.py` GET /api/sessions/{session_id}/summary endpoint fetching session and all associated answers from db.answers, computing average_score (mean of all scores), questions_answered count, returning {\"node_name\": \"...\", \"total_questions\": 5, \"questions_answered\": count, \"average_score\": avg, \"results\": [list of question results with feedback and key_points]}",
+        "Create `frontend/src/pages/ResultsSummary.jsx` displaying: (1) Header with node name and average score as large percentage with color-coded bar (red <50, yellow 50-74, green 75-100), (2) Metrics row showing 'Questions Answered: 5/5' and 'Average Score: 82%', (3) List of question result cards each showing question type badge, prompt, score, feedback, and collapsible key-points section",
+        "Update `frontend/src/pages/QuizSession.jsx` to show 'Quiz Complete!' message after final question answered, display LoadingSpinner while fetching summary, then navigate to ResultsS

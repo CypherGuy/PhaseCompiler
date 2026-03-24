@@ -1,0 +1,661 @@
+{
+  "plan_1": {
+    "test_1": {
+      "req_1": 8,
+      "req_2": 8,
+      "req_3": 9,
+      "req_4": 9
+    },
+    "test_2": {
+      "req_1": 8,
+      "req_2": 8,
+      "req_3": 9,
+      "req_4": 9
+    },
+    "test_3": {
+      "req_1": 10,
+      "req_2": 10,
+      "req_3": 10,
+      "req_4": 8,
+      "req_5": 10
+    },
+    "test_4": {
+      "req_1": 9,
+      "req_2": 7,
+      "req_3": 6,
+      "req_4": 5
+    },
+    "test_5": {
+      "req_1": 9,
+      "req_2": 7,
+      "req_3": 9,
+      "req_4": 10
+    },
+    "test_6": {
+      "req_1": 9,
+      "req_2": 9,
+      "req_3": 9,
+      "req_4": 10
+    },
+    "test_7": {
+      "req_1": 9,
+      "req_2": 9,
+      "req_3": 9,
+      "req_4": 9
+    },
+    "test_8": {
+      "req_1": 9,
+      "req_2": 9,
+      "req_3": 9,
+      "req_4": 8,
+      "req_5": 5
+    },
+    "test_9": {
+      "req_1": 5,
+      "req_2": 7,
+      "req_3": 10,
+      "req_4": 8,
+      "req_5": 8
+    },
+    "test_10": {
+      "req_1": 10,
+      "req_2": 9,
+      "req_3": 10,
+      "req_4": 9,
+      "req_5": 10
+    },
+    "test_11": {
+      "q1": 10,
+      "q2": 10,
+      "q3": 10,
+      "q4": 9,
+      "q5": 10
+    }
+  },
+  "plan_2": {
+    "test_1": {
+      "req_1": 8,
+      "req_2": 8,
+      "req_3": 9,
+      "req_4": 9
+    },
+    "test_2": {
+      "req_1": 8,
+      "req_2": 8,
+      "req_3": 9,
+      "req_4": 9
+    },
+    "test_3": {
+      "req_1": 10,
+      "req_2": 10,
+      "req_3": 10,
+      "req_4": 8,
+      "req_5": 10
+    },
+    "test_4": {
+      "req_1": 9,
+      "req_2": 7,
+      "req_3": 6,
+      "req_4": 5
+    },
+    "test_5": {
+      "req_1": 9,
+      "req_2": 7,
+      "req_3": 8,
+      "req_4": 9
+    },
+    "test_6": {
+      "req_1": 8,
+      "req_2": 8,
+      "req_3": 9,
+      "req_4": 10
+    },
+    "test_7": {
+      "req_1": 9,
+      "req_2": 9,
+      "req_3": 9,
+      "req_4": 9
+    },
+    "test_8": {
+      "req_1": 9,
+      "req_2": 8,
+      "req_3": 8,
+      "req_4": 7,
+      "req_5": 5
+    },
+    "test_9": {
+      "req_1": 5,
+      "req_2": 7,
+      "req_3": 10,
+      "req_4": 7,
+      "req_5": 8
+    },
+    "test_10": {
+      "req_1": 10,
+      "req_2": 9,
+      "req_3": 10,
+      "req_4": 9,
+      "req_5": 10
+    },
+    "test_11": {
+      "q1": 10,
+      "q2": 9,
+      "q3": 9,
+      "q4": 9,
+      "q5": 10
+    }
+  },
+  "plan_3": {
+    "test_1": {
+      "req_1": 8,
+      "req_2": 7,
+      "req_3": 8,
+      "req_4": 9
+    },
+    "test_2": {
+      "req_1": 7,
+      "req_2": 7,
+      "req_3": 9,
+      "req_4": 9
+    },
+    "test_3": {
+      "req_1": 10,
+      "req_2": 10,
+      "req_3": 10,
+      "req_4": 8,
+      "req_5": 10
+    },
+    "test_4": {
+      "req_1": 9,
+      "req_2": 6,
+      "req_3": 5,
+      "req_4": 5
+    },
+    "test_5": {
+      "req_1": 8,
+      "req_2": 7,
+      "req_3": 8,
+      "req_4": 9
+    },
+    "test_6": {
+      "req_1": 9,
+      "req_2": 8,
+      "req_3": 9,
+      "req_4": 10
+    },
+    "test_7": {
+      "req_1": 9,
+      "req_2": 8,
+      "req_3": 8,
+      "req_4": 8
+    },
+    "test_8": {
+      "req_1": 9,
+      "req_2": 7,
+      "req_3": 8,
+      "req_4": 8,
+      "req_5": 5
+    },
+    "test_9": {
+      "req_1": 8,
+      "req_2": 7,
+      "req_3": 10,
+      "req_4": 5,
+      "req_5": 8
+    },
+    "test_10": {
+      "req_1": 9,
+      "req_2": 8,
+      "req_3": 10,
+      "req_4": 8,
+      "req_5": 10
+    },
+    "test_11": {
+      "q1": 9,
+      "q2": 9,
+      "q3": 9,
+      "q4": 8,
+      "q5": 10
+    }
+  },
+  "plan_4": {
+    "test_1": {
+      "req_1": 9,
+      "req_2": 9,
+      "req_3": 9,
+      "req_4": 10
+    },
+    "test_2": {
+      "req_1": 9,
+      "req_2": 9,
+      "req_3": 10,
+      "req_4": 10
+    },
+    "test_3": {
+      "req_1": 10,
+      "req_2": 10,
+      "req_3": 10,
+      "req_4": 10,
+      "req_5": 10
+    },
+    "test_4": {
+      "req_1": 10,
+      "req_2": 8,
+      "req_3": 7,
+      "req_4": 6
+    },
+    "test_5": {
+      "req_1": 10,
+      "req_2": 9,
+      "req_3": 9,
+      "req_4": 10
+    },
+    "test_6": {
+      "req_1": 10,
+      "req_2": 9,
+      "req_3": 10,
+      "req_4": 10
+    },
+    "test_7": {
+      "req_1": 10,
+      "req_2": 9,
+      "req_3": 10,
+      "req_4": 10
+    },
+    "test_8": {
+      "req_1": 10,
+      "req_2": 5,
+      "req_3": 5,
+      "req_4": 5,
+      "req_5": 10
+    },
+    "test_9": {
+      "req_1": 10,
+      "req_2": 8,
+      "req_3": 10,
+      "req_4": 8,
+      "req_5": 10
+    },
+    "test_10": {
+      "req_1": 10,
+      "req_2": 10,
+      "req_3": 10,
+      "req_4": 10,
+      "req_5": 10
+    },
+    "test_11": {
+      "q1": 10,
+      "q2": 10,
+      "q3": 10,
+      "q4": 10,
+      "q5": 10
+    }
+  },
+  "plan_5": {
+    "test_1": {
+      "req_1": 9,
+      "req_2": 8,
+      "req_3": 9,
+      "req_4": 10
+    },
+    "test_2": {
+      "req_1": 8,
+      "req_2": 8,
+      "req_3": 9,
+      "req_4": 9
+    },
+    "test_3": {
+      "req_1": 10,
+      "req_2": 10,
+      "req_3": 10,
+      "req_4": 10,
+      "req_5": 10
+    },
+    "test_4": {
+      "req_1": 9,
+      "req_2": 7,
+      "req_3": 7,
+      "req_4": 6
+    },
+    "test_5": {
+      "req_1": 9,
+      "req_2": 8,
+      "req_3": 8,
+      "req_4": 9
+    },
+    "test_6": {
+      "req_1": 9,
+      "req_2": 8,
+      "req_3": 9,
+      "req_4": 10
+    },
+    "test_7": {
+      "req_1": 9,
+      "req_2": 8,
+      "req_3": 9,
+      "req_4": 9
+    },
+    "test_8": {
+      "req_1": 9,
+      "req_2": 5,
+      "req_3": 5,
+      "req_4": 8,
+      "req_5": 9
+    },
+    "test_9": {
+      "req_1": 10,
+      "req_2": 8,
+      "req_3": 10,
+      "req_4": 8,
+      "req_5": 9
+    },
+    "test_10": {
+      "req_1": 9,
+      "req_2": 10,
+      "req_3": 10,
+      "req_4": 10,
+      "req_5": 10
+    },
+    "test_11": {
+      "q1": 10,
+      "q2": 9,
+      "q3": 9,
+      "q4": 10,
+      "q5": 10
+    }
+  },
+  "plan_6": {
+    "test_1": {
+      "req_1": 9,
+      "req_2": 8,
+      "req_3": 9,
+      "req_4": 9
+    },
+    "test_2": {
+      "req_1": 8,
+      "req_2": 8,
+      "req_3": 9,
+      "req_4": 9
+    },
+    "test_3": {
+      "req_1": 10,
+      "req_2": 10,
+      "req_3": 10,
+      "req_4": 10,
+      "req_5": 10
+    },
+    "test_4": {
+      "req_1": 9,
+      "req_2": 7,
+      "req_3": 7,
+      "req_4": 6
+    },
+    "test_5": {
+      "req_1": 9,
+      "req_2": 8,
+      "req_3": 8,
+      "req_4": 9
+    },
+    "test_6": {
+      "req_1": 9,
+      "req_2": 8,
+      "req_3": 9,
+      "req_4": 10
+    },
+    "test_7": {
+      "req_1": 9,
+      "req_2": 8,
+      "req_3": 9,
+      "req_4": 8
+    },
+    "test_8": {
+      "req_1": 9,
+      "req_2": 5,
+      "req_3": 5,
+      "req_4": 8,
+      "req_5": 9
+    },
+    "test_9": {
+      "req_1": 10,
+      "req_2": 8,
+      "req_3": 10,
+      "req_4": 8,
+      "req_5": 9
+    },
+    "test_10": {
+      "req_1": 9,
+      "req_2": 10,
+      "req_3": 10,
+      "req_4": 10,
+      "req_5": 10
+    },
+    "test_11": {
+      "q1": 10,
+      "q2": 9,
+      "q3": 8,
+      "q4": 10,
+      "q5": 10
+    }
+  },
+  "plan_7": {
+    "test_1": {
+      "req_1": 9,
+      "req_2": 9,
+      "req_3": 9,
+      "req_4": 10
+    },
+    "test_2": {
+      "req_1": 8,
+      "req_2": 8,
+      "req_3": 10,
+      "req_4": 9
+    },
+    "test_3": {
+      "req_1": 10,
+      "req_2": 10,
+      "req_3": 10,
+      "req_4": 10,
+      "req_5": 10
+    },
+    "test_4": {
+      "req_1": 9,
+      "req_2": 7,
+      "req_3": 6,
+      "req_4": 5
+    },
+    "test_5": {
+      "req_1": 9,
+      "req_2": 7,
+      "req_3": 9,
+      "req_4": 10
+    },
+    "test_6": {
+      "req_1": 9,
+      "req_2": 9,
+      "req_3": 9,
+      "req_4": 10
+    },
+    "test_7": {
+      "req_1": 10,
+      "req_2": 9,
+      "req_3": 9,
+      "req_4": 9
+    },
+    "test_8": {
+      "req_1": 9,
+      "req_2": 9,
+      "req_3": 9,
+      "req_4": 8,
+      "req_5": 5
+    },
+    "test_9": {
+      "req_1": 10,
+      "req_2": 8,
+      "req_3": 10,
+      "req_4": 7,
+      "req_5": 9
+    },
+    "test_10": {
+      "req_1": 10,
+      "req_2": 10,
+      "req_3": 10,
+      "req_4": 9,
+      "req_5": 10
+    },
+    "test_11": {
+      "q1": 10,
+      "q2": 9,
+      "q3": 10,
+      "q4": 9,
+      "q5": 10
+    }
+  },
+  "plan_8": {
+    "test_1": {
+      "req_1": 9,
+      "req_2": 9,
+      "req_3": 9,
+      "req_4": 10
+    },
+    "test_2": {
+      "req_1": 8,
+      "req_2": 8,
+      "req_3": 10,
+      "req_4": 9
+    },
+    "test_3": {
+      "req_1": 10,
+      "req_2": 10,
+      "req_3": 10,
+      "req_4": 9,
+      "req_5": 10
+    },
+    "test_4": {
+      "req_1": 9,
+      "req_2": 7,
+      "req_3": 6,
+      "req_4": 5
+    },
+    "test_5": {
+      "req_1": 9,
+      "req_2": 7,
+      "req_3": 9,
+      "req_4": 9
+    },
+    "test_6": {
+      "req_1": 9,
+      "req_2": 8,
+      "req_3": 9,
+      "req_4": 10
+    },
+    "test_7": {
+      "req_1": 10,
+      "req_2": 9,
+      "req_3": 9,
+      "req_4": 9
+    },
+    "test_8": {
+      "req_1": 9,
+      "req_2": 8,
+      "req_3": 9,
+      "req_4": 8,
+      "req_5": 5
+    },
+    "test_9": {
+      "req_1": 10,
+      "req_2": 8,
+      "req_3": 10,
+      "req_4": 7,
+      "req_5": 9
+    },
+    "test_10": {
+      "req_1": 10,
+      "req_2": 10,
+      "req_3": 10,
+      "req_4": 9,
+      "req_5": 10
+    },
+    "test_11": {
+      "q1": 10,
+      "q2": 9,
+      "q3": 9,
+      "q4": 9,
+      "q5": 10
+    }
+  },
+  "plan_9": {
+    "test_1": {
+      "req_1": 9,
+      "req_2": 9,
+      "req_3": 9,
+      "req_4": 10
+    },
+    "test_2": {
+      "req_1": 8,
+      "req_2": 8,
+      "req_3": 9,
+      "req_4": 9
+    },
+    "test_3": {
+      "req_1": 10,
+      "req_2": 10,
+      "req_3": 10,
+      "req_4": 10,
+      "req_5": 10
+    },
+    "test_4": {
+      "req_1": 9,
+      "req_2": 7,
+      "req_3": 6,
+      "req_4": 5
+    },
+    "test_5": {
+      "req_1": 9,
+      "req_2": 7,
+      "req_3": 9,
+      "req_4": 9
+    },
+    "test_6": {
+      "req_1": 9,
+      "req_2": 9,
+      "req_3": 9,
+      "req_4": 10
+    },
+    "test_7": {
+      "req_1": 10,
+      "req_2": 9,
+      "req_3": 9,
+      "req_4": 9
+    },
+    "test_8": {
+      "req_1": 9,
+      "req_2": 9,
+      "req_3": 9,
+      "req_4": 8,
+      "req_5": 5
+    },
+    "test_9": {
+      "req_1": 10,
+      "req_2": 8,
+      "req_3": 10,
+      "req_4": 7,
+      "req_5": 9
+    },
+    "test_10": {
+      "req_1": 10,
+      "req_2": 10,
+      "req_3": 10,
+      "req_4": 9,
+      "req_5": 10
+    },
+    "test_11": {
+      "q1": 10,
+      "q2": 10,
+      "q3": 10,
+      "q4": 9,
+      "q5": 10
+    }
+  },
+  "analysis": "The most common failure patterns are: (1) Test 4 (arbitrary ordering) consistently scores low across all plans because tasks within phases are numbered sequentially even when many are independent and could be parallelized, and independent items are presented as ordered lists rather than bullets. (2) Test 8 (example I/O) is weak for CLI-only projects (Plans 4-6) where API/UI/database examples are not applicable, and several web app plans lack explicit curl/request + JSON response examples for every phase, particularly frontend-focused phases. (3) Test 5 (deliverable specificity) loses points across plans for occasional use of vague words like 'working' or 'complete' and some deliverables that describe behavior without naming concrete artifacts.",
+  "total_score": 3870
+}
