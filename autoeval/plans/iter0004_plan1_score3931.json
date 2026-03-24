@@ -1,0 +1,135 @@
+```json
+{
+  "project": {
+    "name": "StudyBattles",
+    "language": "Python 3.11",
+    "runtime": "web (FastAPI backend + React frontend)",
+    "package_manager": "pip (backend), npm (frontend)",
+    "framework": "FastAPI 0.111 (backend), React 18 (frontend)",
+    "database": "MongoDB 7.0",
+    "deployment": "Docker + AWS EC2",
+    "external_services": ["OpenAI GPT-4 API", "AWS S3", "YouTube Data API (for video metadata extraction)"]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Environment Setup and Backend Scaffolding",
+      "deliverable": "Running FastAPI application on `http://localhost:8000` with health check endpoint and CORS middleware configured",
+      "tasks": [
+        "Initialize Python 3.11 virtual environment and install FastAPI 0.111, uvicorn 0.29, python-dotenv 1.0, and pytest 7.4 into `requirements.txt`",
+        "Create `backend/main.py` with FastAPI app instance, CORS middleware, and basic error handling",
+        "Add `GET /health` endpoint returning `{\"status\": \"ok\", \"timestamp\": \"ISO-8601\"}` in `backend/routes/health.py`",
+        "Create `backend/config.py` with environment variable loading for MongoDB connection string, OpenAI API key, AWS credentials, and S3 bucket name",
+        "Initialize `backend/models/`, `backend/routes/`, `backend/services/`, and `backend/tests/` directories with `__init__.py` files",
+        "Write pytest test suite in `tests/test_health.py` validating health endpoint returns correct status code and JSON structure",
+        "Create `docker-compose.yml` with MongoDB 7.0 service, exposing port 27017, and environment variables for local development"
+      ],
+      "commit_condition": "Run `python -m pytest tests/test_health.py -v` — all 3 tests pass with 0 failures; run `python backend/main.py` and `curl -s http://localhost:8000/health | jq .status` — returns `\"ok\"`",
+      "example_input": "Empty project directory with no code",
+      "example_output": "Terminal shows `Uvicorn running on http://127.0.0.1:8000`; `curl http://localhost:8000/health` returns `{\"status\":\"ok\",\"timestamp\":\"2024-01-15T10:00:00Z\"}`; `docker-compose up -d` starts MongoDB 7.0 on port 27017"
+    },
+    {
+      "id": 2,
+      "title": "Database Schema and MongoDB Connection",
+      "deliverable": "MongoDB collections `sessions`, `topics`, `nodes`, `answers` with validated Pydantic schemas and working CRUD operations",
+      "tasks": [
+        "Create `backend/db.py` with MongoClient connection using `MONGODB_URI` from environment, connection pooling, and error handling",
+        "Define Pydantic models in `backend/models/schemas.py`: `SessionModel` (session_id, created_at, updated_at, current_topic_id), `TopicModel` (topic_id, title, description, root_node_id, student_id, created_at), `NodeModel` (node_id, topic_id, content, question_text, question_type, answer_schema, parent_node_id, child_node_ids, is_defeated, defeat_requirements), `AnswerModel` (answer_id, node_id, student_answer, llm_evaluation, score, created_at)",
+        "Create MongoDB indexes on `topics.topic_id`, `topics.student_id`, `nodes.topic_id`, `nodes.node_id`, `answers.node_id` for query performance",
+        "Implement `backend/services/mongo_service.py` with methods: `create_session(session_data)`, `get_session(session_id)`, `create_topic(topic_data)`, `get_topic(topic_id)`, `get_topic_by_student(student_id)`, `get_node(node_id)`, `update_node_defeated_status(node_id, is_defeated)`, `save_answer(answer_data)`",
+        "Add validation in MongoDB service: ensure node_id uniqueness per topic, validate parent_node_id references exist, enforce max tree depth of 3",
+        "Write integration tests in `tests/test_mongo.py` verifying connection, CRUD operations for all collections, and constraint enforcement",
+        "Create database initialization script `backend/init_db.py` that runs on startup to ensure collections and indexes exist"
+      ],
+      "commit_condition": "Run `python -m pytest tests/test_mongo.py -v` — all 15 tests pass; run `docker-compose up -d && python backend/init_db.py` and verify MongoDB collections `sessions`, `topics`, `nodes`, `answers` exist with appropriate indexes",
+      "example_input": "MongoDB 7.0 running on localhost:27017 with empty database",
+      "example_output": "Pydantic models defined in `backend/models/schemas.py`; run `python -c \"from backend.services.mongo_service import MongoService; svc = MongoService(); svc.create_topic({'title': 'Algebra', 'student_id': 'user_1'})\"` — document inserted to `topics` collection with auto-generated `topic_id`; querying `db.topics.findOne()` returns `{\"topic_id\": \"64a1b2c3\", \"title\": \"Algebra\", \"student_id\": \"user_1\"}`"
+    },
+    {
+      "id": 3,
+      "title": "Document Upload Infrastructure and S3 Integration",
+      "deliverable": "`POST /api/upload` endpoint accepts PPTX, DOCX, and video URLs; stores files in AWS S3 and returns document metadata with storage path",
+      "tasks": [
+        "Install boto3 3.28, python-pptx 0.6, python-docx 0.8, and requests 2.31 for AWS S3, file parsing, and HTTP requests",
+        "Create `backend/services/s3_service.py` with methods: `upload_file_to_s3(file_bytes, file_name, bucket_name)` returning S3 object key, `extract_text_from_pptx(pptx_bytes)` returning concatenated slide text, `extract_text_from_docx(docx_bytes)` returning document paragraphs, `fetch_youtube_transcript(video_url)` returning transcript text using youtube-transcript-api",
+        "Implement `backend/routes/upload.py` with `POST /api/upload` endpoint accepting multipart form data (file or `video_url` parameter), validating file type (PPTX, DOCX) or YouTube URL format, calling appropriate extraction service, uploading raw file to S3, storing metadata in `documents` MongoDB collection (document_id, student_id, file_name, file_type, s3_key, extracted_text, created_at), returning `{\"document_id\": \"...\", \"file_name\": \"...\", \"extracted_text_preview\": \"first 200 chars\", \"s3_key\": \"...\"}`",
+        "Add error handling for unsupported file types, S3 upload failures, transcript fetch failures, and document size limits (max 50 MB)",
+        "Create `backend/models/document.py` Pydantic schema with validation for file_type enum and document_id format",
+        "Write tests in `tests/test_upload.py` covering PPTX extraction, DOCX extraction, YouTube transcript fetch, S3 upload simulation (mocked), and endpoint validation for invalid inputs",
+        "Configure AWS S3 bucket name, region, and credentials in `backend/config.py` using environment variables `AWS_BUCKET_NAME`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`"
+      ],
+      "commit_condition": "Run `pytest tests/test_upload.py -v` — all 10 tests pass; run `curl -X POST http://localhost:8000/api/upload -F 'file=@sample.docx'` (with valid DOCX file) — returns HTTP 201 with `{\"document_id\": \"...\", \"file_name\": \"sample.docx\", \"extracted_text_preview\": \"...\"}`; verify file uploaded to S3 using `aws s3 ls s3://bucket-name/` or moto mock",
+      "example_input": "Empty S3 bucket; sample.docx file on disk containing text 'Chapter 1: Algebra Fundamentals'; empty `documents` collection in MongoDB",
+      "example_output": "HTTP 201 response: `{\"document_id\": \"doc_64a1b2c3\", \"file_name\": \"sample.docx\", \"extracted_text_preview\": \"Chapter 1: Algebra Fundamentals\", \"s3_key\": \"uploads/doc_64a1b2c3/sample.docx\"}`; MongoDB `documents` collection contains one document with `s3_key` pointing to S3 object; S3 object accessible via `aws s3 cp s3://bucket/uploads/doc_64a1b2c3/sample.docx -` outputs file content"
+    },
+    {
+      "id": 4,
+      "title": "Topic Tree Generation via OpenAI",
+      "deliverable": "`POST /api/topics/generate` endpoint accepts document_id, calls OpenAI GPT-4 API to generate hierarchical topic tree, persists tree to MongoDB with root node, and returns complete tree structure (max depth 3, leaf nodes contain question types)",
+      "tasks": [
+        "Install openai 1.3 Python client for GPT-4 API calls",
+        "Create `backend/services/openai_service.py` with method `generate_topic_tree(extracted_text, max_depth=3)` that calls OpenAI GPT-4 with system prompt: 'Generate a study topic hierarchy from the provided text. Output JSON with structure: {\"title\": \"topic\", \"description\": \"brief desc\", \"children\": [...]}. Max depth 3. Leaf nodes must include question_types array with values from [\"Define\", \"Solve\", \"Compare\", \"ELI5\", \"FinishTheAnswer\"]. Leaf nodes must include answer_schema describing expected answer format.'",
+        "Implement tree parsing logic in `backend/services/openai_service.py` to recursively convert OpenAI JSON response into `NodeModel` objects, assigning unique node_ids, setting parent_child relationships, and validating max depth constraint",
+        "Create `backend/routes/topics.py` with `POST /api/topics/generate` endpoint accepting `{\"document_id\": \"...\"}`, retrieving document from MongoDB, fetching extracted_text, calling OpenAI service, storing complete topic with root node_id in `topics` collection, recursively storing all nodes in `nodes` collection, returning `{\"topic_id\": \"...\", \"title\": \"...\", \"root_node_id\": \"...\", \"tree_structure\": {...full tree object...}}`",
+        "Add OpenAI API error handling (rate limiting, token limit exceeded, invalid response format) with retry logic (exponential backoff, max 3 retries)",
+        "Implement tree depth validation: reject trees exceeding depth 3; log warning if leaf nodes lack question_types or answer_schema",
+        "Write tests in `tests/test_openai_service.py` mocking OpenAI responses and verifying tree parsing, node ID generation, and depth validation"
+      ],
+      "commit_condition": "Run `pytest tests/test_openai_service.py -v` — all 8 tests pass; with mocked OpenAI, call `curl -X POST http://localhost:8000/api/topics/generate -H 'Content-Type: application/json' -d '{\"document_id\": \"doc_64a1b2c3\"}'` — returns HTTP 201 with `topic_id`, `root_node_id`, and `tree_structure` object containing nested children; query MongoDB `db.nodes.find({topic_id: \"topic_xyz\"}).count()` — returns count ≥ 5",
+      "example_input": "Document `doc_64a1b2c3` in MongoDB with extracted_text: 'Algebra covers solving linear equations, quadratic equations, and polynomials. Students learn factoring, graphing, and substitution methods.'",
+      "example_output": "HTTP 201: `{\"topic_id\": \"topic_64a1b2c3\", \"title\": \"Algebra\", \"root_node_id\": \"node_root_1\", \"tree_structure\": {\"node_id\": \"node_root_1\", \"content\": \"Algebra\", \"children\": [{\"node_id\": \"node_1\", \"content\": \"Solving Equations\", \"children\": [{\"node_id\": \"node_1_1\", \"content\": \"Linear Equations\", \"question_type\": \"Solve\", \"answer_schema\": \"step-by-step solution\"}]}, ...]}}`; MongoDB `nodes` collection contains 8 documents with node_ids, topic_id, and parent-child relationships; leaf nodes have `question_type` and `answer_schema` fields"
+    },
+    {
+      "id": 5,
+      "title": "Question Answering Backend and Marking Evaluation",
+      "deliverable": "`POST /api/nodes/{node_id}/answer` endpoint accepts student answer, generates OpenAI-based mark scheme, evaluates answer against scheme, returns score (0–100), feedback with key points, and updates node defeat status if all children defeated",
+      "tasks": [
+        "Create `backend/services/marking_service.py` with method `generate_mark_scheme(question_text, answer_schema)` calling OpenAI GPT-4 with prompt: 'Generate a concise mark scheme for this question. Output JSON: {\"key_points\": [\"point1\", \"point2\", ...], \"marking_criteria\": {\"point1\": {\"description\": \"...\", \"marks\": 20}}, \"total_marks\": 100}'. Parse JSON and return mark scheme object.",
+        "Implement `evaluate_answer(student_answer, question_text, mark_scheme)` in marking service calling OpenAI GPT-4 with prompt: 'Student answered: \"{student_answer}\". Mark scheme: {mark_scheme}. Return JSON: {\"score\": <0-100>, \"feedback\": \"brief feedback\", \"matched_key_points\": [\"point1\", ...], \"missing_key_points\": [\"point2\", ...]}'. Parse response and return evaluation object.",
+        "Create `backend/routes/answers.py` with `POST /api/nodes/{node_id}/answer` endpoint accepting `{\"student_answer\": \"...\"}`, retrieving node from MongoDB (including question_text, answer_schema), generating mark scheme (cached if exists), evaluating answer via marking service, storing answer document in `answers` collection (answer_id, node_id, student_answer, llm_evaluation, score, created_at), returning `{\"answer_id\": \"...\", \"score\": 75, \"feedback\": \"...\", \"matched_key_points\": [...], \"missing_key_points\": [...]}`",
+        "Implement node defeat logic: after storing answer with score ≥ 70, check if all sibling nodes (same parent) are defeated; if yes, set parent node `is_defeated = true` and return `{..., \"parent_unlocked\": true, \"parent_node_id\": \"...\"}`",
+        "Add caching for mark schemes: store `mark_scheme` in node document after first generation; reuse on subsequent answers for same node",
+        "Write tests in `tests/test_marking.py` covering mark scheme generation, answer evaluation, score calculation, node defeat triggering, and parent unlock mechanics"
+      ],
+      "commit_condition": "Run `pytest tests/test_marking.py -v` — all 12 tests pass; call `curl -X POST http://localhost:8000/api/nodes/node_1_1/answer -H 'Content-Type: application/json' -d '{\"student_answer\": \"x = 5\"}'` — returns HTTP 201 with `{\"score\": 85, \"feedback\": \"...\", \"matched_key_points\": [...]}` and status code 201; verify answer document inserted to MongoDB `answers` collection with score field",
+      "example_input": "Node `node_1_1` in MongoDB with `question_type: \"Solve\"`, `question_text: \"Solve 2x + 3 = 13\"`, `answer_schema: \"step-by-step algebraic solution\"`, `parent_node_id: \"node_1\"`; sibling node `node_1_2` with `is_defeated: true`",
+      "example_output": "HTTP 201: `{\"answer_id\": \"ans_64a1b2c3\", \"score\": 85, \"feedback\": \"Correct solution with clear steps. Minor presentation issue.\", \"matched_key_points\": [\"isolate variable\", \"perform inverse operations\"], \"missing_key_points\": [], \"parent_unlocked\": true, \"parent_node_id\": \"node_1\"}`; MongoDB `answers` collection contains new document with all fields; MongoDB `nodes` collection shows `node_1` with `is_defeated: true`"
+    },
+    {
+      "id": 6,
+      "title": "React Frontend Initialization and Topic Tree Visualization",
+      "deliverable": "React application on `http://localhost:3000` displaying topic tree as interactive node graph; users can navigate tree, click nodes to view question, and see defeat status (locked/unlocked)",
+      "tasks": [
+        "Initialize React 18 project with Vite 5.0 using `npm create vite@latest studybattles-frontend -- --template react` and install axios 1.6, zustand 4.4, react-router-dom 6.21 for HTTP, state management, and routing",
+        "Create `.env.local` with `VITE_API_URL=http://localhost:8000` for development",
+        "Implement API client in `frontend/src/api/client.js` with axios instance, base URL from environment, and methods: `uploadDocument(file)`, `generateTopicTree(documentId)`, `getNode(nodeId)`, `submitAnswer(nodeId, studentAnswer)`, `getTopic(topicId)`",
+        "Create Zustand store in `frontend/src/store/topicStore.js` managing state: `currentTopic`, `currentNode`, `treeStructure`, `defeatedNodes`, `sessionId`, with actions: `setCurrentTopic()`, `setCurrentNode()`, `updateDefeatedNode()`",
+        "Build `frontend/src/components/TopicTree.jsx` rendering tree as SVG graph or interactive nested divs showing node hierarchy, node titles, visual distinction for defeated (green checkmark) vs undefeated (red lock) nodes, clickable nodes linking to question view",
+        "Create `frontend/src/pages/TopicPage.jsx` displaying current topic title, tree visualization, breadcrumb navigation showing ancestor nodes, and 'Generate Tree' button linking to upload flow",
+        "Add responsive Tailwind CSS styling in `frontend/src/globals.css` with mobile breakpoints; configure Tailwind in `tailwind.config.js`",
+        "Write component tests in `frontend/src/__tests__/TopicTree.test.jsx` verifying tree renders nodes, defeated nodes display checkmarks, undefeated nodes display locks, and node click events fire correctly"
+      ],
+      "commit_condition": "Run `npm install && npm run dev` in frontend directory — Vite dev server starts on `http://localhost:3000`; open browser to `http://localhost:3000`, verify page loads without errors in console; with mocked API responses, navigate TopicTree component and verify tree structure renders; run `npm test` — all 6 tests pass",
+      "example_input": "Vite React project skeleton; no API integration; mock topic tree data from store",
+      "example_output": "Browser at `http://localhost:3000` displays TopicPage with: title 'Algebra' (h1), SVG tree visualization showing nested nodes (e.g., root 'Algebra' with children 'Equations', 'Polynomials'), each node labeled with title and icon (green checkmark for defeated nodes, red lock for undefeated), breadcrumb 'Home > Algebra' at top, 'Generate Tree' button in header, responsive layout on mobile (single-column tree, larger touch targets)"
+    },
+    {
+      "id": 7,
+      "title": "Question Display and Answer Submission UI",
+      "deliverable": "`/question/:nodeId` page displays question, renders input component based on question_type (text input for Define/ELI5, equation input for Solve, multi-select for Compare, text input for FinishTheAnswer), submits answer, displays score and feedback, shows 'Next' button or return to tree",
+      "tasks": [
+        "Create `frontend/src/pages/QuestionPage.jsx` fetching node data via `api.getNode(nodeId)`, displaying question_text, rendering appropriate input component based `question_type`, handling answer submission via `api.submitAnswer()`, displaying loading spinner during submission, showing results overlay with score, feedback, matched/missing key points",
+        "Build question type components in `frontend/src/components/QuestionInputs.jsx`: `DefineInput` (textarea with 500-char max), `SolveInput` (textarea with LaTeX preview), `CompareInput` (multi-select dropdown showing 4 options, user selects 2+), `ELI5Input` (textarea with 300-char max), `FinishTheAnswerInput` (text input with placeholder showing beginning of sentence)",
+        "Implement `ResultsOverlay.jsx` component displaying score as large percentage, feedback text, matched key points (green checkmarks), missing key points (red x marks), 'Next Question' or 'Return to Tree' button; disable answer resubmission after first submission",
+        "Add state to TopicStore: `currentAnswer`, `answerEvaluation`, `isSubmitting`, `hasAnswered`",
+        "Create navigation logic: after answer submission, user clicks 'Next Question' to navigate to sibling node (if exists) or return to tree (if last node); clicking 'Return to Tree' navigates to TopicPage",
+        "Write component tests in `frontend/src/__tests__/QuestionPage.test.jsx` verifying correct input component renders per question_type, submission calls API with student answer, results display score/feedback, and 'Next' button navigates correctly"
+      ],
+      "commit_condition": "Run `npm run dev` and navigate to `http://localhost:3000/question/node_1_1` — QuestionPage loads with question text, appropriate input component (e.g., SolveInput for Solve type), 'Submit' button; enter answer text and click Submit; with mocked API response, results overlay appears showing score, feedback, and key points; run `npm test` — all 8 tests pass",
+      "example_input": "Browser at `http://localhost:3000/question/node_1_1`; node data from mock API: `{node_id: \"node_1_1\", question_type: \"Solve\", question_text: \"Solve 2x + 3 = 13\"}`",
+      "example_output": "Page displays: h2 'Solve 2x + 3 = 13', SolveInput textarea, 'Submit Answer' button; user types 'x = 5', clicks Submit, page shows loading spinner for 1s, then ResultsOverlay appears: score badge '85%' (green), feedback text 'Correct solution...', matched key points ['isolate variable', 'inverse operations'] with checkmarks, no missing key points, 'Return to Tree' button; clicking button navigates to TopicPage"
+    },
+    {
+      "id": 8,
+      "title": "Session Persistence and State Management Across Page Reloads",
+      "deliverable": "Session state (currentTopic, defeatedNodes, sessionId) persists to localStorage and hydrates on page reload; user can leave app and return to same topic without losing progress",

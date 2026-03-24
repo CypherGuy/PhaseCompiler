@@ -1,0 +1,138 @@
+```json
+{
+  "project": {
+    "name": "StudyBattles",
+    "language": "Python 3.11",
+    "runtime": "web (FastAPI backend + React 18 frontend)",
+    "package_manager": "pip (backend), npm (frontend)",
+    "framework": "FastAPI 0.111 (backend), React 18 (frontend)",
+    "database": "MongoDB 7.0",
+    "deployment": "Docker + AWS EC2",
+    "external_services": [
+      "OpenAI GPT-4 API",
+      "AWS S3",
+      "YouTube Data API"
+    ]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Environment Setup and Project Scaffolding",
+      "deliverable": "Run `python backend/main.py` returns Uvicorn server on http://127.0.0.1:8000 with Swagger docs; npm run dev starts React dev server on http://localhost:3000",
+      "tasks": [
+        "Create project root with backend/ and frontend/ subdirectories in monorepo structure",
+        "Initialize Python 3.11 virtual environment and install FastAPI 0.111, uvicorn 0.29, python-multipart 0.0.6, pymongo 4.6, boto3 1.28, requests 2.31, openai 1.3, python-dotenv 1.0 into requirements.txt",
+        "Initialize React 18 project in frontend/ using create-react-app and install axios 1.6, react-router-dom 6.20, and tailwindcss 3.4",
+        "Create backend/main.py with FastAPI app instance, CORS middleware configured for http://localhost:3000, and environment variable loader for OpenAI API key, AWS credentials, and MongoDB URI",
+        "Create frontend/src/services/api.ts with axios instance configured to http://localhost:8000/api base URL",
+        "Create .env.example file documenting required variables: OPENAI_API_KEY, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_S3_BUCKET, MONGODB_URI"
+      ],
+      "commit_condition": "Run `cd backend && python main.py` in one terminal — server prints 'Uvicorn running on http://127.0.0.1:8000'; run `cd frontend && npm run dev` in another — browser opens http://localhost:3000 with React boilerplate; verify GET http://localhost:8000/docs loads Swagger UI with no errors",
+      "example_input": "Empty project directory with no files",
+      "example_output": "Project structure: backend/main.py (FastAPI app), backend/requirements.txt (dependencies), frontend/src/ (React app structure), .env.example (variable keys). Terminal: `python backend/main.py` outputs 'Uvicorn running on http://127.0.0.1:8000'; `npm run dev` starts dev server. Browser at http://localhost:3000 shows React logo; GET http://localhost:8000/docs shows Swagger UI"
+    },
+    {
+      "id": 2,
+      "title": "MongoDB Schema and Database Connection Setup",
+      "deliverable": "MongoDB connection pool established; read/write a document to 'sessions' collection via POST http://localhost:8000/api/test/write-session and GET http://localhost:8000/api/test/read-session returns {\"session_id\": \"test_123\", \"trees\": []}",
+      "tasks": [
+        "Create backend/db.py with MongoClient connection pool using MONGODB_URI, database name 'studybattles', and connection retry logic",
+        "Define MongoDB schema document in backend/models/session.py: session_id (string), user_ip_hash (string), created_at (ISO timestamp), trees (array of tree object references), current_session_tree_id (optional string)",
+        "Define MongoDB schema document in backend/models/tree.py: tree_id (string), session_id (string, foreign key), topic_name (string), hierarchy (nested object, max depth 3), created_at (ISO timestamp), file_name (string), file_type (string: pptx|docx|youtube)",
+        "Define MongoDB schema document in backend/models/node.py: node_id (string), tree_id (string, foreign key), name (string), depth (integer), children_ids (array of strings), is_unlocked (boolean), parent_id (optional string), question_type (enum: Define|Solve|Compare|ELI5|FinishAnswer)",
+        "Define MongoDB schema document in backend/models/answer.py: answer_id (string), node_id (string, foreign key), session_id (string), student_answer (string), evaluation_result (object containing: is_correct (boolean), score (0-100), feedback (string), key_points_hit (array), key_points_missed (array)), submitted_at (ISO timestamp)",
+        "Create backend/db/init_collections.py with functions to create collections and indexes: create_index on (session_id) for sessions, (tree_id) for trees, (node_id) for nodes, (tree_id, depth) for nodes",
+        "Add test endpoints GET/POST http://localhost:8000/api/test/write-session and GET http://localhost:8000/api/test/read-session to verify MongoDB connectivity"
+      ],
+      "commit_condition": "Run `pytest backend/tests/test_db.py -v` — all 8 tests pass (connection, write session, read session, create tree, create node, create answer, index verification, cleanup). Run `curl -X POST http://localhost:8000/api/test/write-session -H 'Content-Type: application/json' -d '{\"session_id\": \"test_123\"}' | jq .session_id` — returns `\"test_123\"`",
+      "example_input": "MongoDB server running on localhost:27017; empty 'studybattles' database",
+      "example_output": "MongoDB collections created: sessions, trees, nodes, answers. Write test: POST `{\"session_id\": \"test_123\"}` creates document in 'sessions' collection. Read test: GET returns `{\"session_id\": \"test_123\", \"user_ip_hash\": \"abc123\", \"trees\": [], \"created_at\": \"2024-01-15T10:00:00Z\"}`. Indexes exist on (session_id), (tree_id), (node_id, tree_id)"
+    },
+    {
+      "id": 3,
+      "title": "AWS S3 Integration and File Upload Endpoint",
+      "deliverable": "POST http://localhost:8000/api/upload accepts multipart/form-data file, stores in AWS S3 bucket, returns {\"file_url\": \"https://bucket.s3.amazonaws.com/...\", \"file_name\": \"document.pptx\", \"file_type\": \"pptx\", \"upload_id\": \"uuid\"}",
+      "tasks": [
+        "Create backend/aws.py with S3Client instance using AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_S3_BUCKET, and region 'us-east-1'",
+        "Implement upload_to_s3 function in backend/aws.py accepting file bytes and filename, returning S3 public URL and upload metadata",
+        "Create backend/routes/upload.py with POST /api/upload endpoint accepting multipart/form-data (file field), validating file type (pptx, docx, youtube video URL), extracting file extension",
+        "Implement file validation logic: reject files >100MB, accept only .pptx, .docx file extensions and youtube.com URLs; return 400 Bad Request with error message for invalid files",
+        "Store uploaded file metadata in MongoDB 'uploads' collection (not yet linked to trees) with fields: upload_id, file_name, file_type, file_url, upload_date, file_size, session_id",
+        "Create frontend/src/pages/Upload.tsx with file input, drag-and-drop zone, submit button, and error message display for validation failures"
+      ],
+      "commit_condition": "Run `pytest backend/tests/test_upload.py -v` — all 6 tests pass (valid pptx, valid docx, valid youtube URL, reject oversized file, reject invalid extension, S3 URL returned). Run `curl -X POST http://localhost:8000/api/upload -F 'file=@test.pptx' | jq .file_type` — returns `\"pptx\"`",
+      "example_input": "Browser at http://localhost:3000/upload (Upload page rendered); user selects document.pptx (2MB); AWS S3 bucket configured and credentials in .env",
+      "example_output": "POST /api/upload with file form-data returns HTTP 201: `{\"upload_id\": \"550e8400\", \"file_name\": \"document.pptx\", \"file_type\": \"pptx\", \"file_url\": \"https://studybattles-bucket.s3.amazonaws.com/550e8400/document.pptx\", \"upload_date\": \"2024-01-15T10:05:00Z\"}`. MongoDB 'uploads' collection contains new document. Frontend displays success message with file name"
+    },
+    {
+      "id": 4,
+      "title": "OpenAI Topic Hierarchy Generation and Tree Creation",
+      "deliverable": "POST http://localhost:8000/api/trees/generate accepts {\"file_name\": \"algebra.pptx\", \"file_url\": \"https://...\", \"file_type\": \"pptx\"}, returns {\"tree_id\": \"uuid\", \"topic_name\": \"Algebra\", \"hierarchy\": {...}, \"node_count\": 15}; tree structure stored in MongoDB",
+      "tasks": [
+        "Create backend/openai_client.py with OpenAIClient instance using OPENAI_API_KEY with model 'gpt-4-turbo-preview'",
+        "Implement extract_file_content function in backend/services/file_processor.py: for pptx use python-pptx library to extract all slide text; for docx use python-docx library to extract all paragraph text; for youtube use youtube-transcript-api library to fetch transcript",
+        "Implement generate_tree_structure function in backend/services/tree_generator.py accepting file content and topic name, calling OpenAI GPT-4 with prompt engineering to generate 3-level hierarchy (root node, 3-5 intermediate nodes, 3-5 leaf nodes per intermediate), returning nested JSON structure with node names and question_type assignments (Define, Solve, Compare, ELI5, FinishAnswer)",
+        "Create POST /api/trees/generate endpoint accepting {\"file_name\", \"file_url\", \"file_type\"}, extracting content, calling generate_tree_structure, assigning tree_id and node_ids (UUID), storing tree document in MongoDB 'trees' collection with full hierarchy",
+        "Implement node flattening logic: convert nested hierarchy into flat MongoDB 'nodes' collection with parent_id and children_ids cross-references; set all leaf nodes is_unlocked=false, all non-leaf nodes is_unlocked=false",
+        "Create backend/tests/test_tree_generation.py with mock OpenAI responses validating tree structure has max 3 depth levels, leaf nodes have no children, question types are valid enums"
+      ],
+      "commit_condition": "Run `pytest backend/tests/test_tree_generation.py -v` — all 9 tests pass (extract pptx content, extract docx content, extract youtube transcript, generate valid hierarchy, validate depth 3, validate question types, store tree in MongoDB, create flat node structure, leaf nodes unlocked false). Run `curl -X POST http://localhost:8000/api/trees/generate -H 'Content-Type: application/json' -d '{\"file_name\": \"algebra.pptx\", \"file_url\": \"https://...\", \"file_type\": \"pptx\"}' | jq .tree_id` — returns UUID string",
+      "example_input": "Uploaded file algebra.pptx stored in S3; file_url = 'https://bucket.s3.amazonaws.com/algebra.pptx'; file_name = 'algebra.pptx'",
+      "example_output": "POST /api/trees/generate returns HTTP 201: `{\"tree_id\": \"64a1b2c3d4e5f6g7h8i9j0k1\", \"topic_name\": \"Algebra Fundamentals\", \"hierarchy\": {\"root\": \"Algebra\", \"children\": [{\"name\": \"Linear Equations\", \"children\": [{\"name\": \"Solving 2x+3=7\", \"question_type\": \"Solve\"}]}, ...]}, \"node_count\": 18, \"created_at\": \"2024-01-15T10:10:00Z\"}`. MongoDB 'trees' collection contains new tree document. MongoDB 'nodes' collection contains 18 flattened documents with parent_id and children_ids cross-references"
+    },
+    {
+      "id": 5,
+      "title": "Question Generation and Question Endpoint",
+      "deliverable": "GET http://localhost:8000/api/nodes/{node_id}/question returns {\"node_id\": \"uuid\", \"question\": \"Solve the equation...\", \"question_type\": \"Solve\", \"context\": \"...\", \"expected_key_points\": [\"...\"]}, pre-generated and cached in MongoDB",
+      "tasks": [
+        "Create backend/services/question_generator.py with generate_question function accepting node_id, node_name, question_type, and tree context, calling OpenAI GPT-4 with prompt to generate educationally sound question matching question_type template (Define: define this concept; Solve: solve this problem; Compare: compare two concepts; ELI5: explain simply; FinishAnswer: complete the statement)",
+        "Implement cache logic: store generated questions in MongoDB 'questions' collection with fields: question_id, node_id, question_text, question_type, context_from_file, expected_key_points (array of strings generated by GPT-4), created_at; check cache before calling OpenAI",
+        "Create GET /api/nodes/{node_id}/question endpoint returning cached question document or generating on first request and caching result, returning HTTP 200 with question payload",
+        "Implement context injection: when generating question, include parent node names and sibling node names to provide learning context from the tree structure",
+        "Create backend/tests/test_question_generation.py validating generated questions contain expected_key_points array (minimum 3 key points), question_type matches node definition, questions are distinct across multiple generations"
+      ],
+      "commit_condition": "Run `pytest backend/tests/test_question_generation.py -v` — all 7 tests pass (generate Define question, generate Solve question, generate Compare question, cache question, return cached question, include expected key points, context injection). Run `curl -s http://localhost:8000/api/nodes/64a1b2c3d4e5f6/question | jq '.expected_key_points | length'` — returns integer >=3",
+      "example_input": "Node 'Solving 2x+3=7' with question_type='Solve' exists in MongoDB; parent node 'Linear Equations' exists; no cached question exists for this node",
+      "example_output": "GET /api/nodes/64a1b2c3d4e5f6/question returns HTTP 200: `{\"question_id\": \"64a1b2c3d4e5f6\", \"node_id\": \"64a1b2c3d4e5f6\", \"question\": \"Solve for x: 2x + 3 = 7. Show all steps.\", \"question_type\": \"Solve\", \"context\": \"You are learning about Linear Equations. This question builds on the concept of isolating variables.\", \"expected_key_points\": [\"Subtract 3 from both sides\", \"Divide by 2\", \"x = 2\"], \"created_at\": \"2024-01-15T10:15:00Z\"}`. MongoDB 'questions' collection contains cached document"
+    },
+    {
+      "id": 6,
+      "title": "Answer Submission and LLM-Based Mark Scheme Evaluation",
+      "deliverable": "POST http://localhost:8000/api/answers/submit accepts {\"node_id\": \"uuid\", \"student_answer\": \"...\", \"session_id\": \"uuid\"}, returns {\"answer_id\": \"uuid\", \"is_correct\": true, \"score\": 85, \"feedback\": \"...\", \"key_points_hit\": [...], \"key_points_missed\": [...]}",
+      "tasks": [
+        "Create backend/services/answer_evaluator.py with evaluate_answer function accepting node_id, student_answer, expected_key_points, and question_type, calling OpenAI GPT-4 with prompt to grade answer against key points, returning structured evaluation (is_correct boolean, score 0-100, feedback string, key_points_hit array, key_points_missed array)",
+        "Implement evaluation logic: extract key points from student answer using semantic similarity (call OpenAI embedding API), assign points for each key point hit (partial credit up to 100), generate constructive feedback mentioning which key points were missed",
+        "Create POST /api/answers/submit endpoint accepting {\"node_id\", \"student_answer\", \"session_id\"}, validating node exists and is not already answered, calling evaluate_answer, storing answer document in MongoDB 'answers' collection, returning evaluation result",
+        "Store answer document with fields: answer_id, node_id, session_id, student_answer, evaluation_result (is_correct, score, feedback, key_points_hit, key_points_missed), submitted_at (ISO timestamp)",
+        "Implement answer deduplication: prevent duplicate submissions for same node+session; return HTTP 409 Conflict if student resubmits for same node",
+        "Create backend/tests/test_answer_evaluation.py validating scoring logic (key point detection, partial credit calculation, score ranges 0-100), feedback quality, JSON response structure"
+      ],
+      "commit_condition": "Run `pytest backend/tests/test_answer_evaluation.py -v` — all 9 tests pass (evaluate Define answer, evaluate Solve answer, detect key points, calculate partial credit, generate feedback, prevent duplicate submission, return structured JSON, store in MongoDB, score within 0-100). Run `curl -X POST http://localhost:8000/api/answers/submit -H 'Content-Type: application/json' -d '{\"node_id\": \"64a1b2c3\", \"student_answer\": \"x equals 2\", \"session_id\": \"abc123\"}' | jq .score` — returns integer between 0 and 100",
+      "example_input": "Node 'Solving 2x+3=7' exists with question and expected_key_points = [\"Subtract 3 from both sides\", \"Divide by 2\", \"x = 2\"]; student submits answer 'I subtracted 3 to get 2x = 4, then divided by 2 to get x = 2'",
+      "example_output": "POST /api/answers/submit returns HTTP 200: `{\"answer_id\": \"64a1b2c3d4e5f6\", \"node_id\": \"64a1b2c3d4e5f6\", \"is_correct\": true, \"score\": 95, \"feedback\": \"Excellent! You correctly identified all key steps: subtracting 3 and dividing by 2. You showed clear working.\", \"key_points_hit\": [\"Subtract 3 from both sides\", \"Divide by 2\", \"x = 2\"], \"key_points_missed\": [], \"submitted_at\": \"2024-01-15T10:20:00Z\"}`. MongoDB 'answers' collection contains stored document. Subsequent POST to same node returns HTTP 409"
+    },
+    {
+      "id": 7,
+      "title": "Node Unlock Mechanics and Tree Traversal Logic",
+      "deliverable": "POST http://localhost:8000/api/nodes/{parent_node_id}/check-unlock returns {\"all_children_defeated\": true, \"parent_unlocked\": true, \"newly_unlocked_nodes\": [node_ids]}, parent node is_unlocked set to true in MongoDB",
+      "tasks": [
+        "Create backend/services/unlock_manager.py with check_unlock function accepting parent_node_id and session_id, querying all children of parent, counting answered children, comparing count to total children, returning unlock status (all_children_defeated boolean, parent_unlocked boolean)",
+        "Implement recursive unlock propagation: when parent is unlocked, check if parent's parent should unlock based on grandparent having all children defeated; propagate upward to tree root",
+        "Create GET /api/trees/{tree_id}/nodes endpoint returning full tree structure with is_unlocked status per node for current session, enabling frontend to render locked/unlocked visual state",
+        "Implement session-based unlock state: store unlock event in MongoDB 'unlock_events' collection with fields: unlock_id, node_id, session_id, unlocked_at (ISO timestamp); queries check unlock_events for session rather than modifying node document directly (enables replay)",
+        "Create POST /api/nodes/{parent_node_id}/check-unlock endpoint accepting session_id query parameter, calling check_unlock, returning newly_unlocked_nodes array, storing unlock events in MongoDB",
+        "Create backend/tests/test_unlock_mechanics.py validating: all 3 children defeated triggers parent unlock, only 2 of 3 children defeated keeps parent locked, unlock propagates to root level, unlock persists across tree queries"
+      ],
+      "commit_condition": "Run `pytest backend/tests/test_unlock_mechanics.py -v` — all 8 tests pass (parent unlocks when all children defeated, parent stays locked with partial children, unlock propagates to root, unlock persists in MongoDB, newly_unlocked_nodes array populated, recursive unlock depth 3, session isolation, repeat unlock check is idempotent). Run `curl -s http://localhost:8000/api/nodes/parent123/check-unlock?session_id=session456 | jq .all_children_defeated` — returns true or false",
+      "example_input": "Tree with 3-level hierarchy: root 'Algebra', intermediate 'Linear Equations' (3 children: 'Solve 2x+3=7', 'Solve x-5=2', 'Solve 3x=9'), all leaf nodes in same session have answered_count >= 1",
+      "example_output": "POST /api/nodes/linear_eqs_id/check-unlock?session_id=xyz returns HTTP 200: `{\"all_children_defeated\": true, \"parent_unlocked\": true, \"newly_unlocked_nodes\": [\"linear_eqs_id\"], \"next_to_unlock\": \"algebra_root_id\"}`. MongoDB 'unlock_events' collection contains new document for linear_eqs_id. GET /api/trees/tree_id/nodes returns tree with 'Linear Equations' node is_unlocked=true, 'Algebra' node is_unlocked=false"
+    },
+    {
+      "id": 8,
+      "title": "React Frontend Core Pages and Navigation",
+      "deliverable": "Browser at http://localhost:3000 navigates between Upload, Dashboard, Study, and Results pages; page transitions work without page reloads; session_id persisted in localStorage",
+      "tasks": [
+        "Create frontend/src/hooks/useSession.ts custom hook reading/writing session_id from localStorage, initializing new UUID if not exists, returning {session_id, resetSession}",
+        "Create frontend/src/pages/Dashboard.tsx displaying list of trees for current session_id, each tree shows title, node count, last accessed date, 'Study' button, 'Delete' button; fetch from GET /api/sessions/{session_id}/trees",
+        "Create frontend/src/pages/Study.tsx displaying tree hierarchy as interactive node map: root at top, children arranged in grid below, leaf nodes at bottom; each node shows name, icon indicating question_type, locked/unlocked badge, answer count",
+        "Create frontend/src/pages/QuestionPage.tsx displaying single node

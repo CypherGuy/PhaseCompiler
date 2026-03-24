@@ -1,0 +1,159 @@
+```json
+{
+  "project": {
+    "name": "StudyBattles",
+    "language": "Python 3.11",
+    "runtime": "web (FastAPI backend + React 18 frontend)",
+    "package_manager": "pip (backend), npm (frontend)",
+    "framework": "FastAPI 0.111 (backend), React 18 (frontend)",
+    "database": "MongoDB 7.0",
+    "deployment": "Docker + AWS EC2",
+    "external_services": [
+      "AWS S3 (document storage)",
+      "OpenAI GPT-4 API (tree generation, question generation, answer evaluation)",
+      "python-pptx (PPTX parsing)",
+      "python-docx (DOCX parsing)",
+      "youtube-transcript-api (YouTube transcript extraction)"
+    ]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Environment Setup and Project Scaffolding",
+      "deliverable": "Running FastAPI dev server on `http://localhost:8000` with health endpoint and empty React frontend on `http://localhost:3000`",
+      "tasks": [
+        "Initialize Git repository and create monorepo structure with `/backend` and `/frontend` directories",
+        "Set up Python 3.11 virtual environment and install FastAPI 0.111, uvicorn 0.29, pydantic 2.5, python-dotenv 1.0 into `requirements.txt`",
+        "Create `backend/main.py` with FastAPI app instance, CORS middleware configured for `http://localhost:3000`, and health check endpoint",
+        "Configure `.env` file with OpenAI API key, MongoDB connection URI (local), AWS S3 credentials, and AWS region",
+        "Initialize React 18 project with `npx create-react-app frontend` and configure API proxy to `http://localhost:8000` in `frontend/package.json`",
+        "Create `frontend/src/App.jsx` with routing structure (Dashboard, UploadPage, StudyPage, ResultsPage components as stubs) using React Router 6.20"
+      ],
+      "commit_condition": "Run `cd backend && python main.py` — terminal prints 'Uvicorn running on http://127.0.0.1:8000'; separately run `cd frontend && npm start` — React app opens at `http://localhost:3000`; curl `http://localhost:8000/health` returns `{\"status\": \"ok\"}`",
+      "example_input": "Empty project directory, Python 3.11 and Node 18+ installed",
+      "example_output": "Run `python backend/main.py` — Uvicorn serves FastAPI docs at `http://localhost:8000/docs`; run `npm start` from frontend — React compiles and serves at `http://localhost:3000` with navigation links to Upload, Study, and Results pages (non-functional)"
+    },
+    {
+      "id": 2,
+      "title": "MongoDB Schema and Document Storage Setup",
+      "deliverable": "MongoDB 7.0 collections with schema validation, AWS S3 bucket configured, and Python utilities to store/retrieve documents",
+      "tasks": [
+        "Install pymongo 4.6, boto3 2.0, and python-multipart 0.0.6 into `requirements.txt`",
+        "Create MongoDB collections `topics`, `nodes`, `questions`, `answers`, and `sessions` with schema validation via Pydantic models in `backend/models.py`",
+        "Configure AWS S3 bucket in `backend/storage.py` with boto3 client initialization, `upload_document()` function accepting file path and returning S3 URI, and `download_document()` function accepting S3 URI and returning local file path",
+        "Create `backend/db.py` with MongoDB connection utility and CRUD functions: `save_topic()`, `get_topic()`, `save_node()`, `get_node_tree()`, `save_question()`, `save_answer()`",
+        "Define Pydantic models in `backend/models.py`: `Topic` (id, name, description, root_node_id, created_at), `Node` (id, label, parent_id, children_ids, is_unlocked, depth), `Question` (id, node_id, type, content, mark_scheme), `Answer` (id, question_id, student_response, marks, feedback)`"
+      ],
+      "commit_condition": "Run `python -c \"from backend.db import save_topic, get_topic; save_topic({'name': 'Test', 'description': 'desc'}); print(get_topic())\"` — prints topic dict with id and created_at; run `python -c \"from backend.storage import upload_document; uri = upload_document('./test.txt'); print(uri)\"` — prints S3 URI string `s3://studybattles-...`",
+      "example_input": "MongoDB 7.0 running locally on `mongodb://localhost:27017`, AWS S3 bucket created, credentials in `.env`",
+      "example_output": "MongoDB collections initialized with schema: `topics` collection contains document `{\"_id\": \"64a1...\", \"name\": \"Algebra\", \"root_node_id\": \"node_1\", \"created_at\": \"2024-01-15T10:00:00Z\"}`; S3 bucket contains uploaded document with public URI; `backend/db.py` exposes connection and CRUD functions"
+    },
+    {
+      "id": 3,
+      "title": "Document Upload API and File Parsing",
+      "deliverable": "`POST /api/documents/upload` endpoint accepts PPTX, DOCX, or YouTube URL, stores in S3, extracts raw text, returns `{\"file_id\": \"...\", \"extracted_text\": \"...\"}`",
+      "tasks": [
+        "Install python-pptx 0.6.21, python-docx 0.8.11, youtube-transcript-api 0.6.1 into `requirements.txt`",
+        "Create `backend/parsers.py` with functions: `parse_pptx()` extracting all slide text, `parse_docx()` extracting all paragraph text, `extract_youtube_transcript()` fetching transcript from video URL",
+        "Create `backend/routes/documents.py` with `POST /api/documents/upload` endpoint accepting multipart file or YouTube URL, delegating parsing to `parsers.py`, storing raw text in temporary dict keyed by file_id, returning file_id and extracted_text (max 5000 chars)",
+        "Add error handling: reject files larger than 50MB, return 400 if YouTube transcript unavailable, return 415 if file type not PPTX/DOCX/URL",
+        "Create `frontend/src/pages/UploadPage.jsx` with form accepting file input or YouTube URL input, `POST` to `/api/documents/upload`, display extracted text preview (first 500 chars), and button to proceed to tree generation"
+      ],
+      "commit_condition": "Create test file `test.docx` with content 'Algebra is the study of symbols'. Run `curl -F 'file=@test.docx' http://localhost:8000/api/documents/upload` — returns `{\"file_id\": \"file_64a1...\", \"extracted_text\": \"Algebra is the study of symbols\"}`",
+      "example_input": "Browser at `http://localhost:3000/upload` — empty form with file input and URL input, submit button",
+      "example_output": "Upload DOCX file with content 'Quadratic equations solve for x in polynomials' → POST succeeds → Browser displays extracted text preview 'Quadratic equations solve for x in polynomials'; S3 object created at `s3://studybattles-/documents/file_64a1.docx`"
+    },
+    {
+      "id": 4,
+      "title": "Topic Hierarchy Generation via OpenAI",
+      "deliverable": "`POST /api/topics/generate` accepts file_id, calls GPT-4 to generate tree, stores in MongoDB, returns `{\"topic_id\": \"...\", \"root_node_id\": \"...\", \"tree\": {...}}`",
+      "tasks": [
+        "Install openai 1.6.1 into `requirements.txt` and configure `backend/llm.py` with OpenAI GPT-4 client using API key from `.env`",
+        "Create `backend/llm.py` function `generate_topic_tree()` accepting extracted_text, prompting GPT-4: 'Create a topic hierarchy tree for studying this material. Output JSON with structure {\"name\": \"topic_name\", \"description\": \"...\", \"children\": [{\"name\": \"...\", \"children\": [...]}, ...]}. Max depth 3, max 5 children per node. Content: [extracted_text]'. Parse JSON response and validate schema.",
+        "Create `backend/routes/topics.py` with `POST /api/topics/generate` endpoint: retrieve extracted_text from file_id, call `generate_topic_tree()`, transform JSON to Node objects with ids and unlocked status (root and leaf nodes unlocked, middle nodes locked), save Topic and Nodes to MongoDB, return topic_id and flattened tree structure",
+        "Add tree validation: reject trees with depth > 3, reject nodes with > 5 children, reject if GPT-4 returns malformed JSON (retry once)",
+        "Create `frontend/src/pages/StudyPage.jsx` displaying topic name, tree visualization as collapsible nodes with lock/unlock icons, click handler to navigate to node detail view (stubbed)"
+      ],
+      "commit_condition": "Run `curl -X POST http://localhost:8000/api/topics/generate -H 'Content-Type: application/json' -d '{\"file_id\": \"file_64a1...\"}'` — returns `{\"topic_id\": \"topic_64a1...\", \"root_node_id\": \"node_root\", \"tree\": {\"name\": \"Algebra\", \"children\": [...]}}`; MongoDB `topics` collection contains 1 document, `nodes` collection contains ≥3 documents",
+      "example_input": "file_id='file_64a1', extracted_text='Algebra: solving equations with one variable, two variables, systems. Quadratic equations using factoring and formula'",
+      "example_output": "`POST /api/topics/generate` with file_id → GPT-4 generates tree → MongoDB: topic document `{\"_id\": \"topic_64a1\", \"name\": \"Algebra\", \"root_node_id\": \"node_root\"}`, node documents for 'One Variable', 'Two Variables', 'Quadratic Equations'; Frontend displays tree with 'Algebra' root, 3 children locked, leaf nodes (e.g., 'Factoring') unlocked"
+    },
+    {
+      "id": 5,
+      "title": "Question Generation and Retrieval Endpoints",
+      "deliverable": "`GET /api/nodes/{node_id}/questions` returns array of 3–5 questions of mixed types (Define, Solve, Compare, ELI5, Finish the Answer) with LLM-generated mark schemes",
+      "tasks": [
+        "Create `backend/llm.py` function `generate_questions_for_node()` accepting node_id, node_label, parent_topic_description, calling GPT-4 with prompt: 'Generate 4 exam-style questions to test understanding of: [node_label]. Use types: one Define question, one Solve question, one Compare question, one ELI5 question. Output JSON: {\"questions\": [{\"type\": \"Define\", \"content\": \"...\", \"mark_scheme\": \"...\"}, ...]}'",
+        "Create `backend/llm.py` function `generate_mark_scheme()` accepting question_content, question_type, calling GPT-4 to generate detailed mark scheme with point allocation, ideal answer key points, common mistakes to deduct",
+        "Create `backend/routes/questions.py` with `GET /api/nodes/{node_id}/questions` endpoint: retrieve node from MongoDB, call `generate_questions_for_node()`, save each question and mark_scheme to MongoDB, return array of questions (without mark_scheme field) ordered by type",
+        "Add caching: if questions already exist for node_id, return cached questions without calling GPT-4",
+        "Create `frontend/src/components/QuestionCard.jsx` displaying question type badge (Define/Solve/Compare/ELI5), question content, question-type-specific input component (text field for Define, textarea for Solve, etc.), and submit button"
+      ],
+      "commit_condition": "Create node in MongoDB: `{\"_id\": \"node_abc\", \"label\": \"Quadratic Formula\"}`. Run `curl http://localhost:8000/api/nodes/node_abc/questions` — returns `{\"questions\": [{\"id\": \"q1\", \"type\": \"Define\", \"content\": \"Define quadratic formula\"}, {...}]}` with 4 questions; MongoDB `questions` collection contains 4 new documents for node_abc",
+      "example_input": "node_id='node_abc', node_label='Quadratic Formula', extracted from MongoDB, GPT-4 API available",
+      "example_output": "GET request returns 4 questions: Define (\"Define quadratic formula\"), Solve (\"Solve x² + 5x + 6 = 0\"), Compare (\"Compare completing the square vs. quadratic formula\"), ELI5 (\"Explain quadratic formula like I'm 5\"); each question stored in MongoDB with auto-generated mark_scheme field (not returned in GET)"
+    },
+    {
+      "id": 6,
+      "title": "Answer Submission and LLM-Based Marking",
+      "deliverable": "`POST /api/questions/{question_id}/submit` accepts student response, calls GPT-4 to evaluate against mark scheme, returns `{\"marks\": integer, \"feedback\": string, \"key_points\": [string]}`",
+      "tasks": [
+        "Create `backend/llm.py` function `evaluate_answer()` accepting question_id, student_response, calling GPT-4 with prompt: 'Question: [question_content]. Mark scheme: [mark_scheme]. Student answer: [student_response]. Score out of 10, providing: (1) marks awarded, (2) feedback explaining why, (3) array of key points the student should have mentioned. Output JSON: {\"marks\": int, \"feedback\": \"...\", \"key_points\": [\"...\"]}'",
+        "Create `backend/routes/answers.py` with `POST /api/questions/{question_id}/submit` endpoint: validate student_response non-empty, retrieve question and mark_scheme from MongoDB, call `evaluate_answer()`, save Answer document with marks, feedback, key_points, return marks (0–10), feedback, and key_points",
+        "Add rate limiting: max 5 submissions per question per session",
+        "Create `frontend/src/components/ResultCard.jsx` displaying marks awarded (e.g., '7 / 10'), feedback text, and bullet list of key points missed or confirmed",
+        "Update `frontend/src/pages/StudyPage.jsx` to show ResultCard after QuestionCard submission, with button to load next question or return to tree"
+      ],
+      "commit_condition": "Create question in MongoDB: `{\"_id\": \"q1\", \"type\": \"Define\", \"content\": \"Define photosynthesis\", \"mark_scheme\": \"Must mention: light, water, CO2, glucose, oxygen. 2 points each.\"}`. Run `curl -X POST http://localhost:8000/api/questions/q1/submit -H 'Content-Type: application/json' -d '{\"student_response\": \"Plants convert light and CO2 into glucose and oxygen\"}'` — returns `{\"marks\": 8, \"feedback\": \"Good, but missed water explicitly\", \"key_points\": [\"light\", \"CO2\", \"glucose\", \"oxygen\"]}`",
+      "example_input": "question_id='q1', question_type='Define', question_content='Define photosynthesis', mark_scheme='2 pts each for light, water, CO2, glucose, oxygen', student_response='Plants use sun to make sugar'",
+      "example_output": "POST succeeds → returns `{\"marks\": 6, \"feedback\": \"You identified light and sugar (glucose), but missing water and CO2. Oxygen must be mentioned too.\", \"key_points\": [\"light\", \"water\", \"CO2\", \"glucose\", \"oxygen\"]}`; Frontend displays 'Score: 6/10', feedback, and key points as bullets"
+    },
+    {
+      "id": 7,
+      "title": "Node Unlock Mechanics and Tree State Progression",
+      "deliverable": "`POST /api/nodes/{node_id}/check-unlock` evaluates all children's answer scores, unlocks parent node if all children defeated (all_children_marks ≥ 6), returns updated tree with unlocked status",
+      "tasks": [
+        "Create `backend/routes/nodes.py` function `check_node_unlock()` accepting node_id: retrieve node and all children from MongoDB, query all answers for all children's questions, calculate average marks per child, unlock parent if all children average ≥ 6, save updated node state to MongoDB",
+        "Create `POST /api/nodes/{node_id}/check-unlock` endpoint calling `check_node_unlock()`, returning updated node with is_unlocked boolean and children array with updated statuses",
+        "Create `GET /api/topics/{topic_id}/tree` endpoint returning full tree structure with all node unlocked statuses from MongoDB, enabling frontend to reflect lock/unlock state changes",
+        "Define unlock rule explicitly: leaf nodes start unlocked, intermediate nodes unlock only when all direct children have ≥ average mark of 6 across all their questions (defeat all child encounters)",
+        "Create `frontend/src/components/NodeTree.jsx` displaying tree with visual lock icons, conditionally disabling click handlers on locked nodes, showing modal 'Defeat all child encounters to unlock this topic' when clicking locked node"
+      ],
+      "commit_condition": "Create 2 child nodes (leaf) with questions answered (marks 8, 7), parent node (locked). Run `curl -X POST http://localhost:8000/api/nodes/parent_id/check-unlock` — returns `{\"is_unlocked\": true, \"children\": [{\"is_unlocked\": true, \"marks\": 8}, {\"is_unlocked\": true, \"marks\": 7}]}`",
+      "example_input": "topic_id='topic_64a1', tree has: root → [child1, child2] → [leaf1, leaf2, leaf3]. leaf1, leaf2, leaf3 all have avg marks ≥6. child1 and child2 currently locked.",
+      "example_output": "GET /api/topics/topic_64a1/tree returns tree with root unlocked, child1 and child2 now unlocked (is_unlocked: true), all leaves unlocked; POST /api/nodes/child1/check-unlock triggers check, MongoDB node documents updated, Frontend tree UI re-renders with lock icons removed from child1 and child2"
+    },
+    {
+      "id": 8,
+      "title": "Session Persistence and LocalStorage Integration",
+      "deliverable": "Frontend persists session state (current_topic_id, current_node_id, answered_questions_map) to localStorage, restores on page reload, matches backend state via GET endpoints",
+      "tasks": [
+        "Create `frontend/src/hooks/useSessionStorage.js` custom hook wrapping localStorage with getters/setters for: current_topic_id, current_node_id, current_question_index, student_responses (object mapping question_id → response text)",
+        "Create `frontend/src/context/StudySessionContext.jsx` providing global session state (topic_id, node_id, tree_data, current_question, marks_history) with useContext hook for component access",
+        "Update `frontend/src/pages/StudyPage.jsx` to: initialize context from localStorage on mount, restore tree state from localStorage topic_id via GET `/api/topics/{topic_id}/tree`, restore current node and question from localStorage, handle page reload by re-fetching tree",
+        "Create `frontend/src/hooks/useSyncWithBackend.js` hook that: on page load, calls `GET /api/topics/{topic_id}/tree` to validate and sync unlock states from MongoDB, overwrites localStorage tree if backend differs (server-of-truth pattern)",
+        "Add unload handler: on page close/reload, save session state to localStorage; on page open, restore and sync with backend"
+      ],
+      "commit_condition": "In browser console, set topic_id and node_id in localStorage, reload page. Run `curl http://localhost:8000/api/topics/topic_64a1/tree` to verify marks persist. Frontend still displays correct node and question. Close and reopen browser tab — session restored to same state.",
+      "example_input": "StudyPage open with topic_id='topic_64a1', node_id='node_child1', answered 2 questions with marks [8, 6]. User closes browser.",
+      "example_output": "localStorage contains `{\"current_topic_id\": \"topic_64a1\", \"current_node_id\": \"node_child1\", \"answers\": {...}, \"marks\": [8, 6]}`. On reopen, page loads localStorage, calls GET /api/topics/topic_64a1/tree, displays same node and next unanswered question. MongoDB queries confirm marks were saved in answers collection."
+    },
+    {
+      "id": 9,
+      "title": "Results Page and Key Points Display",
+      "deliverable": "`GET /api/topics/{topic_id}/results` returns summary of all answered questions with marks and key points, frontend displays paginated results with filters (by node, by question type)",
+      "tasks": [
+        "Create `backend/routes/results.py` with `GET /api/topics/{topic_id}/results` endpoint: query all answers for all questions in all nodes of topic, aggregate marks by node, return JSON: `{\"topic_name\": \"...\", \"total_marks\": int, \"results\": [{\"node_label\": \"...\", \"marks\": int, \"questions\": [{\"type\": \"...\", \"marks\": int, \"feedback\": \"...\", \"key_points\": [...]}, ...]}, ...]}`",
+        "Create `frontend/src/pages/ResultsPage.jsx` displaying: topic name, total marks earned and max marks (questions_count * 10), list of results grouped by node with expandable sections, marks bar for each question (green for ≥6, yellow for 4–5, red for <4)",
+        "Add filtering UI: dropdown to filter by node name, checkbox group to filter by question type, real-time re-render on filter change",
+        "Add pagination: show 5 results per page, next/previous buttons",
+        "Create `frontend/src/components/ResultsSummary.jsx` showing: total score (e.g., '62 / 100'), tree progress visualization (% of nodes unlocked, e.g., '66%'), link to retry any question via modal"
+      ],
+      "commit_condition": "Answered 10 questions across 3 nodes with marks: [8, 7, 6, 5, 9, 8, 7, 6, 5, 4]. Run `curl http://localhost:8000/api/topics/topic_64a1/results` — returns `{\"topic_name\": \"Algebra\", \"total_marks\": 70, \"results\": [{\"node_label\": \"...\"}, ...]}`",
+      "example_input": "topic_id='topic_64a1', answers collection contains 10 answer documents with marks and feedback, spanning 3 nodes, 4 question types",
+      "example_output": "GET /api/topics/topic_64a1/results returns aggregated summary with total_marks=70, results grouped by 3 nodes; Frontend loads ResultsPage, displays 'Total Score: 70/100', node sections with collapsible questions, mark bars (green for scores ≥6), filter dropdowns functional"
+    },
+    {
+      "id": 10,
+      "title": "Frontend Polish and Error Handling",
+      "deliverable": "Frontend displays loading spinners during API calls, error toasts on failures, responsive layout
