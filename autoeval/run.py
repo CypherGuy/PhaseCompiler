@@ -80,7 +80,7 @@ def make_client() -> anthropic.Anthropic:
 def generate_plan(client: anthropic.Anthropic, prompt: str, brief: str) -> str:
     response = client.messages.create(
         model="claude-haiku-4-5-20251001",  # cheapest model — generation only
-        max_tokens=6000,
+        max_tokens=9000,
         system=prompt,
         messages=[{"role": "user", "content": brief}],
     )
