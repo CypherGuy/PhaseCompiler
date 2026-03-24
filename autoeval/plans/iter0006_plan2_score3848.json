@@ -1,0 +1,123 @@
+```json
+{
+  "project": {
+    "name": "StudyBattles",
+    "language": "Python 3.11",
+    "runtime": "web (REST API backend + React frontend)",
+    "package_manager": "pip (backend), npm (frontend)",
+    "framework": "FastAPI 0.111 (backend), React 18 (frontend)",
+    "database": "MongoDB 7.0",
+    "deployment": "Docker + AWS EC2",
+    "external_services": ["OpenAI GPT-4 API", "AWS S3", "MongoDB Atlas (or self-hosted)"]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Environment Setup and Project Scaffolding",
+      "deliverable": "`python backend/main.py` starts FastAPI server on http://127.0.0.1:8000, `npm start` in frontend/ launches React dev server on http://localhost:3000, both services are reachable and health checks pass",
+      "tasks": [
+        "Initialize Python 3.11 virtual environment in backend/ and install FastAPI 0.111, uvicorn 0.29, python-dotenv 1.0, pymongo 4.6, requests 2.31, python-multipart 0.0.6, pydantic 2.5, boto3 1.34 into requirements.txt",
+        "Initialize Node.js project in frontend/ with npm and install React 18, react-router-dom 6.20, axios 1.6, dotenv 16.3 into package.json",
+        "Create backend/main.py with FastAPI app instance, CORS middleware enabled for localhost:3000, and GET /health endpoint returning {\"status\": \"ok\"}",
+        "Create frontend/src/pages/Home.jsx with heading 'StudyBattles' and links to upload and dashboard pages",
+        "Create .env file in project root with placeholders for OPENAI_API_KEY, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, AWS_S3_BUCKET, MONGODB_URI",
+        "Create docker-compose.yml with MongoDB 7.0 service exposing port 27017 and network configuration for backend and frontend services",
+        "Configure MongoDB connection string in backend/config/database.py with pymongo MongoClient initialization and connection health check",
+        "Create frontend/.env.local with REACT_APP_API_URL=http://localhost:8000"
+      ],
+      "commit_condition": "Run `python backend/main.py` in one terminal — output shows 'Uvicorn running on http://127.0.0.1:8000'; in another terminal run `npm start` in frontend/ — React dev server launches without errors; run `curl http://localhost:8000/health` — returns {\"status\": \"ok\"}",
+      "example_input": "Empty project directory with no files, Python 3.11 installed, Node.js 18+ installed, npm available",
+      "example_output": "Backend running at http://127.0.0.1:8000 with FastAPI Swagger docs available at http://127.0.0.1:8000/docs; frontend running at http://localhost:3000 displaying 'StudyBattles' heading; run `curl -s http://localhost:8000/health | jq` — returns {\"status\": \"ok\"}"
+    },
+    {
+      "id": 2,
+      "title": "MongoDB Schema and Core Data Models",
+      "deliverable": "MongoDB collections `topics`, `nodes`, `questions`, `answers` created with validated Pydantic models in backend/models/, collection indexes on topic_id and user_session_id configured, schema enforced via pymongo",
+      "tasks": [
+        "Create backend/models/topic.py with Pydantic model Topic containing fields: id (ObjectId), user_session_id (string), title (string), description (string), tree_depth (int, max 3), created_at (datetime), source_type (string: 'pptx', 'docx', 'youtube'), s3_key (string)",
+        "Create backend/models/node.py with Pydantic model Node containing fields: id (ObjectId), topic_id (ObjectId), parent_node_id (ObjectId, nullable), level (int), title (string), description (string), defeated (boolean, default false), all_children_defeated (boolean, default false)",
+        "Create backend/models/question.py with Pydantic model Question containing fields: id (ObjectId), node_id (ObjectId), question_type (string: 'Define', 'Solve', 'Compare', 'ELI5', 'Finish the Answer'), question_text (string), expected_mark_scheme (string, LLM-generated), created_at (datetime)",
+        "Create backend/models/answer.py with Pydantic model Answer containing fields: id (ObjectId), question_id (ObjectId), user_session_id (string), answer_text (string), marks_awarded (float, 0-100), feedback (string), evaluated_at (datetime)",
+        "Create backend/config/database.py with MongoDB connection initialization, function to create indexes on topics collection (user_session_id, created_at), nodes collection (topic_id, parent_node_id), questions collection (node_id), answers collection (user_session_id, question_id)",
+        "Write integration test in backend/tests/test_database.py that connects to MongoDB test instance, creates a test topic document, retrieves it, verifies all fields are present, and deletes it"
+      ],
+      "commit_condition": "Run `python -c 'from backend.config.database import get_db; db = get_db(); print(db.list_collection_names())'` — output includes ['topics', 'nodes', 'questions', 'answers']; run `python -m pytest backend/tests/test_database.py -v` — all tests pass",
+      "example_input": "MongoDB 7.0 running via docker-compose, FastAPI server started, Pydantic models not yet created",
+      "example_output": "MongoDB collections exist: run `mongosh` and `use studybattles; db.topics.getIndexes()` — returns index on user_session_id; Pydantic models load without error: run `python -c 'from backend.models.topic import Topic; print(Topic.__fields__.keys())'` — returns dict_keys(['id', 'user_session_id', 'title', 'description', 'tree_depth', 'created_at', 'source_type', 's3_key'])"
+    },
+    {
+      "id": 3,
+      "title": "AWS S3 Integration and Document Upload Endpoint",
+      "deliverable": "`POST /api/documents/upload` accepts multipart file (PPTX or DOCX), stores it in AWS S3 bucket, returns {\"s3_key\": \"...\", \"filename\": \"...\", \"file_size_bytes\": ...} with HTTP 201",
+      "tasks": [
+        "Create backend/services/s3_service.py with S3FileUploader class, __init__ method accepting AWS credentials from environment, upload_document(file_path, filename, file_type) method that uploads to AWS S3 and returns s3_key string",
+        "Create backend/routes/documents.py with FastAPI router and POST /api/documents/upload endpoint accepting UploadFile from python-multipart, validating file type (pptx or docx only), calling s3_service.upload_document(), returning JSON with s3_key and filename",
+        "Create backend/utils/validators.py with validate_file_extension(filename) function that rejects files without .pptx or .docx extension and raises HTTPException 400",
+        "Write unit test in backend/tests/test_s3_service.py that mocks boto3, verifies upload_document() constructs correct S3 put_object call with bucket name from environment, and verifies return value format",
+        "Write integration test in backend/tests/test_document_upload.py that sends POST request to /api/documents/upload with valid PPTX file, verifies HTTP 201 response, verifies response JSON contains s3_key and filename fields",
+        "Configure AWS credentials in backend/.env with AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION (us-east-1), AWS_S3_BUCKET"
+      ],
+      "commit_condition": "Run `python -m pytest backend/tests/test_document_upload.py::test_upload_valid_pptx -v` — test passes; run `curl -F 'file=@sample.pptx' http://localhost:8000/api/documents/upload` with a valid PPTX file — returns HTTP 201 with s3_key in response JSON",
+      "example_input": "AWS S3 bucket created and accessible via boto3, FastAPI server running, Pydantic models and MongoDB configured",
+      "example_output": "POST to /api/documents/upload with file 'algebra_notes.pptx' — HTTP 201: {\"s3_key\": \"documents/algebra_notes_1705323600.pptx\", \"filename\": \"algebra_notes.pptx\", \"file_size_bytes\": 2048576}; S3 bucket contains object at key documents/algebra_notes_1705323600.pptx"
+    },
+    {
+      "id": 4,
+      "title": "OpenAI Topic Tree Generation from Document",
+      "deliverable": "`POST /api/topics/generate` accepts s3_key and file_type, calls OpenAI GPT-4 to extract content and generate hierarchy, creates Topic and Node documents in MongoDB with 2–3 levels, returns {\"topic_id\": \"...\", \"nodes\": [...]} with HTTP 201",
+      "tasks": [
+        "Create backend/services/document_extraction.py with DocumentExtractor class, extract_from_s3(s3_key, file_type) method that downloads file from S3 and extracts text (use python-pptx for PPTX, python-docx for DOCX), returns plain text",
+        "Create backend/services/tree_generation_service.py with TreeGenerationService class, generate_topic_tree(extracted_text, max_depth=3) method that calls OpenAI GPT-4 API with prompt to generate hierarchical topic outline, parses response into structured JSON with nodes array, each node containing title, description, level (0-2), children array",
+        "Create backend/routes/topics.py with FastAPI router and POST /api/topics/generate endpoint accepting {\"s3_key\": \"...\", \"file_type\": \"...\"} JSON body, calling document_extraction.extract_from_s3(), calling tree_generation_service.generate_topic_tree(), creating Topic document in MongoDB, creating Node documents for each node in tree, returning JSON with topic_id and flattened nodes array",
+        "Install python-pptx 0.6.21 and python-docx 0.8.11 in backend requirements.txt",
+        "Create backend/utils/openai_client.py with OpenAIClient class, __init__ method accepting API key from environment, generate_tree_prompt(text) method that returns system and user prompts for tree generation, parse_tree_response(response_text) method that extracts JSON from GPT-4 response",
+        "Write unit test in backend/tests/test_tree_generation.py that mocks OpenAI API, verifies generate_topic_tree() returns correct node structure with levels 0-2, and verifies MongoDB inserts are called with correct Topic and Node documents"
+      ],
+      "commit_condition": "Run `python -m pytest backend/tests/test_tree_generation.py -v` — all tests pass; run `curl -X POST http://localhost:8000/api/topics/generate -H 'Content-Type: application/json' -d '{\"s3_key\": \"documents/sample.pptx\", \"file_type\": \"pptx\"}'` — returns HTTP 201 with topic_id in response",
+      "example_input": "S3 bucket contains PPTX file at documents/sample.pptx with content about Algebra, OpenAI API key configured in .env, MongoDB running",
+      "example_output": "POST /api/topics/generate with s3_key 'documents/sample.pptx' — HTTP 201: {\"topic_id\": \"64a1b2c3d4e5f6g7h8i9j0k1\", \"nodes\": [{\"id\": \"64a1b2c3d4e5f6g7h8i9j0k2\", \"title\": \"Algebra\", \"level\": 0, \"defeated\": false}, {\"id\": \"64a1b2c3d4e5f6g7h8i9j0k3\", \"title\": \"Linear Equations\", \"level\": 1, \"parent_node_id\": \"64a1b2c3d4e5f6g7h8i9j0k2\", \"defeated\": false}, {\"id\": \"64a1b2c3d4e5f6g7h8i9j0k4\", \"title\": \"Solving ax + b = c\", \"level\": 2, \"parent_node_id\": \"64a1b2c3d4e5f6g7h8i9j0k3\", \"defeated\": false}]}; MongoDB topic collection contains document with _id: 64a1b2c3d4e5f6g7h8i9j0k1, title: \"Algebra\", tree_depth: 2"
+    },
+    {
+      "id": 5,
+      "title": "Question Generation and Mark Scheme Creation",
+      "deliverable": "`POST /api/nodes/{node_id}/generate-questions` calls OpenAI to generate 5 questions (one per type: Define, Solve, Compare, ELI5, Finish the Answer) with mark schemes, creates Question documents in MongoDB, returns {\"questions\": [...], \"node_id\": \"...\"} with HTTP 201",
+      "tasks": [
+        "Create backend/services/question_generation_service.py with QuestionGenerationService class, generate_questions_for_node(node_title, node_description, question_types=['Define', 'Solve', 'Compare', 'ELI5', 'Finish the Answer']) method that calls OpenAI GPT-4 API with prompt for each question type, parses response to extract question_text and expected_mark_scheme for each, returns list of dicts with question_type, question_text, expected_mark_scheme",
+        "Create backend/routes/questions.py with FastAPI router and POST /api/nodes/{node_id}/generate-questions endpoint, retrieving Node from MongoDB to get title and description, calling question_generation_service.generate_questions_for_node(), creating 5 Question documents in MongoDB with node_id, question_type, question_text, expected_mark_scheme, returning JSON with questions array and node_id",
+        "Create backend/utils/openai_client.py method generate_question_prompt(node_title, node_description, question_type) returning system and user prompts for question generation by question type",
+        "Create backend/utils/openai_client.py method parse_question_response(response_text, question_type) extracting question_text and expected_mark_scheme from GPT-4 response",
+        "Write unit test in backend/tests/test_question_generation.py mocking OpenAI API, verifying generate_questions_for_node() returns exactly 5 questions with all required fields, verifying mark schemes are non-empty strings",
+        "Write integration test in backend/tests/test_question_generation_integration.py that creates a test Node in MongoDB, sends POST request to /api/nodes/{node_id}/generate-questions, verifies HTTP 201, verifies 5 Question documents are created in MongoDB"
+      ],
+      "commit_condition": "Run `python -m pytest backend/tests/test_question_generation.py -v` — all tests pass; run `curl -X POST http://localhost:8000/api/nodes/{node_id}/generate-questions` with valid node_id — returns HTTP 201 with 5 questions in response, run `mongosh` and query `db.questions.count({\"node_id\": ObjectId(\"{node_id}\")})` — returns 5",
+      "example_input": "MongoDB contains Node document with _id: 64a1b2c3d4e5f6g7h8i9j0k4, title: 'Solving ax + b = c', description: 'Linear equations with one variable', no Question documents yet for this node",
+      "example_output": "POST /api/nodes/64a1b2c3d4e5f6g7h8i9j0k4/generate-questions — HTTP 201: {\"node_id\": \"64a1b2c3d4e5f6g7h8i9j0k4\", \"questions\": [{\"id\": \"64a1b2c3d4e5f6g7h8i9j0k5\", \"question_type\": \"Define\", \"question_text\": \"Define a linear equation in one variable\", \"expected_mark_scheme\": \"An equation of the form ax + b = c where a, b, c are constants and x is the variable\"}, {\"id\": \"64a1b2c3d4e5f6g7h8i9j0k6\", \"question_type\": \"Solve\", \"question_text\": \"Solve: 2x + 5 = 13\", \"expected_mark_scheme\": \"2x + 5 = 13; 2x = 8; x = 4\"}, {\"id\": \"64a1b2c3d4e5f6g7h8i9j0k7\", \"question_type\": \"Compare\", \"question_text\": \"Compare solving 2x + 5 = 13 vs 3x - 2 = 10\", \"expected_mark_scheme\": \"Both have two steps: isolate x term, then divide. First has +5, second has -2\"}, {\"id\": \"64a1b2c3d4e5f6g7h8i9j0k8\", \"question_type\": \"ELI5\", \"question_text\": \"Explain to a 5-year-old what solving a linear equation means\", \"expected_mark_scheme\": \"Finding the secret number that makes the equation true\"}, {\"id\": \"64a1b2c3d4e5f6g7h8i9j0k9\", \"question_type\": \"Finish the Answer\", \"question_text\": \"When solving 4x - 3 = 9, after adding 3 to both sides we get...\", \"expected_mark_scheme\": \"4x = 12\"}]}; MongoDB questions collection contains 5 documents, each with node_id: 64a1b2c3d4e5f6g7h8i9j0k4"
+    },
+    {
+      "id": 6,
+      "title": "Frontend Document Upload and Tree Display",
+      "deliverable": "Frontend page `/upload` displays file input and 'Generate Tree' button, `/topics/{topic_id}` displays topic title and hierarchical node tree with titles and defeat status badges, clicking 'Generate' triggers upload and tree generation flow, returns to tree view on completion",
+      "tasks": [
+        "Create frontend/src/pages/UploadPage.jsx component with file input element (accepts .pptx and .docx), 'Generate Tree' button, loading state message, error message display on upload failure",
+        "Create frontend/src/services/api.js with axios instance pointing to REACT_APP_API_URL, uploadDocument(file) function sending POST /documents/upload, generateTopic(s3_key, file_type) function sending POST /topics/generate",
+        "Create frontend/src/pages/TreePage.jsx component accepting topic_id via URL parameter, fetching Topic and Nodes from backend GET /api/topics/{topic_id}/tree endpoint (not yet created in backend), rendering tree structure with hierarchical display showing parent-child relationships, displaying node titles, level badges (level 0, 1, 2), defeated status (green checkmark if defeated, gray if not)",
+        "Create frontend/src/components/NodeTree.jsx component accepting nodes array, rendering as nested list or tree diagram with indentation by level, click handler for each node to navigate to node detail page",
+        "Create frontend/src/pages/NotFound.jsx displaying 'Topic not found' message when tree_id query returns no results",
+        "Add route to frontend/src/App.jsx mapping /upload → UploadPage, /topics/:topic_id → TreePage, / → Home with link to /upload",
+        "Create backend/routes/topics.py GET /api/topics/{topic_id}/tree endpoint that retrieves Topic and all Nodes for that topic from MongoDB, returns {\"topic\": {...}, \"nodes\": [...]} with HTTP 200"
+      ],
+      "commit_condition": "Open http://localhost:3000/upload in browser — see file input and 'Generate Tree' button; upload valid PPTX file and click 'Generate Tree' — page redirects to /topics/{topic_id} and displays tree with at least 3 nodes; run `curl http://localhost:8000/api/topics/{topic_id}/tree` — returns HTTP 200 with topic and nodes array",
+      "example_input": "React frontend running on localhost:3000, FastAPI backend running on localhost:8000 with topic tree generation working, MongoDB contains Topic with _id: 64a1b2c3d4e5f6g7h8i9j0k1 and 5 Node documents",
+      "example_output": "Open http://localhost:3000/upload — see 'StudyBattles Upload' page with file input element and 'Generate Tree' button; upload algebra_notes.pptx, click button, page shows loading spinner, then redirects to http://localhost:3000/topics/64a1b2c3d4e5f6g7h8i9j0k1; TreePage displays 'Algebra' as title, tree structure showing: 'Algebra' (level 0, not defeated) → 'Linear Equations' (level 1, not defeated) → 'Solving ax + b = c' (level 2, not defeated)"
+    },
+    {
+      "id": 7,
+      "title": "Question Answering Endpoint and Answer Evaluation via OpenAI",
+      "deliverable": "`POST /api/questions/{question_id}/answer` accepts {\"answer_text\": \"...\"}, calls OpenAI to evaluate against mark scheme, creates Answer document in MongoDB with marks_awarded (0–100) and feedback, returns {\"marks\": ..., \"feedback\": \"...\", \"question_id\": \"...\"} with HTTP 201",
+      "tasks": [
+        "Create backend/services/answer_evaluation_service.py with AnswerEvaluationService class, evaluate_answer(answer_text, expected_mark_scheme, question_type) method that calls OpenAI GPT-4 API with prompt comparing student answer to mark scheme, parses response to extract marks_awarded (integer 0–100) and feedback string, returns {\"marks_awarded\": ..., \"feedback\": \"...\"}",
+        "Create backend/routes/answers.py with FastAPI router and POST /api/questions/{question_id}/answer endpoint accepting {\"answer_text\": \"...\"} JSON body, retrieving Question from MongoDB to get expected_mark_scheme and question_type, calling answer_evaluation_service.evaluate_answer(), creating Answer document in MongoDB with question_id, answer_text, marks_awarded, feedback, user_session_id (from header or localStorage), returning JSON with marks_awarded, feedback, question_id with HTTP 201",
+        "Create backend/utils/openai_client.py method generate_evaluation_prompt(answer_text, expected_mark_scheme, question_type) returning system and user prompts for answer evaluation",
+        "Create backend/utils/openai_client.py method parse_evaluation_response(response_text) extracting marks_awarded (integer) and feedback (string) from GPT-4 response using regex or JSON parsing",
+        "Write unit test in backend/tests/test_answer_evaluation.py mocking OpenAI API, verifying evaluate_answer() returns dict with marks_awarded between 0–100 and non-empty feedback string for various answer quality levels",
+        "Write integration test in backend/tests/test_answer_submission.py creating test Question in MongoDB, sending POST

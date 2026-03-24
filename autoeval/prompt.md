@@ -12,7 +12,7 @@ Return a single JSON object with this exact structure:
     "runtime": "string (e.g. web, cli, library)",
     "package_manager": "string (e.g. pip, npm, cargo)",
     "framework": "string (e.g. FastAPI 0.111, React 18)",
-    "database": "string (e.g. MongoDB 7.0, or 'none')",
+    "database": "string (e.g. MongoDB 7.0)",
     "deployment": "string (e.g. Docker + AWS EC2, Vercel)",
     "external_services": ["list of named external services used"]
   },
@@ -36,34 +36,37 @@ Return a single JSON object with this exact structure:
 - Language version (e.g. Python 3.11, not Python3.11)
 - Package manager (pip, npm, pnpm, cargo, etc.)
 - Framework and version
-- Database name and version (or state "no database")
+- Database name and version (if applicable)
 - Any external service credentials to configure
 
 **Phases must be sequentially dependent.** Each phase builds directly on the deliverables of the previous phase. Infrastructure (database models, API foundation, auth) must appear before any feature that requires it. Deployment and documentation must appear in the final 1–2 phases.
 
-**Phase count must be between 6 and 12.** Scale phases to the requested count by merging or splitting as needed. Each phase should represent 1–3 days of solo developer work. No phase should have fewer than 2 tasks or more than 8 tasks. Phases must represent meaningful milestones — not arbitrary groupings of tasks.
+**Phase count must be between 8 and 12 for web/full-stack projects, and 6–8 for CLI/library projects.** Each phase should represent 1–3 days of solo developer work. No phase should have fewer than 2 tasks or more than 6 tasks. If a phase accumulates more than 6 tasks, split it into two phases with distinct milestones. Phases must represent meaningful milestones — not arbitrary groupings of tasks.
 
-## Task Ordering Within Phases: Parallel by Default — CRITICAL
+## Task Ordering Within Phases: UNORDERED SET — Critical Rule
 
-**Tasks within a phase are an UNORDERED SET.** Present tasks as a flat JSON array of strings. The array order carries NO meaning — tasks may be executed in any order or in parallel unless a true data dependency exists between two tasks in the same phase.
+**Tasks within a phase are an unordered set.** Present tasks as a flat JSON array of strings. The array order carries NO meaning.
 
-**NEVER number tasks.** Do NOT prefix task strings with "1.", "2.", "Step 1:", or any ordinal. Do NOT use sequential language ("first", "then", "next", "after that", "finally", "lastly", "once X is done") inside task strings. Each task string must read as a standalone instruction with no reference to other tasks in the same phase.
+**NEVER do any of the following inside task strings:**
+- Number prefixes: "1.", "2.", "Step 1:", "Step 2:"
+- Ordinal words: "First", "Second", "Then", "Next", "After that", "Finally", "Lastly", "Once X is done"
+- Sequential language implying one task follows another
 
-Only impose ordering when the literal file output of one task is required as input to another task in the same phase. "Install PostgreSQL 15" before "Run `CREATE TABLE` in PostgreSQL 15" is a real dependency. "Create `models/user.py`" and "Create `models/topic.py`" have zero dependency — do NOT imply order.
+**The ONLY exception:** When the output of task A is literally the input to task B within the same phase (e.g., "Install PostgreSQL 15" before "Run database migration script"), place them in dependency order. All other tasks are independent and must read as independent.
 
-**Self-check: Read each task string in isolation. If it references or assumes completion of another task in the same array, rewrite it to be self-contained or move dependent tasks to the next phase.**
+**Self-check: Re-read every task string before output. If any task string begins with a digit, contains "then", "next", "first", "finally", "after", or "once", rewrite it to remove the ordering language.**
 
 **Bad (forces false sequence):**
 ```json
 "tasks": ["1. Install FastAPI", "2. Create main.py", "3. Add health endpoint", "4. Write tests"]
 ```
 
-**Bad (sequential language):**
+**Also bad (sequential language):**
 ```json
-"tasks": ["First install dependencies", "Then create the config file", "Next add the routes", "Finally write tests"]
+"tasks": ["First install FastAPI and uvicorn", "Then create main.py with the app instance", "Next add a health endpoint", "Finally write tests"]
 ```
 
-**Good (parallel-safe, no ordinals, no sequential language):**
+**Good (parallel-safe, no ordering implied):**
 ```json
 "tasks": ["Install FastAPI 0.111 and uvicorn 0.29 into requirements.txt", "Create `backend/main.py` with FastAPI app instance and CORS middleware", "Add `GET /health` endpoint returning {\"status\": \"ok\"} in `backend/routes/health.py`", "Write pytest test for health endpoint in `tests/test_health.py`"]
 ```
@@ -72,14 +75,14 @@ Only impose ordering when the literal file output of one task is required as inp
 
 Every `deliverable` field must:
 - Name a specific artifact: file path, API endpoint, CLI command, URL, or deployed service
-- Use a specific verb: "returns", "displays", "connects", "stores", "renders", "serves", "exports", "generates", "validates", "authenticates", "prints", "outputs", "writes", "accepts"
-- **BANNED WORDS — never use anywhere in any deliverable string:** "working", "complete", "functional", "ready", "done", "basic", "simple", "proper", "fully", "initial", "preliminary"
+- Use a specific verb: "returns", "displays", "connects", "stores", "renders", "serves", "exports", "generates", "validates", "authenticates"
+- **Never use these banned words anywhere in any deliverable string:** "working", "complete", "functional", "ready", "done", "basic", "simple", "proper", "fully", "successful"
+- Before outputting, mentally scan every deliverable for banned words and replace them
 
 **Bad:** "Working PDF export feature"
 **Bad:** "Basic user authentication system"
 **Good:** "`GET /api/export/pdf/{topic_id}` returns a binary PDF stream of unlocked questions"
 **Good:** "`POST /api/auth/login` validates credentials against MongoDB users collection and returns a signed JWT"
-**Good:** "`python cli.py analyze --input data.csv` prints a JSON summary of column statistics to stdout"
 
 ## Commit Condition Rules
 
@@ -93,7 +96,6 @@ Every `commit_condition` must:
 **Bad:** "All tests pass and the feature looks good"
 **Good:** "Run `pytest tests/test_export.py -v` — all 12 tests pass with 0 failures"
 **Good:** "Run `curl -s http://localhost:8000/health | jq .status` — returns `\"ok\"`"
-**Good:** "Run `python cli.py --version` — prints `mytool 0.1.0`"
 
 ## Task Rules
 
@@ -102,69 +104,65 @@ Every task must:
 - Be at least 6 words long
 - Name the specific file, service, or component being modified
 - Name external services explicitly (not "cloud storage" — say "AWS S3"; not "payment provider" — say "Stripe API"; not "AI service" — say "OpenAI GPT-4 API")
-- Be self-contained — no references to other tasks in the same phase
 
 **Bad:** "Add PDF export"
 **Good:** "Install reportlab 4.1 and create `backend/services/pdf_exporter.py` with `generate_study_guide(topic_id, user_id)` function"
 
-## Example I/O Rules — FORMAT MUST MATCH PHASE TYPE
+## Example I/O Rules — Match Phase Type, Not Project Type
 
-Every phase must have both `example_input` and `example_output`. **Select the format based on what the phase actually produces.** A phase can only use a given format if it actually involves that layer. Use the decision tree below:
+Every phase must have both `example_input` and `example_output`. **Select the format based on what THIS SPECIFIC PHASE produces, not on the overall project type.** A single project will use DIFFERENT example formats across its phases.
 
-**Decision tree — pick the FIRST matching format:**
+**Use these format rules to choose:**
 
-1. **Does the phase produce or modify CLI commands, scripts, or terminal-observable output?** → Use CLI format: show the terminal command and its stdout.
-2. **Does the phase produce or modify API endpoints?** → Use API format: show a curl command and JSON response.
-3. **Does the phase produce or modify database schemas, documents, or queries?** → Use database format: show the schema/document/query and result.
-4. **Does the phase produce or modify visible UI (browser pages, rendered components)?** → Use UI format: describe what the user sees on screen.
-5. **Does the phase produce or modify generated files (PDF, CSV, config)?** → Use file format: describe file content and structure.
-6. **Does the phase involve deployment?** → Use deployment format: show deploy command and verification.
+| Phase produces... | example_input format | example_output format |
+|---|---|---|
+| Setup / scaffolding | Terminal state (empty dir, no deps) | Terminal command + stdout showing server/tool running |
+| Database models/schema | Empty or prior DB state | Document/row schema with sample data |
+| API endpoints | curl command with request body | HTTP status + JSON response body |
+| UI/Frontend views | Browser URL + current page state | Browser URL + described rendered components and data |
+| CLI commands | Terminal command with args | Terminal stdout/stderr output |
+| File generation/export | Input data state (DB records, etc.) | Generated file name, format, content description |
+| Auth/security | curl or request without auth | curl with auth header + response showing access granted/denied |
+| Deployment | "Application runs locally on localhost:XXXX" | Deploy command + production URL verification |
+| Tests/CI | "Source code exists, no test suite" | Test runner command + pass count |
 
-**CLI/setup phases (including Phase 1 for ALL project types):**
+**For setup phases (Phase 1):** Always use CLI format — show the terminal command and its expected stdout.
 ```
-example_input: "Empty project directory with no files"
-example_output: "Run `python backend/main.py` — terminal prints 'Uvicorn running on http://127.0.0.1:8000'; Run `curl localhost:8000/docs` — returns Swagger UI HTML"
-```
-
-**CLI tool phases (for CLI projects — use this for EVERY phase of a CLI project):**
-```
-example_input: "Run `python cli.py --help` — prints usage with 'analyze' subcommand listed"
-example_output: "Run `python cli.py analyze --input sample.csv --format json` — prints {\"rows\": 150, \"columns\": 5, \"missing\": 3} to stdout"
-```
-
-**API phases:**
-```
-example_input: "curl -X POST http://localhost:8000/api/topics -H 'Content-Type: application/json' -d '{\"name\": \"Algebra\", \"subject\": \"Math\"}'"
-example_output: "HTTP 201: {\"id\": \"64a1b2c3\", \"name\": \"Algebra\", \"subject\": \"Math\", \"created_at\": \"2024-01-15T10:00:00Z\"}"
+example_input: "Empty project directory with no dependencies installed"
+example_output: "Run `python backend/main.py` — terminal prints 'Uvicorn running on http://127.0.0.1:8000'; `curl localhost:8000/health` returns {\"status\": \"ok\"}"
 ```
 
-**Database phases:**
+**For database phases:** Show the schema or a query result.
 ```
 example_input: "Empty MongoDB 'topics' collection"
 example_output: "MongoDB document in 'topics': {\"_id\": \"64a1...\", \"name\": \"Algebra\", \"nodes\": [], \"created_by\": \"user_123\"}"
 ```
 
-**UI/Frontend phases:**
+**For API phases:** Show a concrete curl command and JSON response.
 ```
-example_input: "Browser at http://localhost:3000/dashboard — blank page with nav bar only"
-example_output: "Browser at http://localhost:3000/dashboard — grid of topic cards with title, progress bar (e.g., '65% unlocked'), and 'Study' button; sidebar shows user stats"
-```
-
-**File generation phases:**
-```
-example_input: "Topic 'Algebra' with 10 unlocked questions in MongoDB"
-example_output: "Generated file `algebra_study_guide.pdf` — 3 pages: cover page with topic title, 10 questions with mark schemes, summary statistics footer"
+example_input: "curl -X POST http://localhost:8000/api/topics -H 'Content-Type: application/json' -d '{\"name\": \"Algebra\"}'"
+example_output: "HTTP 201: {\"id\": \"64a1b2c3\", \"name\": \"Algebra\", \"created_at\": \"2024-01-15T10:00:00Z\"}"
 ```
 
-**Deployment phases:**
+**For UI phases:** Describe rendered components visible to the user.
 ```
-example_input: "Application runs locally on localhost:8000 and localhost:3000"
-example_output: "Run `docker compose up -d` then `curl https://api.studybattles.com/health` — returns {\"status\": \"ok\"}; frontend loads at https://studybattles.com"
+example_input: "Browser at http://localhost:3000/dashboard — empty page with nav bar"
+example_output: "Browser at http://localhost:3000/dashboard — grid of 6 topic cards showing title, '65% unlocked' progress bar, 'Study' button; sidebar displays user XP and streak count"
 ```
 
-**CRITICAL: For CLI tools, libraries, and projects with no database or UI, use CLI format for all phases.** Never force API, UI, or database example formats onto phases that do not involve those layers. Every `example_input` and `example_output` must describe a real, observable state — not a vague description like "the module is configured" or "data is available."
+**For CLI tool phases (non-web projects):** Show command invocation + terminal output.
+```
+example_input: "Run `mytool --help` — shows usage text with no subcommands"
+example_output: "Run `mytool analyze ./src --format json` — prints {\"files\": 12, \"issues\": 3, \"score\": 87.5} to stdout"
+```
 
-**CRITICAL: Never truncate or skip example_input/example_output for later phases.** Phase 10 must have the same quality and specificity of examples as Phase 1. Budget output length accordingly.
+**For deployment phases:** Show deploy command + production verification.
+```
+example_input: "Application runs on localhost:8000"
+example_output: "Run `docker compose up -d && curl https://api.example.com/health` — returns {\"status\": \"ok\"}"
+```
+
+**NEVER write a vague example like:** "The system is set up" or "Data exists in the database" — always include specific field names, values, commands, or URLs.
 
 ## Dependency Explicitness Rules
 
@@ -183,21 +181,17 @@ example_output: "Run `docker compose up -d` then `curl https://api.studybattles.
 
 ## Pre-Output Validation Checklist
 
-Before returning the JSON, verify every single field:
-1. **No ordinals in tasks:** Scan every task string — reject any containing "1.", "2.", "Step 1", "First,", "Then ", "Next ", "Finally", "Lastly", "After "
-2. **No banned words in deliverables:** Scan every deliverable for "working", "complete", "functional", "ready", "done", "basic", "simple", "proper", "fully", "initial" — replace each occurrence
-3. **Every example_input and example_output is concrete:** Must contain a command, URL, file path, schema, or screen description — never "the system is set up" or "data exists"
-4. **Every commit_condition starts with action verb and contains a terminal command**
-5. **Every task is ≥6 words, starts with an action verb, and is self-contained**
-6. **Phase count is between 6 and 12**
-7. **No phase has fewer than 2 or more than 8 tasks**
-8. **Tasks within phases do not imply sequential ordering via language or numbering**
-9. **All phases including the last phases have complete, detailed example_input and example_output — no truncation**
-10. **example_input/example_output format matches the phase type per the decision tree above**
-
-## Completeness Requirement
-
-**Output the COMPLETE JSON for ALL phases.** Do not truncate, summarize, or abbreviate later phases. The last phase must have the same level of detail as the first phase. If the output is long, that is expected — do not shorten it.
+Before returning the JSON, verify every single item:
+1. **No task string contains ordinal prefixes** ("1.", "2.", "Step 1", "First,", "Then", "Next", "Finally", "After", "Once")
+2. **No deliverable contains banned words:** "working", "complete", "functional", "ready", "done", "basic", "simple", "proper", "fully"
+3. **Every `example_input` and `example_output`** uses the correct format for that phase's type (see table above) with specific commands, URLs, field names, or values — never vague descriptions
+4. **Every `commit_condition`** starts with an action verb and contains a copy-pasteable terminal command with expected output
+5. **Every task** is ≥6 words and starts with an action verb
+6. **Phase count** is 8–12 for web projects, 6–8 for CLI/library projects
+7. **No phase** has fewer than 2 or more than 6 tasks
+8. **Tasks within phases** do not imply sequential ordering through numbering or sequential language
+9. **Every deliverable** names a concrete artifact and uses a specific verb (returns, renders, stores, etc.)
+10. **Re-read all task strings one more time** — strip any remaining "1.", "First", "Then", "Next", "Finally"
 
 ## JSON Output Only
 

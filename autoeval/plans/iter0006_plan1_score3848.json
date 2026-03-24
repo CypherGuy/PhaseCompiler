@@ -1,0 +1,130 @@
+```json
+{
+  "project": {
+    "name": "StudyBattles",
+    "language": "Python 3.11",
+    "runtime": "web (FastAPI backend + React 18 frontend)",
+    "package_manager": "pip (backend), npm (frontend)",
+    "framework": "FastAPI 0.111 (backend), React 18 (frontend)",
+    "database": "MongoDB 7.0",
+    "deployment": "Docker Compose (local), AWS EC2 + S3 (production)",
+    "external_services": ["OpenAI GPT-4 API", "AWS S3", "MongoDB Atlas or self-hosted"]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Backend Environment Setup and Core API Scaffold",
+      "deliverable": "`python backend/main.py` starts a FastAPI server on http://127.0.0.1:8000 with `/health` endpoint returning `{\"status\": \"ok\"}`",
+      "tasks": [
+        "Install Python 3.11 with pip and create virtual environment in `venv/`",
+        "Create `requirements.txt` with FastAPI 0.111, uvicorn 0.29, python-dotenv 1.0, boto3 1.34, openai 1.12, pymongo 4.6, pytest 7.4, and httpx 0.25",
+        "Initialize Git repository with `.gitignore` (venv/, .env, __pycache__, *.pyc, node_modules/)",
+        "Create `backend/main.py` with FastAPI app instance, CORS middleware configured for localhost:3000, and environment variable loading via python-dotenv",
+        "Add `backend/routes/health.py` with `GET /health` endpoint returning `{\"status\": \"ok\", \"timestamp\": current_iso_timestamp}`",
+        "Create `backend/config.py` with configuration class for MongoDB URI, AWS S3 bucket name, OpenAI API key, and environment (dev/prod)",
+        "Create `.env.example` file documenting required environment variables: MONGODB_URI, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_S3_BUCKET, OPENAI_API_KEY",
+        "Write `tests/test_health.py` with pytest test for `GET /health` endpoint asserting status code 200 and response contains status field"
+      ],
+      "commit_condition": "Run `python backend/main.py` — terminal prints `Uvicorn running on http://127.0.0.1:8000`; Run `curl -s http://localhost:8000/health | python -m json.tool` — returns JSON with `status: \"ok\"`",
+      "example_input": "Empty project directory with no files",
+      "example_output": "Run `python backend/main.py` — terminal shows `Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)`; Run `curl http://localhost:8000/health` — returns `{\"status\": \"ok\", \"timestamp\": \"2024-01-15T10:00:00Z\"}`"
+    },
+    {
+      "id": 2,
+      "title": "MongoDB Connection and Session Document Schema",
+      "deliverable": "MongoDB connection is established and tested; `sessions` collection stores documents with structure `{\"_id\": ObjectId, \"session_id\": string, \"uploaded_files\": array, \"tree\": object, \"answered_questions\": array, \"created_at\": ISO8601, \"updated_at\": ISO8601}`",
+      "tasks": [
+        "Create `backend/db/connection.py` with MongoClient initialization, database selection, and connection validation function",
+        "Create `backend/db/models.py` defining Pydantic models: Session (session_id, uploaded_files, tree, answered_questions, created_at, updated_at), UploadedFile (file_id, filename, s3_key, file_type, uploaded_at), TreeNode (node_id, title, level, parent_id, children_ids, is_unlocked, created_at), and AnsweredQuestion (question_id, node_id, question_type, user_answer, mark_scheme, awarded_points, marked_at)",
+        "Create `backend/routes/session.py` with `POST /api/session/create` endpoint that generates unique session_id (UUID), stores empty session document in MongoDB, and returns session_id",
+        "Add `GET /api/session/{session_id}` endpoint that retrieves session document from MongoDB and returns it as JSON",
+        "Write `tests/test_session.py` with pytest tests: create session returns 201 with valid session_id; retrieve session returns 200 with complete session object; non-existent session returns 404",
+        "Configure MongoDB connection string from environment variable and validate connection on app startup"
+      ],
+      "commit_condition": "Run `pytest tests/test_session.py -v` — all 3 tests pass; Run `python -c \"from backend.db.connection import connect_db; connect_db(); print('Connected')\"` — prints `Connected` without errors",
+      "example_input": "FastAPI server running with health endpoint; MongoDB running locally or on Atlas",
+      "example_output": "Run `curl -X POST http://localhost:8000/api/session/create` — returns HTTP 201 with `{\"session_id\": \"550e8400-e29b-41d4-a716-446655440000\", \"tree\": null, \"uploaded_files\": [], \"answered_questions\": []}`; Run `curl http://localhost:8000/api/session/550e8400-e29b-41d4-a716-446655440000` — returns HTTP 200 with the same session document"
+    },
+    {
+      "id": 3,
+      "title": "AWS S3 Integration and Document Upload Endpoint",
+      "deliverable": "`POST /api/upload` accepts multipart/form-data with file (PPTX, DOCX, or MP4), stores file in AWS S3 with key `uploads/{session_id}/{timestamp}_{filename}`, returns JSON response with file_id, s3_key, and file_type",
+      "tasks": [
+        "Create `backend/services/s3_service.py` with S3Client class: methods for upload_file(file_bytes, session_id, filename, file_type) returning s3_key, and generate_presigned_url(s3_key) for later retrieval",
+        "Create `backend/routes/upload.py` with `POST /api/upload` endpoint accepting multipart FormData with session_id and file; validate file type against allowed list (pptx, docx, mp4)",
+        "Add file size validation (max 100MB) and virus/malware scanning via ClamAV integration (optional for MVP, log intent in comment) or external service flag",
+        "Store uploaded file metadata (file_id, filename, s3_key, file_type, session_id, uploaded_at) in MongoDB `sessions` collection under uploaded_files array",
+        "Create `backend/routes/download.py` with `GET /api/download/{file_id}` endpoint that retrieves presigned URL from S3 and returns redirect or direct URL",
+        "Write `tests/test_upload.py` with pytest tests: upload PPTX file returns 200 with file_id and s3_key; upload invalid file type returns 400; upload exceeds size limit returns 413; download file returns presigned URL",
+        "Create `backend/services/file_processor.py` with stub functions extract_text_from_pptx(s3_key) and extract_text_from_docx(s3_key) returning text content (to be implemented in Phase 5)"
+      ],
+      "commit_condition": "Run `pytest tests/test_upload.py -v` — all 4 tests pass; Run `curl -F 'session_id=test-session' -F 'file=@sample.pptx' http://localhost:8000/api/upload` — returns HTTP 200 with file_id and s3_key starting with 'uploads/test-session/'",
+      "example_input": "Session exists in MongoDB with session_id 'test-session'; AWS S3 bucket is created and credentials are configured in .env",
+      "example_output": "Run `curl -F 'session_id=test-session' -F 'file=@algebra_notes.pptx' http://localhost:8000/api/upload` — returns HTTP 200: `{\"file_id\": \"f123abc\", \"filename\": \"algebra_notes.pptx\", \"s3_key\": \"uploads/test-session/1705316400_algebra_notes.pptx\", \"file_type\": \"pptx\", \"uploaded_at\": \"2024-01-15T10:00:00Z\"}`; Run `curl http://localhost:8000/api/download/f123abc` — returns HTTP 302 redirect to presigned S3 URL valid for 1 hour"
+    },
+    {
+      "id": 4,
+      "title": "OpenAI Topic Tree Generation from Uploaded Documents",
+      "deliverable": "`POST /api/generate-tree/{session_id}` accepts list of file_ids, extracts text from S3 documents, calls OpenAI GPT-4 to generate hierarchical tree with max 3 levels, stores tree in MongoDB session document, returns tree JSON with node_id, title, level, parent_id, children_ids, is_unlocked boolean",
+      "tasks": [
+        "Implement extract_text_from_pptx(s3_key) in `backend/services/file_processor.py` using python-pptx library to read slide text from PPTX files stored in S3",
+        "Implement extract_text_from_docx(s3_key) in `backend/services/file_processor.py` using python-docx library to extract paragraphs from DOCX files stored in S3",
+        "Create `backend/services/tree_generator.py` with TreeGenerator class: method generate_tree(extracted_text, max_depth=3) that calls OpenAI GPT-4 with prompt requesting JSON output structured as {\"root\": {\"title\": string, \"children\": [recursive structure]}}",
+        "Create `backend/routes/tree.py` with `POST /api/generate-tree/{session_id}` endpoint: retrieves file_ids from request body, calls file_processor to extract text from each file, concatenates text, calls TreeGenerator.generate_tree(), validates output structure, stores tree in MongoDB session.tree field",
+        "Implement tree structure conversion from OpenAI output to database schema: each node receives unique node_id (UUID), level (0-2 for root to leaf), parent_id (null for root), children_ids array, is_unlocked boolean (true only for root node and bottom-level nodes before answering questions)",
+        "Add error handling for malformed OpenAI responses, API rate limits, and missing extracted text",
+        "Write `tests/test_tree_generation.py` with pytest tests: generate tree from PPTX returns valid tree structure with max 3 levels; root node has is_unlocked=true; leaf nodes have empty children_ids array; all nodes have unique node_ids"
+      ],
+      "commit_condition": "Run `pytest tests/test_tree_generation.py -v` — all 3 tests pass; Run `curl -X POST http://localhost:8000/api/generate-tree/test-session -H 'Content-Type: application/json' -d '{\"file_ids\": [\"f123\"]}' -H 'Authorization: Bearer test-key'` — returns HTTP 200 with tree structure containing node_id, title, level, parent_id, children_ids, and is_unlocked fields",
+      "example_input": "Session with session_id 'test-session' has uploaded_files array containing PPTX file with s3_key 'uploads/test-session/1705316400_algebra_notes.pptx'; OpenAI API key is configured",
+      "example_output": "Run `curl -X POST http://localhost:8000/api/generate-tree/test-session -H 'Content-Type: application/json' -d '{\"file_ids\": [\"f123abc\"]}'` — returns HTTP 200: `{\"tree\": {\"node_id\": \"n1\", \"title\": \"Algebra\", \"level\": 0, \"parent_id\": null, \"children_ids\": [\"n2\", \"n3\"], \"is_unlocked\": true, \"children\": [{\"node_id\": \"n2\", \"title\": \"Linear Equations\", \"level\": 1, \"parent_id\": \"n1\", \"children_ids\": [\"n4\"], \"is_unlocked\": false}, {\"node_id\": \"n3\", \"title\": \"Quadratic Equations\", \"level\": 1, \"parent_id\": \"n1\", \"children_ids\": [\"n5\"], \"is_unlocked\": false}], \"total_nodes\": 5}}`"
+    },
+    {
+      "id": 5,
+      "title": "Question Generation and Mark Scheme Creation via OpenAI",
+      "deliverable": "`POST /api/node/{node_id}/generate-questions/{session_id}` calls OpenAI GPT-4 to generate 5 questions for given node in predetermined formats (Define, Solve, Compare, ELI5, Finish the Answer), stores questions with mark schemes in MongoDB node document, returns array of question objects with question_id, question_type, question_text, expected_answer_type, and mark_scheme (key points as array of strings)",
+      "tasks": [
+        "Create `backend/services/question_generator.py` with QuestionGenerator class: method generate_questions(node_title, node_context, question_types=[\"Define\", \"Solve\", \"Compare\", \"ELI5\", \"Finish the Answer\"]) that calls OpenAI GPT-4 with prompt structured to output JSON array of questions",
+        "Define question type schemas in `backend/db/models.py`: each question has question_id (UUID), question_type (string from enum), question_text, expected_answer_type, and mark_scheme (array of key points as strings with point values)",
+        "Create `backend/routes/questions.py` with `POST /api/node/{node_id}/generate-questions/{session_id}` endpoint: retrieves node from session tree, calls QuestionGenerator with node title and context, validates generated questions structure, stores questions in MongoDB in new `questions` collection with session_id and node_id as compound index",
+        "Add `GET /api/node/{node_id}/questions/{session_id}` endpoint returning array of questions for given node without revealing mark schemes",
+        "Implement OpenAI prompt engineering: include node title, topic context from extracted documents, and specific instructions for each question type format (e.g., Define = single-sentence definition, Solve = step-by-step with final answer, Compare = identify 3+ differences)",
+        "Add retry logic with exponential backoff for OpenAI API calls",
+        "Write `tests/test_question_generation.py` with pytest tests: generate questions for node returns 5 questions with correct types; each question has unique question_id; mark schemes contain at least 2 key points; question text is non-empty"
+      ],
+      "commit_condition": "Run `pytest tests/test_question_generation.py -v` — all 3 tests pass; Run `curl http://localhost:8000/api/node/n4/questions/test-session` — returns HTTP 200 with array of 5 question objects, each with question_id, question_type, question_text, expected_answer_type, without mark_scheme field",
+      "example_input": "Session 'test-session' has tree with node 'n4' (title: 'Linear Equations', level: 2); MongoDB questions collection is empty",
+      "example_output": "Run `curl -X POST http://localhost:8000/api/node/n4/generate-questions/test-session` — returns HTTP 200: `{\"questions\": [{\"question_id\": \"q1\", \"question_type\": \"Define\", \"question_text\": \"Define a linear equation\", \"expected_answer_type\": \"sentence\", \"created_at\": \"2024-01-15T10:05:00Z\"}, {\"question_id\": \"q2\", \"question_type\": \"Solve\", \"question_text\": \"Solve for x: 2x + 3 = 7\", \"expected_answer_type\": \"steps_and_answer\", \"created_at\": \"2024-01-15T10:05:00Z\"}, {\"question_id\": \"q3\", \"question_type\": \"Compare\", \"question_text\": \"Compare linear and quadratic equations\", \"expected_answer_type\": \"list\", \"created_at\": \"2024-01-15T10:05:00Z\"}, {\"question_id\": \"q4\", \"question_type\": \"ELI5\", \"question_text\": \"Explain linear equations like I'm 5\", \"expected_answer_type\": \"sentence\", \"created_at\": \"2024-01-15T10:05:00Z\"}, {\"question_id\": \"q5\", \"question_type\": \"Finish the Answer\", \"question_text\": \"Complete: A linear equation is...\", \"expected_answer_type\": \"phrase\", \"created_at\": \"2024-01-15T10:05:00Z\"}], \"node_id\": \"n4\", \"node_title\": \"Linear Equations\"}`"
+    },
+    {
+      "id": 6,
+      "title": "Answer Submission and LLM-Based Mark Scheme Evaluation",
+      "deliverable": "`POST /api/answer/submit/{session_id}` accepts node_id, question_id, and user_answer text, calls OpenAI GPT-4 to compare user answer against mark scheme and generate awarded_points (0-10), stores submission in MongoDB answered_questions collection, returns JSON with awarded_points, feedback, key_points_covered array, and areas_to_improve array",
+      "tasks": [
+        "Create `backend/services/answer_evaluator.py` with AnswerEvaluator class: method evaluate_answer(user_answer, question_type, mark_scheme_points) that calls OpenAI GPT-4 with prompt including user answer, question type, and mark scheme key points, parses JSON response containing awarded_points (0-10 integer), feedback (string), key_points_covered (array of matched key points), and areas_to_improve (array of missing concepts)",
+        "Create `backend/routes/answers.py` with `POST /api/answer/submit/{session_id}` endpoint: validates session_id exists, retrieves node_id and question_id from request, fetches question and mark scheme from questions collection, calls AnswerEvaluator, stores submission in answered_questions collection with session_id, node_id, question_id, user_answer, mark_scheme, awarded_points, feedback, marked_at timestamp",
+        "Add response validation: awarded_points must be integer 0-10, feedback is non-empty string, key_points_covered and areas_to_improve are non-empty arrays",
+        "Implement context enrichment: retrieve original document text from S3 to provide to OpenAI evaluator for more accurate grading",
+        "Add caching for mark schemes to avoid re-fetching from database on each answer submission",
+        "Write `tests/test_answer_evaluation.py` with pytest tests: submit answer returns awarded_points between 0-10; feedback is non-empty; key_points_covered matches submitted question's mark scheme; areas_to_improve suggests improvements; submission stored in MongoDB"
+      ],
+      "commit_condition": "Run `pytest tests/test_answer_evaluation.py -v` — all 5 tests pass; Run `curl -X POST http://localhost:8000/api/answer/submit/test-session -H 'Content-Type: application/json' -d '{\"node_id\": \"n4\", \"question_id\": \"q1\", \"user_answer\": \"A linear equation is an equation where the highest power is 1\"}'` — returns HTTP 200 with awarded_points (integer 0-10), feedback, key_points_covered, and areas_to_improve fields",
+      "example_input": "Session 'test-session' has node 'n4' with 5 generated questions including question 'q1'; question 'q1' has mark_scheme with key_points: [\"highest power is 1\", \"can be written as ax + b = 0\", \"represents a straight line\"]",
+      "example_output": "Run `curl -X POST http://localhost:8000/api/answer/submit/test-session -H 'Content-Type: application/json' -d '{\"node_id\": \"n4\", \"question_id\": \"q1\", \"user_answer\": \"An equation where the variable has power 1\"}'` — returns HTTP 200: `{\"answer_id\": \"a123\", \"awarded_points\": 8, \"feedback\": \"Good understanding of the key concept. You correctly identified the power, but missed mentioning the standard form.\", \"key_points_covered\": [\"highest power is 1\"], \"areas_to_improve\": [\"standard form ax + b = 0\", \"geometric interpretation as straight line\"], \"marked_at\": \"2024-01-15T10:10:00Z\"}`"
+    },
+    {
+      "id": 7,
+      "title": "Node Unlock Mechanics and Parent Node Progression",
+      "deliverable": "`POST /api/node/{node_id}/check-unlock/{session_id}` checks if all child nodes are unlocked with passing scores (>= 7 points on all questions), updates parent node is_unlocked to true in MongoDB, returns unlock status and parent node info; tree display endpoint shows unlocked nodes only",
+      "tasks": [
+        "Create `backend/services/unlock_manager.py` with UnlockManager class: method check_node_completion(node_id, session_id) that queries answered_questions collection for all questions in child nodes, calculates average points per child, returns completion_status with percentage of unlocked children",
+        "Implement rule: node unlocks parent when all child nodes have at least one answered question with >= 7 points",
+        "Create `backend/routes/unlock.py` with `POST /api/node/{node_id}/check-unlock/{session_id}` endpoint: calls UnlockManager.check_node_completion(), updates parent node is_unlocked=true if condition met, returns JSON with unlock_status (locked/unlocked), parent_node_id, and parent_node_title",
+        "Add `GET /api/tree/{session_id}` endpoint that returns tree structure but filters to show only unlocked nodes and their children (nodes with is_unlocked=true or nodes whose parent is unlocked)",
+        "Implement transaction-safe MongoDB updates using sessions to prevent race conditions on concurrent unlock checks",
+        "Add event logging in `backend/services/event_logger.py`: log unlock events (node_id, session_id, timestamp) to `events` collection for analytics",
+        "Write `tests/test_unlock_mechanics.py` with pytest tests: check unlock with all children answered and >= 7 points unlocks parent; check unlock with any child < 7 points keeps parent locked; tree display shows only unlocked nodes; unlock event is logged"
+      ],
+      "commit_condition": "Run `pytest tests/test_unlock_mechanics.py -v` — all 4 tests pass; Run `curl http://localhost:8000/api/tree/test-session` after answering all bottom-level questions with > 7 points — returns tree with parent nodes marked is_unlocked=true",
+      "example_input": "Session 'test-session' has tree: root 'Algebra' (is_unlocked=true) with children ['n2' Linear Equations, 'n3' Quadratic Equations]; 'n2' has child 'n4', 'n3' has child 'n5'; 'n4' and 'n5' have answered_questions in MongoDB with awarded_points [9, 8, 7, 6, 5]",
+      "example_output": "Run `curl -X POST http://localhost:8000/api/node/n2/check-unlock/test-

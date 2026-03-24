@@ -1,0 +1,141 @@
+```json
+{
+  "project": {
+    "name": "StudyBattles",
+    "language": "Python 3.11",
+    "runtime": "web (REST API + React frontend)",
+    "package_manager": "pip (backend), npm (frontend)",
+    "framework": "FastAPI 0.111 (backend), React 18 (frontend)",
+    "database": "MongoDB 7.0",
+    "deployment": "Docker + AWS EC2 (future); local development with Uvicorn + npm dev server",
+    "external_services": [
+      "OpenAI GPT-4 API (tree generation, question generation, answer evaluation)",
+      "AWS S3 (document storage)",
+      "python-pptx 0.6.21 (PPTX parsing)",
+      "python-docx 0.8.11 (DOCX parsing)",
+      "yt-dlp 2024.1.1 (YouTube metadata extraction)"
+    ]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Environment Setup and FastAPI Scaffold",
+      "deliverable": "`python backend/main.py` starts Uvicorn server on http://127.0.0.1:8000 and serves Swagger UI; `/health` endpoint returns {\"status\": \"ok\"}",
+      "tasks": [
+        "Install Python 3.11 globally and verify with `python --version`",
+        "Create project root directory and initialize monorepo structure with `backend/` and `frontend/` subdirectories",
+        "Create `backend/requirements.txt` with FastAPI 0.111, Uvicorn 0.29, PyMongo 4.6, python-dotenv 1.0, python-pptx 0.6.21, python-docx 0.8.11, yt-dlp 2024.1.1, openai 1.3, boto3 1.34, pytest 7.4",
+        "Install backend dependencies using `pip install -r backend/requirements.txt` in a Python 3.11 venv",
+        "Create `backend/main.py` with FastAPI app instance, CORS middleware (allow all origins for local development), and exception handlers for ValueError and HTTPException",
+        "Add `GET /health` endpoint in `backend/routes/health.py` returning {\"status\": \"ok\"} with 200 status code",
+        "Create `.env.example` file documenting required environment variables: OPENAI_API_KEY, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_S3_BUCKET, MONGODB_URI",
+        "Create `.gitignore` excluding venv/, __pycache__/, .env, node_modules/, .DS_Store, dist/"
+      ],
+      "commit_condition": "Run `python backend/main.py` — terminal prints 'Uvicorn running on http://127.0.0.1:8000'; in another terminal run `curl -s http://localhost:8000/health | jq .status` — returns string `\"ok\"`",
+      "example_input": "Empty project directory with no files",
+      "example_output": "Run `python backend/main.py` — terminal prints 'INFO:     Uvicorn running on http://127.0.0.1:8000'; Run `curl -s http://localhost:8000/docs` — returns Swagger UI HTML with /health endpoint listed"
+    },
+    {
+      "id": 2,
+      "title": "MongoDB Connection and Data Models",
+      "deliverable": "MongoDB connection established via `MongoClient` URI; `topics` and `sessions` collections exist with validated schema; `POST /api/debug/seed` populates sample documents",
+      "tasks": [
+        "Create `backend/config.py` with MongoClient initialization using MONGODB_URI from .env, error handling for connection failure with 3-second timeout",
+        "Define Pydantic models in `backend/models.py`: `TopicNode` (id, name, description, question_type, parent_id, children_ids, unlocked, created_at, created_by_session_id), `Session` (session_id, uploaded_file_name, root_topic_id, created_at), `Question` (id, topic_node_id, text, question_type, mark_scheme_json), `Answer` (id, question_id, session_id, student_answer_text, marks, feedback, created_at)",
+        "Create `backend/database.py` with functions `get_db()` returning MongoDB database instance, `create_collection_if_not_exists(collection_name)` using `list_collection_names()` check, `seed_sample_data()` inserting sample topic tree and session into MongoDB for testing",
+        "Add MongoDB initialization in `backend/main.py`: call `create_collection_if_not_exists('topics')` and `create_collection_if_not_exists('sessions')` and `create_collection_if_not_exists('answers')` on app startup",
+        "Create `backend/routes/debug.py` with `POST /api/debug/seed` endpoint that calls `seed_sample_data()` and returns {\"message\": \"Sample data seeded\", \"session_id\": \"...\", \"root_topic_id\": \"...\"}",
+        "Write pytest tests in `tests/test_mongo_connection.py`: verify MongoClient connection, verify collections exist after creation, verify sample data insertion returns document IDs",
+        "Add `pytest` to `backend/main.py` imports and create `tests/conftest.py` with `@pytest.fixture` for MongoDB test client using `mongomock` library if available or a local test MongoDB instance"
+      ],
+      "commit_condition": "Run `pytest tests/test_mongo_connection.py -v` — all 4 tests pass; Run `curl -X POST http://localhost:8000/api/debug/seed` — returns 200 with session_id and root_topic_id; Run `mongosh` then `show collections` in studybattles database — lists 'topics', 'sessions', 'answers'",
+      "example_input": "FastAPI app running on localhost:8000 with no database connection; MongoDB 7.0 running locally on default port",
+      "example_output": "Run `python backend/main.py` — no connection errors; Run `curl -s http://localhost:8000/api/debug/seed` — returns {\"message\": \"Sample data seeded\", \"session_id\": \"sess_abc123\", \"root_topic_id\": \"topic_xyz789\"}"
+    },
+    {
+      "id": 3,
+      "title": "Document Upload and Content Extraction",
+      "deliverable": "`POST /api/upload` accepts PPTX, DOCX, or YouTube URL; extracts text or metadata; stores file in AWS S3; returns {\"session_id\": \"...\", \"extracted_text\": \"...\"} with 201 status",
+      "tasks": [
+        "Create `backend/services/file_parser.py` with functions `parse_pptx(file_path)` returning list of slide texts, `parse_docx(file_path)` returning full document text, `extract_youtube_metadata(url)` using yt-dlp to extract title and description",
+        "Create `backend/services/aws_s3.py` with functions `upload_file_to_s3(file_path, session_id)` using boto3 S3 client, returns S3 object key; `download_file_from_s3(s3_key)` returns file bytes; include error handling for boto3 ClientError with informative messages",
+        "Create `backend/routes/upload.py` with `POST /api/upload` endpoint accepting multipart form data with `file` field (PPTX/DOCX) or `youtube_url` field; validate file type or URL format; generate unique `session_id` using `uuid.uuid4()`; extract text based on file type; upload file to S3 with key pattern `uploads/{session_id}/{original_filename}`; create `Session` document in MongoDB; return 201 with {\"session_id\": session_id, \"extracted_text\": extracted_text[:5000], \"file_size_kb\": file_size_kb} response",
+        "Install `boto3 1.34` and `yt-dlp 2024.1.1` via pip",
+        "Configure AWS S3 credentials in `.env` file: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_S3_BUCKET; create `backend/config.py` function `get_s3_client()` initializing boto3 client from env vars",
+        "Write pytest tests in `tests/test_upload.py`: mock S3 upload, test PPTX parsing with sample file, test DOCX parsing with sample file, test YouTube URL validation, verify Session document created in MongoDB, verify extracted text length reasonable (≥100 chars)",
+        "Create sample PPTX and DOCX files in `tests/fixtures/` directory for integration testing"
+      ],
+      "commit_condition": "Run `pytest tests/test_upload.py -v` — all 7 tests pass; Run `curl -F file=@tests/fixtures/sample.pptx http://localhost:8000/api/upload` — returns 201 with session_id and extracted_text fields; Run `aws s3 ls s3://studybattles-bucket/uploads/` — lists uploaded file under session ID directory",
+      "example_input": "FastAPI app running on localhost:8000; MongoDB connected; AWS S3 bucket created and credentials in .env",
+      "example_output": "Run `curl -F file=@sample.pptx http://localhost:8000/api/upload` — returns 201: {\"session_id\": \"550e8400-e29b-41d4-a716-446655440000\", \"extracted_text\": \"Slide 1: Introduction to Photosynthesis...\\nSlide 2: Light Reactions...\", \"file_size_kb\": 245}"
+    },
+    {
+      "id": 4,
+      "title": "Topic Tree Generation via OpenAI API",
+      "deliverable": "`POST /api/topics/generate-tree` accepts extracted text and session_id; calls OpenAI GPT-4 to generate hierarchical tree (max 3 levels); stores all nodes in MongoDB; returns {\"root_node_id\": \"...\", \"tree_json\": {...}} with 201 status",
+      "tasks": [
+        "Create `backend/services/openai_service.py` with function `generate_topic_tree(extracted_text, max_depth=3)` that calls `openai.ChatCompletion.create()` with GPT-4 model; sends prompt requesting JSON output of tree structure with fields {\"name\": string, \"description\": string, \"children\": [...]}, enforces depth limit of 3 levels in prompt; includes error handling for rate limits and API timeouts with exponential backoff retry (max 3 attempts)",
+        "Add OpenAI API key configuration in `backend/config.py`: read OPENAI_API_KEY from .env; initialize OpenAI client with `openai.OpenAI(api_key=OPENAI_API_KEY)`",
+        "Create `backend/services/tree_builder.py` with function `insert_tree_into_mongodb(tree_json, session_id)` that recursively walks tree, creates TopicNode documents in MongoDB with fields (id, name, description, parent_id, children_ids, question_type, unlocked=False except root=True), stores all nodes in `topics` collection, returns root_node_id; assigns question_type to leaf nodes only using `assign_question_types(leaf_nodes)` which randomly selects from [\"Define\", \"Solve\", \"Compare\", \"ELI5\", \"FinishTheAnswer\"]",
+        "Create `backend/routes/topics.py` with `POST /api/topics/generate-tree` endpoint accepting {\"session_id\": string, \"extracted_text\": string}; calls `generate_topic_tree(extracted_text)` then `insert_tree_into_mongodb(tree_json, session_id)`; updates Session document with root_topic_id; returns 201 with {\"root_node_id\": root_node_id, \"tree_json\": tree_json, \"total_nodes\": node_count} response",
+        "Write pytest tests in `tests/test_tree_generation.py`: mock OpenAI API response, verify JSON parsing of tree structure, verify tree insertion creates correct number of MongoDB documents, verify parent-child relationships set correctly, verify leaf nodes have question_type assigned, verify max_depth enforced (no level 4 nodes), test with sample extracted text of varying lengths (100 words, 1000 words, 5000 words)"
+      ],
+      "commit_condition": "Run `pytest tests/test_tree_generation.py -v` — all 8 tests pass; Run `curl -X POST http://localhost:8000/api/topics/generate-tree -H 'Content-Type: application/json' -d '{\"session_id\": \"test_session\", \"extracted_text\": \"Photosynthesis converts light into chemical energy...\"}' | jq .root_node_id` — returns non-empty string; Run `mongosh` then `db.topics.find({}).count()` — returns ≥10 (minimum expected leaf nodes)"
+    },
+    {
+      "id": 5,
+      "title": "Question Generation and Mark Scheme Creation",
+      "deliverable": "`GET /api/topics/{topic_node_id}/questions` returns question object with text and question_type; mark scheme stored in MongoDB; OpenAI generates key points for auto-grading",
+      "tasks": [
+        "Create `backend/services/question_generator.py` with function `generate_questions_for_node(topic_node_id)` that retrieves TopicNode from MongoDB, calls OpenAI GPT-4 with prompt requesting question in the node's question_type format (Define, Solve, Compare, ELI5, FinishTheAnswer), structures prompt to request {\"question_text\": string, \"mark_scheme\": {\"key_points\": [string], \"partial_credit_guide\": string}} JSON response, stores Question document in MongoDB with generated mark scheme JSON",
+        "Create `backend/services/mark_scheme_evaluator.py` with function `evaluate_answer(student_answer_text, mark_scheme_json, question_type)` that calls OpenAI GPT-4 with prompt comparing student answer against mark_scheme.key_points, returns {\"marks_awarded\": int (0-10), \"feedback\": string, \"key_points_hit\": [string]} object; includes logic for partial credit based on mark_scheme.partial_credit_guide",
+        "Add `GET /api/topics/{topic_node_id}/questions` endpoint in `backend/routes/questions.py` that retrieves or generates Question for the node; if Question not yet generated, calls `generate_questions_for_node()` and stores in MongoDB; returns 200 with {\"question_id\": string, \"question_text\": string, \"question_type\": string, \"topic_node_id\": string} (mark_scheme hidden from client)",
+        "Write pytest tests in `tests/test_questions.py`: mock OpenAI question generation, verify Question document structure saved correctly, mock OpenAI answer evaluation, test evaluation with correct answer (expect marks=10), test evaluation with partial answer (expect marks=5-9), test evaluation with incorrect answer (expect marks=0-2), verify feedback is non-empty string, verify key_points_hit is list of strings"
+      ],
+      "commit_condition": "Run `pytest tests/test_questions.py -v` — all 9 tests pass; Run `curl http://localhost:8000/api/topics/topic_xyz/questions` — returns 200 with question_text and question_type fields; Run `mongosh` then `db.questions.findOne()` — shows document with mark_scheme field containing key_points array"
+    },
+    {
+      "id": 6,
+      "title": "Answer Submission and Auto-Grading Endpoint",
+      "deliverable": "`POST /api/answers/submit` accepts student_answer_text and question_id; evaluates via OpenAI; returns {\"marks\": int, \"feedback\": string, \"key_points_hit\": [string]} with 201 status; marks stored in MongoDB",
+      "tasks": [
+        "Create `backend/routes/answers.py` with `POST /api/answers/submit` endpoint accepting {\"question_id\": string, \"student_answer_text\": string, \"session_id\": string}; retrieves Question and mark_scheme from MongoDB; calls `evaluate_answer(student_answer_text, mark_scheme, question_type)` from `mark_scheme_evaluator.py`; creates Answer document in MongoDB with fields (id, question_id, session_id, student_answer_text, marks, feedback, created_at); returns 201 with {\"answer_id\": id, \"marks\": marks, \"feedback\": feedback, \"key_points_hit\": key_points_hit}",
+        "Add validation in answer submission: student_answer_text must be ≥5 characters; if validation fails, return 400 with {\"error\": \"Answer must be at least 5 characters\"}",
+        "Add OpenAI error handling: if GPT-4 API call fails (timeout, rate limit, 500 error), return 503 with {\"error\": \"Grading service temporarily unavailable, please try again\"} and log error with timestamp to `backend/logs/errors.log`",
+        "Write pytest tests in `tests/test_answers.py`: mock Question and mark_scheme retrieval, test submission with valid answer (expect 201), test submission with answer <5 chars (expect 400), test submission with non-existent question_id (expect 404), mock OpenAI timeout and verify 503 response, verify Answer document inserted correctly in MongoDB, test marks range [0, 10]"
+      ],
+      "commit_condition": "Run `pytest tests/test_answers.py -v` — all 6 tests pass; Run `curl -X POST http://localhost:8000/api/answers/submit -H 'Content-Type: application/json' -d '{\"question_id\": \"q_123\", \"student_answer_text\": \"The mitochondria is the powerhouse of the cell\", \"session_id\": \"sess_xyz\"}' | jq .marks` — returns integer between 0 and 10"
+    },
+    {
+      "id": 7,
+      "title": "Node Unlock Mechanic and Session State Management",
+      "deliverable": "`PUT /api/topics/{topic_node_id}/unlock` checks if all children defeated; unlocks parent; `GET /api/sessions/{session_id}/state` returns tree state with unlocked/locked status per node; state persisted in MongoDB",
+      "tasks": [
+        "Create `backend/services/unlock_service.py` with function `check_all_children_defeated(topic_node_id)` that queries `answers` collection for all leaf-node descendants of topic_node_id, verifies marks ≥5 for all answers (passing threshold); returns boolean",
+        "Add function `unlock_parent_node(topic_node_id)` in `unlock_service.py` that updates parent TopicNode document in MongoDB, sets `unlocked: true`, recursively calls `unlock_parent_node(parent_id)` to unlock all ancestors if they become eligible",
+        "Create `backend/routes/unlock.py` with `PUT /api/topics/{topic_node_id}/unlock` endpoint that calls `check_all_children_defeated(topic_node_id)`; if all children defeated (all leaf descendants have marks ≥5), calls `unlock_parent_node(topic_node_id)` and returns 200 with {\"unlocked\": true, \"newly_unlocked_nodes\": [...]}; otherwise returns 200 with {\"unlocked\": false, \"reason\": \"X of Y children still locked\"}",
+        "Create `backend/routes/sessions.py` with `GET /api/sessions/{session_id}/state` endpoint that retrieves Session, queries all TopicNode documents for that session, builds response tree structure with each node's unlocked status, returns 200 with {\"session_id\": session_id, \"root_node_id\": root_node_id, \"tree_with_state\": {nested tree with unlocked field per node}}",
+        "Add `GET /api/sessions/{session_id}/answers` endpoint in `backend/routes/sessions.py` that queries all Answer documents for session_id, returns 200 with {\"total_answers\": int, \"answers\": [{question_id, marks, feedback, created_at}, ...]}",
+        "Write pytest tests in `tests/test_unlock.py`: create sample tree with 3 levels in MongoDB, add Answer documents with marks ≥5 for all leaf nodes of one subtree, call unlock endpoint and verify parent node unlocked, call unlock again and verify grandparent unlocked, verify session state endpoint shows correct unlocked flags, test edge case where some children have no answers (unlocked=false)"
+      ],
+      "commit_condition": "Run `pytest tests/test_unlock.py -v` — all 6 tests pass; Run `curl -X PUT http://localhost:8000/api/topics/parent_node_123/unlock` — returns 200 with `\"unlocked\": true`; Run `curl http://localhost:8000/api/sessions/sess_xyz/state | jq '.tree_with_state[].unlocked'` — shows mixed true/false values indicating state is tracked"
+    },
+    {
+      "id": 8,
+      "title": "React Frontend Setup and Navigation Structure",
+      "deliverable": "`npm start` launches React 18 dev server on http://localhost:3000; `/upload` page renders file upload form; `/tree/{sessionId}` renders topic tree visualization; `/question/{questionId}` renders question page; client-side routing via React Router v6",
+      "tasks": [
+        "Create `frontend/` directory and initialize React 18 project with `npx create-react-app frontend` then delete unnecessary files (serviceWorker, logo.svg, index.css defaults)",
+        "Install dependencies: `npm install react-router-dom@6.20 axios@1.6 tailwindcss@3.4 zustand@4.4 react-spinners@0.13 --save` in frontend directory",
+        "Create `frontend/src/App.jsx` with React Router setup: `<BrowserRouter>` wrapping `<Routes>`, define route `<Route path=\"/upload\" element={<UploadPage />} />`, route `<Route path=\"/tree/:sessionId\" element={<TreePage />} />`, route `<Route path=\"/question/:questionId\" element={<QuestionPage />} />`, route `<Route path=\"/results/:sessionId\" element={<ResultsPage />} />`, root route `<Route path=\"/\" element={<LandingPage />} />`",
+        "Initialize Tailwind CSS in `frontend/`: run `npx tailwindcss init`, update `tailwind.config.js` to include `./src/**/*.{jsx,js}` content paths, add Tailwind directives to `frontend/src/index.css` (@tailwind base, components, utilities)",
+        "Create `frontend/src/pages/LandingPage.jsx` with single button \"Upload Study Material\" linking to `/upload`",
+        "Create `frontend/src/pages/UploadPage.jsx` with file input form accepting .pptx, .docx, or YouTube URL input; displays loading spinner while uploading; on success, navigates to `/tree/{sessionId}` route",
+        "Create `frontend/src/pages/TreePage.jsx` stub that displays tree structure (placeholder); renders topic nodes as cards with name and unlock status",
+        "Create `frontend/src/pages/QuestionPage.jsx` stub displaying question text and answer textarea; submit button calls backend",
+        "Create `frontend/src/utils/api.js` with axios instance configured to `http://localhost:8000` base URL, error handler logging 4xx/5xx responses to console",
+        "Create `frontend/src/hooks/useSession.js` custom hook using Zustand for client-side session state management: `{ sessionId, setSessionId, clearSession }`",
+        "Install `npm` dev dependencies: `npm install --save-dev tailwindcss postcss autoprefixer`",
+        "Write minimal Jest test in `frontend/src/App.test.jsx`: verify routes render without error"
+      ],
+      "commit_condition": "Run `npm start` in `frontend
