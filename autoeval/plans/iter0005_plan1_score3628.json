@@ -1,0 +1,160 @@
+```json
+{
+  "project": {
+    "name": "StudyBattles",
+    "language": "Python 3.11",
+    "runtime": "web (FastAPI backend + React 18 frontend)",
+    "package_manager": "pip (backend), npm (frontend)",
+    "framework": "FastAPI 0.111 (backend), React 18 (frontend)",
+    "database": "MongoDB 7.0",
+    "deployment": "Docker + AWS EC2",
+    "external_services": [
+      "AWS S3 (document storage)",
+      "OpenAI GPT-4 API (tree generation, question generation, answer evaluation)",
+      "python-pptx (PPTX parsing)",
+      "python-docx (DOCX parsing)"
+    ]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Environment Setup and Project Scaffolding",
+      "deliverable": "`python backend/main.py` starts Uvicorn on http://127.0.0.1:8000 and serves Swagger docs at `/docs`; `npm run dev` starts React dev server on http://localhost:3000 with no build errors",
+      "tasks": [
+        "Initialize Python 3.11 virtual environment and install FastAPI 0.111, uvicorn 0.29, python-dotenv, pymongo 4.6, boto3 1.34, openai 1.13, python-pptx 0.6.23, python-docx 0.8.11 into backend/requirements.txt",
+        "Create backend/ directory structure with main.py FastAPI app instance, routes/ subdirectory, models/ subdirectory, utils/ subdirectory, and config.py for environment variables",
+        "Configure CORS middleware in FastAPI to accept requests from http://localhost:3000",
+        "Create MongoDB connection string in config.py and test connection with MongoClient (do not create collections yet)",
+        "Initialize React 18 project in frontend/ directory via create-react-app with TypeScript enabled",
+        "Add AWS S3 credentials and OpenAI API key to .env.example and .env (backend only)",
+        "Create .gitignore to exclude .env, node_modules/, __pycache__/, venv/, .DS_Store"
+      ],
+      "commit_condition": "Run `cd backend && python main.py` in one terminal — Uvicorn logs show 'Application startup complete' on http://127.0.0.1:8000; in another terminal run `cd frontend && npm run dev` — dev server logs show 'webpack compiled' with no errors; visit http://localhost:3000 and verify React welcome page loads; visit http://localhost:8000/docs and verify Swagger UI loads",
+      "example_input": "Empty monorepo directory with no source files",
+      "example_output": "Terminal 1: 'INFO:     Uvicorn running on http://127.0.0.1:8000'; Terminal 2: 'Compiled successfully'; Browser at http://localhost:3000 displays React app; Browser at http://localhost:8000/docs displays OpenAPI Swagger UI"
+    },
+    {
+      "id": 2,
+      "title": "MongoDB Schema and Core Models",
+      "deliverable": "MongoDB collections 'sessions', 'topics', 'nodes', 'questions', and 'answers' exist with enforced schema validation; run `mongodb_connection.list_collection_names()` returns all 5 collection names",
+      "tasks": [
+        "Create MongoDB collections schema in backend/models/mongo_init.py: 'sessions' collection with fields session_id (UUID), document_name (str), topic_tree (dict), created_at (datetime), updated_at (datetime)",
+        "Define 'topics' collection with fields topic_id (ObjectId), session_id (UUID), name (str), content (str), depth (int 0-2), parent_node_id (ObjectId or null), created_at (datetime)",
+        "Define 'nodes' collection with fields node_id (ObjectId), session_id (UUID), topic_id (ObjectId), label (str), is_defeated (bool, default false), children_ids (array of ObjectId), parent_id (ObjectId or null), depth (int 0-2), created_at (datetime)",
+        "Define 'questions' collection with fields question_id (ObjectId), session_id (UUID), node_id (ObjectId), question_type (enum: 'Define', 'Solve', 'Compare', 'ELI5', 'FinishTheAnswer'), question_text (str), mark_scheme (dict), created_at (datetime)",
+        "Define 'answers' collection with fields answer_id (ObjectId), session_id (UUID), question_id (ObjectId), student_answer (str), marks_received (float 0-1), feedback (str), created_at (datetime)",
+        "Write backend/models/schemas.py with Pydantic models for each collection (SessionSchema, TopicSchema, NodeSchema, QuestionSchema, AnswerSchema)",
+        "Create backend/utils/database.py with MongoClient initialization, get_db() function, and index creation for session_id and node_id in all collections"
+      ],
+      "commit_condition": "Run `python -c \"from backend.utils.database import get_db; db = get_db(); print(db.list_collection_names())\"` — output shows `['sessions', 'topics', 'nodes', 'questions', 'answers']` in any order",
+      "example_input": "MongoDB server running on localhost:27017 with empty database",
+      "example_output": "MongoDB database 'studybattles' contains 5 collections: 'sessions', 'topics', 'nodes', 'questions', 'answers' — each with schema validation and indexed fields"
+    },
+    {
+      "id": 3,
+      "title": "Document Upload and Text Extraction",
+      "deliverable": "`POST /api/documents/upload` accepts multipart form-data with file (PPTX or DOCX) and returns HTTP 201 with JSON containing session_id (UUID), file_name, extracted_text (string), and extracted_text_length (int)",
+      "tasks": [
+        "Create backend/routes/documents.py with FastAPI APIRouter",
+        "Implement `POST /api/documents/upload` endpoint that accepts multipart file upload (PPTX or DOCX only)",
+        "Add file validation in endpoint to reject files larger than 50MB or with extensions other than .pptx or .docx",
+        "Implement PPTX extraction in backend/utils/text_extraction.py using python-pptx: iterate all slides, extract text from all shapes, concatenate into single string",
+        "Implement DOCX extraction in backend/utils/text_extraction.py using python-docx: iterate all paragraphs and tables, extract text, concatenate into single string",
+        "Generate session_id (UUID4) in upload endpoint and store it in response and MongoDB 'sessions' collection with document_name and created_at",
+        "Upload extracted text to AWS S3 at path `sessions/{session_id}/extracted_text.txt` with boto3 client; store S3 key in sessions collection",
+        "Return response JSON with session_id, file_name, extracted_text (up to first 5000 chars for preview), and extracted_text_length (actual full length)"
+      ],
+      "commit_condition": "Run `curl -X POST http://localhost:8000/api/documents/upload -F 'file=@test_sample.docx'` (use actual sample DOCX file) — response HTTP 201 contains JSON with session_id (valid UUID string), file_name ('test_sample.docx'), extracted_text_length (integer > 0), and extracted_text (non-empty string); verify session_id exists in MongoDB 'sessions' collection",
+      "example_input": "Sample DOCX file with title 'Biology 101' containing 3 paragraphs and 1 table (total ~2000 chars)",
+      "example_output": "HTTP 201: {\"session_id\": \"550e8400-e29b-41d4-a716-446655440000\", \"file_name\": \"Biology101.docx\", \"extracted_text\": \"Title: Biology 101 Paragraph 1...\", \"extracted_text_length\": 2000}"
+    },
+    {
+      "id": 4,
+      "title": "Topic Tree Generation via OpenAI",
+      "deliverable": "`POST /api/topics/generate-tree` accepts session_id and extracted_text, calls OpenAI GPT-4 API, returns HTTP 201 with JSON containing session_id, topic_tree (nested dict structure), and node_count (int); MongoDB 'topics' and 'nodes' collections are populated with tree data",
+      "tasks": [
+        "Create backend/routes/topics.py with FastAPI APIRouter",
+        "Implement `POST /api/topics/generate-tree` endpoint that accepts JSON body with session_id (UUID) and extracted_text (str)",
+        "Create backend/utils/openai_client.py with OpenAI client initialization using API key from .env",
+        "Implement prompt engineering in backend/utils/tree_generator.py: craft GPT-4 prompt that receives extracted_text and outputs a hierarchical tree in JSON format with max 3 levels (root → level 1 → level 2), each node has name (str) and children (array)",
+        "Call OpenAI GPT-4 API via backend/utils/openai_client.py with the prompt and extracted_text; parse JSON response",
+        "Validate parsed tree: ensure depth ≤ 3, non-empty node names, root node exists; return 400 if invalid",
+        "Insert root topic into 'topics' collection with session_id, name (from GPT response), depth=0, parent_node_id=null, content=extracted_text",
+        "Recursively insert all nodes into 'nodes' collection: each node has session_id, topic_id (root), label, depth, parent_id, children_ids, is_defeated=false",
+        "Return response JSON with session_id, topic_tree (nested structure), and node_count (total nodes in tree)"
+      ],
+      "commit_condition": "Run `curl -X POST http://localhost:8000/api/topics/generate-tree -H 'Content-Type: application/json' -d '{\"session_id\": \"550e8400-e29b-41d4-a716-446655440000\", \"extracted_text\": \"Biology is the study of life...\"}'` — response HTTP 201 contains JSON with valid session_id, topic_tree (nested dict with 'name' and 'children' keys), and node_count (integer >= 1); verify 'nodes' collection in MongoDB contains node_count documents with session_id matching request",
+      "example_input": "session_id='550e8400-e29b-41d4-a716-446655440000', extracted_text='Cell Biology Overview. Cells are the basic units of life. Types: prokaryotic and eukaryotic cells. Prokaryotic cells lack nucleus. Eukaryotic cells have nucleus and organelles.'",
+      "example_output": "HTTP 201: {\"session_id\": \"550e8400-e29b-41d4-a716-446655440000\", \"topic_tree\": {\"name\": \"Cell Biology\", \"children\": [{\"name\": \"Prokaryotic Cells\", \"children\": [{\"name\": \"Characteristics\"}]}, {\"name\": \"Eukaryotic Cells\", \"children\": [{\"name\": \"Nucleus\"}]}]}, \"node_count\": 5}"
+    },
+    {
+      "id": 5,
+      "title": "Question Generation by Question Type",
+      "deliverable": "`POST /api/questions/generate` accepts session_id and node_id, calls OpenAI GPT-4 API to generate 1 question per node for each of 5 question types (Define, Solve, Compare, ELI5, FinishTheAnswer), returns HTTP 201 with JSON containing session_id, node_id, and questions array (5 items); MongoDB 'questions' collection is populated with 5 documents per node",
+      "tasks": [
+        "Create backend/routes/questions.py with FastAPI APIRouter",
+        "Implement `POST /api/questions/generate` endpoint that accepts JSON body with session_id (UUID) and node_id (ObjectId)",
+        "Retrieve node document from 'nodes' collection and parent topic content from 'topics' collection",
+        "Create backend/utils/question_generator.py with function generate_questions(node_label, topic_content, node_depth) that returns dict with 5 keys: 'Define', 'Solve', 'Compare', 'ELI5', 'FinishTheAnswer'",
+        "For each question type, craft a GPT-4 prompt that includes node_label, topic_content, node_depth, and question_type; call OpenAI API and extract question text",
+        "Validate each generated question: ensure non-empty text, length < 500 chars; retry up to 2 times on validation failure, then skip if still invalid",
+        "For each question type, also generate mark_scheme (dict with 'key_points' array and 'max_marks' int) by calling GPT-4 with prompt: 'Generate a mark scheme for this question: [question]. Provide key points (list) and max marks (1-5).' Parse JSON response",
+        "Insert 5 documents into 'questions' collection: one per question type, each with session_id, node_id, question_text, question_type (enum), mark_scheme (dict), created_at",
+        "Return response JSON with session_id, node_id, and questions array (5 objects with question_type, question_text, mark_scheme)"
+      ],
+      "commit_condition": "Run `curl -X POST http://localhost:8000/api/questions/generate -H 'Content-Type: application/json' -d '{\"session_id\": \"550e8400-e29b-41d4-a716-446655440000\", \"node_id\": \"64a1b2c3d4e5f6g7h8i9j0k1\"}'` — response HTTP 201 contains JSON with valid session_id, node_id, and questions array with exactly 5 items (one per type: Define, Solve, Compare, ELI5, FinishTheAnswer); each item has question_text (non-empty str), question_type (enum), mark_scheme (dict with 'key_points' array and 'max_marks' int); verify 5 documents inserted into 'questions' collection for the node_id",
+      "example_input": "node_id='64a1b2c3d4e5f6g7h8i9j0k1', node_label='Mitochondria', topic_content='Mitochondria are the powerhouses of cells. They convert glucose into ATP through cellular respiration.'",
+      "example_output": "HTTP 201: {\"session_id\": \"550e8400-e29b-41d4-a716-446655440000\", \"node_id\": \"64a1b2c3d4e5f6g7h8i9j0k1\", \"questions\": [{\"question_type\": \"Define\", \"question_text\": \"What is the primary function of mitochondria?\", \"mark_scheme\": {\"key_points\": [\"Convert glucose to ATP\", \"Cellular respiration\"], \"max_marks\": 5}}, ... 4 more items]}"
+    },
+    {
+      "id": 6,
+      "title": "Answer Submission and LLM-Based Marking",
+      "deliverable": "`POST /api/answers/submit` accepts session_id, question_id, and student_answer (str), calls OpenAI GPT-4 API to compare answer against mark_scheme, returns HTTP 201 with JSON containing answer_id, marks_received (float 0-1), and feedback (str); MongoDB 'answers' collection stores the submission",
+      "tasks": [
+        "Create backend/routes/answers.py with FastAPI APIRouter",
+        "Implement `POST /api/answers/submit` endpoint that accepts JSON body with session_id (UUID), question_id (ObjectId), and student_answer (str, max 2000 chars)",
+        "Retrieve question document from 'questions' collection and extract question_text and mark_scheme",
+        "Create backend/utils/marking.py with function evaluate_answer(student_answer, question_text, mark_scheme) that crafts a GPT-4 prompt: 'Mark this student answer against the mark scheme. Student answer: [student_answer]. Question: [question_text]. Mark scheme key points: [key_points]. Max marks: [max_marks]. Return JSON with marks_received (0-1 float), feedback (brief str), and key_points_hit (array of matched points).' Call OpenAI API and parse JSON response",
+        "Validate marking response: ensure marks_received is float 0-1, feedback is non-empty str, key_points_hit is array; return error 500 if invalid",
+        "Insert document into 'answers' collection with session_id, question_id, student_answer, marks_received (float), feedback (str), created_at",
+        "Return response JSON with answer_id (ObjectId from insert), marks_received (float 0-1), feedback (str), and key_points_hit (array)"
+      ],
+      "commit_condition": "Run `curl -X POST http://localhost:8000/api/answers/submit -H 'Content-Type: application/json' -d '{\"session_id\": \"550e8400-e29b-41d4-a716-446655440000\", \"question_id\": \"64a1b2c3d4e5f6g7h8i9j0k1\", \"student_answer\": \"Mitochondria convert glucose into ATP\"}'` — response HTTP 201 contains JSON with answer_id (valid ObjectId string), marks_received (float between 0.0 and 1.0), feedback (non-empty str), and key_points_hit (array of strings); verify document inserted into 'answers' collection",
+      "example_input": "question_id='64a1b2c3d4e5f6g7h8i9j0k1' (Define question for 'Mitochondria'), student_answer='Energy production organelle'",
+      "example_output": "HTTP 201: {\"answer_id\": \"64b2c3d4e5f6g7h8i9j0k1a2\", \"marks_received\": 0.7, \"feedback\": \"Good basic understanding; missing details about ATP production\", \"key_points_hit\": [\"Energy production\"]}"
+    },
+    {
+      "id": 7,
+      "title": "Node Unlock Mechanics and Session State",
+      "deliverable": "`GET /api/sessions/{session_id}/status` returns HTTP 200 with JSON showing all nodes with is_defeated status, answered questions count, and unlock eligibility; `POST /api/nodes/{node_id}/check-defeat` returns HTTP 200 with defeated (bool) and unlocks_parent (bool) based on all-children-defeated rule; MongoDB 'nodes' collection updates is_defeated flag when all questions for leaf node are answered with avg marks >= 0.7",
+      "tasks": [
+        "Create backend/routes/nodes.py with FastAPI APIRouter",
+        "Implement `GET /api/sessions/{session_id}/status` endpoint that retrieves all nodes for session from 'nodes' collection, queries 'answers' collection for each node's questions, calculates is_defeated status, and returns complete session state JSON",
+        "Implement `POST /api/nodes/{node_id}/check-defeat` endpoint that retrieves node and all its child questions from 'questions' collection, queries 'answers' for all answers, calculates average marks_received across all answers for that node",
+        "Define defeat logic: leaf nodes (no children) are defeated if all 5 question types answered with avg marks >= 0.7; non-leaf nodes are defeated if all children are defeated",
+        "Update node is_defeated=true in MongoDB when defeat condition is met",
+        "Implement unlock logic: when a node is defeated, recursively check parent node; if all parent's children are defeated, set parent is_defeated=true",
+        "Return response JSON with node_id, is_defeated (bool), parent_id (ObjectId or null), all_children_defeated (bool), avg_marks (float), questions_answered (int/5), and unlocks_parent (bool if parent can now be marked defeated)",
+        "Create backend/utils/session_manager.py with function get_session_state(session_id) that returns full session state including all nodes, questions, answers, and defeat/unlock status tree"
+      ],
+      "commit_condition": "Run `curl -X GET http://localhost:8000/api/sessions/550e8400-e29b-41d4-a716-446655440000/status` — response HTTP 200 contains JSON with nodes array showing all nodes and their is_defeated status; next run `curl -X POST http://localhost:8000/api/nodes/64a1b2c3d4e5f6g7h8i9j0k1/check-defeat` — response HTTP 200 contains JSON with node_id, is_defeated (bool), unlocks_parent (bool), avg_marks (float); verify 'nodes' collection document shows updated is_defeated=true for that node",
+      "example_input": "Leaf node 'Mitochondria Structure' with 5 questions; student answered all 5 with marks [0.8, 0.75, 0.9, 0.7, 0.85]; parent node 'Organelles' has 2 children, one defeated and one not",
+      "example_output": "`GET /api/sessions/.../status` returns nodes with 'Mitochondria Structure' showing is_defeated=true, avg_marks=0.8, questions_answered='5/5'; `POST /api/nodes/.../check-defeat` returns {\"is_defeated\": true, \"unlocks_parent\": false, \"all_children_defeated\": false, \"avg_marks\": 0.8}"
+    },
+    {
+      "id": 8,
+      "title": "React Frontend Core UI and Tree Navigation",
+      "deliverable": "React app at http://localhost:3000 displays topic tree as interactive hierarchy (root at top, depth expandable), allows clicking nodes to view questions, shows node defeat status (visual indicator), and displays all UI components (SessionUpload, TreeView, QuestionCard, AnswerForm) without build errors",
+      "tasks": [
+        "Create React components in frontend/src/components: SessionUpload.tsx (file upload form), TreeView.tsx (hierarchical tree display), NodeCard.tsx (single node with defeat indicator), QuestionCard.tsx (question display with mark scheme), AnswerForm.tsx (student answer input), ResultsFeedback.tsx (marks and feedback display)",
+        "Implement SessionUpload component: form with file input (accept .pptx, .docx), upload button, loading state spinner, success message showing session_id",
+        "Implement TreeView component: recursive tree rendering with expand/collapse toggles, visual indication of defeated nodes (green checkmark or badge), clickable nodes that emit event to parent",
+        "Implement NodeCard component: displays node label, depth indicator (Level 1/2/3), defeat status, questions answered count (0/5), unlock eligibility text",
+        "Implement QuestionCard component: displays question_text, question_type (badge), max_marks, accept student_answer input (textarea), submit button",
+        "Implement AnswerForm component: textarea for student answer (max 2000 chars), submit button, loading spinner, error message display",
+        "Implement ResultsFeedback component: displays marks_received (percentage and bar chart), feedback text, key_points_hit array with checkmarks",
+        "Create API client layer in frontend/src/api/client.ts with functions: uploadDocument, generateTree, generateQuestions, submitAnswer, getSessionStatus, checkNodeDefeat"
+      ],
+      "commit_condition": "Run `cd frontend && npm run build` — no build errors, output shows 'compiled successfully'; run `npm run dev` — dev server starts on localhost:3000; open http://localhost:3000 in browser — page renders with SessionUpload component visible, file input field and upload button are clickable, no console errors",
+      "example_input": "React dev server started on localhost:3000 with no prior session data",
+      "example_output":

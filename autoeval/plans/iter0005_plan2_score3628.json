@@ -1,0 +1,131 @@
+```json
+{
+  "project": {
+    "name": "StudyBattles",
+    "language": "Python 3.11",
+    "runtime": "web",
+    "package_manager": "pip",
+    "framework": "FastAPI 0.111",
+    "database": "MongoDB 7.0",
+    "deployment": "Docker + AWS EC2",
+    "external_services": ["OpenAI GPT-4 API", "AWS S3"]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Environment Setup and Project Scaffolding",
+      "deliverable": "`python backend/main.py` starts Uvicorn on http://127.0.0.1:8000 and serves Swagger docs at `/docs`; `npm run dev` starts React dev server on http://localhost:5173 with hot reload enabled",
+      "tasks": [
+        "Initialize Python 3.11 virtual environment with pip and install FastAPI 0.111, uvicorn 0.29, pydantic 2.5, and python-dotenv 1.0",
+        "Install MongoDB 7.0 locally (or configure connection to MongoDB Atlas cloud cluster) and verify connection with `mongosh`",
+        "Create backend directory structure: `backend/main.py`, `backend/config.py`, `backend/models/`, `backend/routes/`, `backend/services/`, `backend/utils/`",
+        "Configure environment file `.env.example` with placeholders for OPENAI_API_KEY, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_S3_BUCKET_NAME, and MONGODB_URI",
+        "Initialize React 18 project with Vite using `npm create vite@latest frontend -- --template react` and install axios, zustand 4.4, and tailwindcss 3.4",
+        "Create frontend directory structure: `frontend/src/pages/`, `frontend/src/components/`, `frontend/src/store/`, `frontend/src/services/`, `frontend/src/styles/`",
+        "Set up Git repository with `.gitignore` entries for `__pycache__`, `.env`, `node_modules`, `.venv`, and `build/` directories",
+        "Configure CORS middleware in FastAPI to accept requests from http://localhost:5173"
+      ],
+      "commit_condition": "Run `python backend/main.py` — terminal prints 'Uvicorn running on http://127.0.0.1:8000'; open http://127.0.0.1:8000/docs — Swagger UI loads with no endpoints listed. Run `npm run dev` in frontend/ — terminal prints 'VITE ... ready in X ms' and http://localhost:5173 loads a blank React app with Vite logo",
+      "example_input": "Empty project directory with README.md only",
+      "example_output": "Run `python backend/main.py` and `npm run dev` in parallel — FastAPI serves Swagger on port 8000, React dev server serves on port 5173; both processes stay running without errors"
+    },
+    {
+      "id": 2,
+      "title": "MongoDB Schema and Data Models",
+      "deliverable": "MongoDB collections `sessions`, `topics`, `nodes`, and `answers` exist with enforced schema; `POST /api/debug/create-sample` creates a sample session document with nested node structure for manual testing",
+      "tasks": [
+        "Define Pydantic models in `backend/models/study.py`: SessionSchema with fields session_id (UUID), user_name (string), created_at (datetime), updated_at (datetime), and status (enum: 'in_progress', 'completed')",
+        "Define NodeSchema in `backend/models/study.py` with fields node_id (string), parent_id (string or null), title (string), description (string), is_leaf (bool), is_defeated (bool), level (int, 0-2 for max depth 3), and children (list of node_ids)",
+        "Define TopicSchema in `backend/models/study.py` with fields topic_id (UUID), session_id (UUID), title (string), root_node_id (string), created_at (datetime), nodes (list of NodeSchema objects)",
+        "Define AnswerSchema in `backend/models/study.py` with fields answer_id (UUID), node_id (string), question_type (enum: 'Define', 'Solve', 'Compare', 'ELI5', 'FinishAnswer'), user_answer (string), marks_awarded (int), max_marks (int), mark_scheme (string), feedback (string), and submitted_at (datetime)",
+        "Create MongoDB indexes: unique index on `sessions.session_id`, compound index on `nodes.session_id + node_id`, compound index on `answers.session_id + node_id`",
+        "Create `backend/services/mongo_service.py` with functions: `get_session(session_id)`, `create_session(user_name)`, `get_topic(topic_id)`, `update_node_defeated_status(node_id, is_defeated)`, `save_answer(answer_schema)`",
+        "Create debug endpoint `POST /api/debug/create-sample` that inserts a sample session with a 3-level node tree into MongoDB for manual testing",
+        "Add health check endpoint `GET /health` returning `{\"status\": \"ok\", \"db_connected\": true}`"
+      ],
+      "commit_condition": "Run `python backend/main.py` then `curl -X POST http://localhost:8000/api/debug/create-sample` — response status 201 with JSON containing `session_id`, `topic_id`, and root `node_id`. Query MongoDB with `mongosh`: `db.sessions.findOne()` returns a document with session_id, user_name, and created_at fields",
+      "example_input": "Empty MongoDB instance with no collections",
+      "example_output": "MongoDB database now contains sample session document: `{\"_id\": ObjectId(...), \"session_id\": \"uuid-1234\", \"user_name\": \"TestStudent\", \"created_at\": ISODate(...), \"status\": \"in_progress\"}`; sample topic document with root_node_id pointing to a node in nodes collection; sample nodes collection with 7 documents (1 root + 2 level-1 + 4 level-2 leaf nodes)"
+    },
+    {
+      "id": 3,
+      "title": "AWS S3 Integration and Document Upload Endpoint",
+      "deliverable": "`POST /api/upload` accepts multipart/form-data with file (PPTX, DOCX, or YouTube URL) and session_id, stores file in AWS S3, and returns `{\"file_key\": \"...\", \"file_url\": \"...\"}`",
+      "tasks": [
+        "Install boto3 3.32 library with `pip install boto3`",
+        "Create `backend/services/s3_service.py` with functions: `upload_file_to_s3(file_bytes, file_name, session_id)` returning s3_key and s3_url, and `get_presigned_url(s3_key, expiration_seconds=3600)`",
+        "Configure AWS S3 access in `backend/config.py` using environment variables AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and AWS_S3_BUCKET_NAME; initialize boto3 S3 client",
+        "Create request model `UploadRequest` in `backend/models/upload.py` with fields: file (UploadFile), session_id (string), document_type (enum: 'pptx', 'docx', 'youtube_url')",
+        "Create upload endpoint `POST /api/upload` that validates file type (max 50 MB for PPTX/DOCX), calls `s3_service.upload_file_to_s3()`, and stores file metadata in MongoDB collection `uploads` with fields: upload_id (UUID), session_id, file_key (S3 key), file_url, document_type, uploaded_at",
+        "Add error handling for S3 upload failures with response status 500 and message 'File upload failed'",
+        "Create `GET /api/uploads/{session_id}` endpoint returning list of all uploads for a session with their S3 URLs"
+      ],
+      "commit_condition": "Run `curl -X POST -F 'file=@test_sample.docx' -F 'session_id=uuid-1234' -F 'document_type=docx' http://localhost:8000/api/upload` — response status 200 with JSON containing `file_key` (format: `uploads/session-uuid-1234/filename-timestamp.docx`) and `file_url` (valid S3 HTTPS URL). Verify in AWS S3 console that file exists at the returned key",
+      "example_input": "Test file `test_sample.docx` on disk; session_id created in phase 2",
+      "example_output": "HTTP 200 response: `{\"upload_id\": \"uuid-5678\", \"file_key\": \"uploads/uuid-1234/test_sample-1705324800.docx\", \"file_url\": \"https://studybattles-bucket.s3.amazonaws.com/uploads/uuid-1234/test_sample-1705324800.docx\", \"document_type\": \"docx\", \"uploaded_at\": \"2024-01-15T10:00:00Z\"}`"
+    },
+    {
+      "id": 4,
+      "title": "Document Parsing and Topic Tree Generation via OpenAI",
+      "deliverable": "`POST /api/generate-tree` accepts session_id and file_key, calls OpenAI GPT-4 to extract content and generate a 3-level topic hierarchy, stores tree in MongoDB, and returns root node_id with full tree structure",
+      "tasks": [
+        "Install openai 1.3 library with `pip install openai`",
+        "Create `backend/services/document_parser.py` with functions: `extract_text_from_docx(file_bytes)` using python-docx, `extract_text_from_pptx(file_bytes)` using python-pptx, `fetch_youtube_transcript(video_url)` using youtube-transcript-api library",
+        "Install required parsing libraries: `pip install python-docx python-pptx youtube-transcript-api`",
+        "Create `backend/services/openai_service.py` with function `generate_topic_tree(extracted_text, max_depth=3)` that calls OpenAI GPT-4 with system prompt: 'You are an educational content specialist. Given raw content, create a hierarchical learning tree with 1 root node, 2–3 intermediate nodes per parent, and leaf nodes for specific concepts. Each node must have a clear title and description. Maximum tree depth is 3 levels. Return JSON with structure: {\"root\": {\"id\": \"string\", \"title\": \"string\", \"description\": \"string\", \"children\": [...]}, \"total_nodes\": int}'",
+        "Create endpoint `POST /api/generate-tree` accepting request body `{\"session_id\": \"string\", \"file_key\": \"string\"}`, retrieving file from S3, parsing content, calling OpenAI GPT-4, storing generated nodes in MongoDB collection `nodes`, and returning `{\"root_node_id\": \"string\", \"total_nodes\": int, \"tree\": {...}}`",
+        "Create helper function `build_node_tree_from_openai_response(openai_json, session_id, level=0)` that converts OpenAI JSON into MongoDB NodeSchema documents with proper parent-child relationships and level numbering",
+        "Add database transaction wrapper to ensure all nodes are saved atomically to MongoDB",
+        "Create error handling for OpenAI API failures with response status 502 and message 'Tree generation failed'"
+      ],
+      "commit_condition": "Run `curl -X POST -H 'Content-Type: application/json' -d '{\"session_id\": \"uuid-1234\", \"file_key\": \"uploads/uuid-1234/sample.docx\"}' http://localhost:8000/api/generate-tree` — response status 200 with JSON containing `root_node_id` (string format), `total_nodes` (integer ≥5), and `tree` object. Query MongoDB: `db.nodes.find({session_id: \"uuid-1234\"}).count()` returns a number matching `total_nodes`",
+      "example_input": "Upload created in phase 3: file_key = 'uploads/uuid-1234/sample.docx' pointing to a DOCX file containing text about 'Algebra' topic",
+      "example_output": "HTTP 200 response: `{\"root_node_id\": \"node-root-001\", \"total_nodes\": 7, \"tree\": {\"id\": \"node-root-001\", \"title\": \"Algebra Fundamentals\", \"description\": \"Core concepts of algebra\", \"children\": [{\"id\": \"node-l1-001\", \"title\": \"Linear Equations\", \"children\": [{\"id\": \"node-l2-001\", \"title\": \"Solving ax+b=c\", \"is_leaf\": true}, {\"id\": \"node-l2-002\", \"title\": \"Graphing lines\", \"is_leaf\": true}]}, {\"id\": \"node-l1-002\", \"title\": \"Quadratic Equations\", \"children\": [{\"id\": \"node-l2-003\", \"title\": \"Factoring quadratics\", \"is_leaf\": true}, {\"id\": \"node-l2-004\", \"title\": \"Quadratic formula\", \"is_leaf\": true}]}]}}`; MongoDB nodes collection now contains 7 documents with session_id, level (0, 1, or 2), parent_id, and is_leaf fields"
+    },
+    {
+      "id": 5,
+      "title": "Question Generation and Mark Scheme Creation",
+      "deliverable": "`POST /api/generate-questions` accepts node_id and session_id, calls OpenAI GPT-4 to generate 5 questions (one per type: Define, Solve, Compare, ELI5, FinishAnswer) with mark schemes, stores questions and mark schemes in MongoDB collection `questions`, and returns all questions with max_marks",
+      "tasks": [
+        "Create `backend/models/question.py` with QuestionSchema: question_id (UUID), node_id (string), session_id (string), question_type (enum: 'Define', 'Solve', 'Compare', 'ELI5', 'FinishAnswer'), question_text (string), max_marks (int, default 10), mark_scheme (string), created_at (datetime)",
+        "Create `backend/services/question_generator.py` with function `generate_questions_for_node(node_title, node_description, max_marks=10)` that calls OpenAI GPT-4 with system prompt: 'You are an exam question designer. Given a topic, create 5 distinct questions in these types: 1) Define: define the key concept in 2–3 sentences. 2) Solve: solve a practical problem related to the topic. 3) Compare: compare two concepts or approaches. 4) ELI5: explain the concept as if to a 5-year-old. 5) FinishAnswer: complete a sentence or statement (e.g., \"The formula for X is...\"). For each, provide: question_text (string), mark_scheme (string describing correct answer structure, key points expected, and common errors to avoid), and max_marks (int, usually 10). Return JSON array of 5 question objects'",
+        "Create endpoint `POST /api/generate-questions` accepting request body `{\"node_id\": \"string\", \"session_id\": \"string\"}`, fetching node data from MongoDB, calling `question_generator.generate_questions_for_node()`, storing questions in MongoDB collection `questions`, and returning array of questions with fields: question_id, question_type, question_text, max_marks, and mark_scheme",
+        "Add validation to ensure questions are generated only for leaf nodes (is_leaf=true)",
+        "Create MongoDB index on `questions.node_id` for fast retrieval",
+        "Add error handling for OpenAI API failures with response status 502 and message 'Question generation failed'"
+      ],
+      "commit_condition": "Run `curl -X POST -H 'Content-Type: application/json' -d '{\"node_id\": \"node-l2-001\", \"session_id\": \"uuid-1234\"}' http://localhost:8000/api/generate-questions` — response status 200 with JSON array containing 5 question objects (one per type). Each object contains `question_id` (UUID), `question_type` (one of 5 types), `question_text` (non-empty string), `max_marks` (10), and `mark_scheme` (non-empty string)",
+      "example_input": "Leaf node exists in MongoDB: `{\"_id\": ObjectId(...), \"node_id\": \"node-l2-001\", \"title\": \"Solving ax+b=c\", \"description\": \"Learn to solve linear equations\", \"is_leaf\": true, \"session_id\": \"uuid-1234\"}`",
+      "example_output": "HTTP 200 response: `[{\"question_id\": \"q-1001\", \"question_type\": \"Define\", \"question_text\": \"Define a linear equation in the form ax+b=c\", \"max_marks\": 10, \"mark_scheme\": \"Correct answer should mention: equation with variable x, coefficients a and b, and equals sign. Accept answers like 'An equation where x is multiplied by a number and b is added'\"}, {\"question_id\": \"q-1002\", \"question_type\": \"Solve\", \"question_text\": \"Solve the equation 2x+5=15\", \"max_marks\": 10, \"mark_scheme\": \"Correct answer is x=5. Key steps: subtract 5 from both sides (2x=10), then divide by 2. Full marks if all steps shown, 5 marks if only final answer given.\"}, ...4 more questions...]`"
+    },
+    {
+      "id": 6,
+      "title": "Answer Submission and LLM-Based Marking",
+      "deliverable": "`POST /api/submit-answer` accepts node_id, question_id, question_type, and user_answer, calls OpenAI GPT-4 to evaluate against the mark scheme, stores answer and marks in MongoDB, and returns `{\"marks_awarded\": int, \"feedback\": string, \"is_correct\": bool}`",
+      "tasks": [
+        "Create request model `AnswerSubmissionRequest` in `backend/models/answer.py` with fields: node_id (string), question_id (string), session_id (string), question_type (enum), user_answer (string), question_text (string), mark_scheme (string), max_marks (int)",
+        "Create `backend/services/marking_service.py` with function `evaluate_answer(user_answer, mark_scheme, max_marks, question_type)` that calls OpenAI GPT-4 with system prompt: 'You are a strict academic marker. Evaluate student answers against the provided mark scheme. Be fair but accurate. Deduct marks for incomplete or incorrect information. Return JSON with: marks_awarded (int between 0 and max_marks), feedback (string, 2–3 sentences explaining what was correct/incorrect and why), and is_correct (bool, true if marks_awarded >= 70% of max_marks)'",
+        "Create endpoint `POST /api/submit-answer` accepting AnswerSubmissionRequest, calling `marking_service.evaluate_answer()`, storing answer document in MongoDB collection `answers` with all fields including marks_awarded and feedback, and returning evaluation result",
+        "Add validation to ensure answer length is between 5 and 1000 characters",
+        "Store answer documents in MongoDB with fields: answer_id (UUID), node_id (string), question_id (string), session_id (string), user_answer (string), marks_awarded (int), max_marks (int), question_type (enum), feedback (string), submitted_at (datetime)",
+        "Create MongoDB index on `answers.session_id + node_id` for retrieval of all answers for a node",
+        "Add error handling for OpenAI API failures with response status 502 and message 'Marking failed'"
+      ],
+      "commit_condition": "Run `curl -X POST -H 'Content-Type: application/json' -d '{\"node_id\": \"node-l2-001\", \"question_id\": \"q-1001\", \"session_id\": \"uuid-1234\", \"question_type\": \"Define\", \"user_answer\": \"A linear equation is an equation with a variable x that can be written as ax+b=c\", \"question_text\": \"Define a linear equation in the form ax+b=c\", \"mark_scheme\": \"Should mention: equation with variable x, coefficients a and b, and equals sign\", \"max_marks\": 10}' http://localhost:8000/api/submit-answer` — response status 200 with JSON containing `marks_awarded` (integer 0–10), `feedback` (non-empty string), and `is_correct` (true or false)",
+      "example_input": "Question exists in MongoDB: `{\"question_id\": \"q-1001\", \"question_type\": \"Define\", \"question_text\": \"Define a linear equation in the form ax+b=c\", \"mark_scheme\": \"Should mention: equation with variable x, coefficients a and b, and equals sign\", \"max_marks\": 10}`; student types answer 'A linear equation is an equation with a variable x'",
+      "example_output": "HTTP 200 response: `{\"marks_awarded\": 7, \"feedback\": \"Good attempt! You correctly identified it as an equation with a variable x. However, you didn't mention the standard form ax+b=c with coefficients. Add those details next time.\", \"is_correct\": false}`; Answer document stored in MongoDB with all fields including marks_awarded and feedback"
+    },
+    {
+      "id": 7,
+      "title": "Node Unlock Logic and Defeat Tracking",
+      "deliverable": "`POST /api/check-unlock` accepts parent_node_id and session_id, checks if all sibling child nodes have is_defeated=true, updates parent node to is_defeated=true if all children defeated, and returns `{\"parent_unlocked\": bool, \"children_progress\": {...}}`",
+      "tasks": [
+        "Create helper function `get_all_children_for_node(node_id)` in `mongo_service.py` that queries MongoDB for all direct child nodes",
+        "Create helper function `check_all_children_defeated(node_id)` in `mongo_service.py` that returns true if all child nodes have is_defeated=true",
+        "Create function `mark_node_defeated(node_id, session_id)` in `mongo_service.py` that updates node.is_defeated = true in MongoDB",
+        "Create endpoint `POST /api/check-unlock` accepting request body `{\"parent_node_id\": \"string\", \"session_id\": \"string\"}`, calling `check_all_children_defeated()`, updating parent node if all children defeated, and returning response with parent_unlocked (bool) and children_progress (dict mapping child_id to {\"title\": string, \"is_defeated\": bool})",
+        "Add automatic call to unlock parent: after answer submission in phase 6, if all questions for a leaf node are answered with marks ≥ 70%, call `mark_node_defeated()` on the leaf node and then `check_unlock()` on its parent",
+        "Create `GET /api/node-status/{node_id}` endpoint returning full node document with is_defeated status and count of defeated children",
+        "Add MongoDB transaction wrapper to ensure parent unlock updates are atomic"
+      ],
+      "commit_condition": "Create scenario: parent node `node-p1` has 2 child leaf nodes `node-l2-001` and `node-l2-002`, both with is_defeated=false. Answer all questions for both leaf nodes with marks 
