@@ -1,0 +1,210 @@
+```json
+{
+  "project": {
+    "name": "DevLogSummarizer",
+    "language": "Python 3.11",
+    "runtime": "cli",
+    "package_manager": "pip",
+    "framework": "Click 8.1",
+    "database": "SQLite 3 (stdlib sqlite3)",
+    "deployment": "PyPI pip package",
+    "external_services": ["OpenAI API (GPT-4o)"]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Environment Setup and Project Structure",
+      "deliverable": "Running `devlog --version` returns version string; `devlog --help` displays Click-based CLI help; project structure contains `src/devlogsummarizer/main.py` with Click app instance",
+      "tasks": [
+        "Create project directory structure with `src/devlogsummarizer/`, `tests/`, `.gitignore`, and `pyproject.toml` with setuptools configuration",
+        "Define `pyproject.toml` with Python 3.11+ requirement, Click 8.1, requests library, and pip console entry point `devlog = devlogsummarizer.main:cli`",
+        "Create `src/devlogsummarizer/__init__.py` with `__version__ = '0.1.0'`",
+        "Create `src/devlogsummarizer/main.py` with Click CLI application stub, `@click.group()` decorator, and `--version` option",
+        "Create `setup.py` or configure `pyproject.toml` to make package pip-installable locally via `pip install -e .`",
+        "Install package locally with `pip install -e .` and verify `devlog --help` runs without error"
+      ],
+      "commit_condition": "Run `pip install -e .` from project root — success; Run `devlog --version` — outputs version string; Run `devlog --help` — displays Click-based help with no subcommands listed yet",
+      "example_input": "Empty project directory with no files or dependencies installed",
+      "example_output": "Run `devlog --help` — terminal displays Click command help text showing version and help options; Run `which devlog` — shows executable path installed by pip; Run `devlog --version` — prints '0.1.0'"
+    },
+    {
+      "id": 2,
+      "title": "Git Log Parsing and Commit Grouping",
+      "deliverable": "`devlogsummarizer.git_parser.parse_commits()` function returns list of Commit namedtuples with hash, author, date, message; `group_commits_by_day()` returns dict keyed by date string with Commit lists as values",
+      "tasks": [
+        "Create `src/devlogsummarizer/git_parser.py` module with Commit namedtuple (fields: hash, author, date, message, timestamp_unix)",
+        "Implement `parse_commits(repo_path: str, since: str) -> List[Commit]` function that runs `git log --since=<since> --format=%H|%an|%ai|%s|%ct` and parses output into Commit objects",
+        "Implement `group_commits_by_day(commits: List[Commit]) -> Dict[str, List[Commit]]` function that groups commits by date string 'YYYY-MM-DD' extracted from commit timestamp",
+        "Write unit tests in `tests/test_git_parser.py` covering parse_commits with mock git output, group_commits_by_day with multiple dates, and edge cases (empty commit list, single commit)",
+        "Add error handling in `parse_commits()` to catch subprocess errors and raise custom `GitError` exception with descriptive message"
+      ],
+      "commit_condition": "Run `pytest tests/test_git_parser.py -v` — all tests pass with zero failures; Run `python -c \"from devlogsummarizer.git_parser import Commit, parse_commits, group_commits_by_day; c = Commit('abc123', 'Alice', '2024-01-15', 'Fix bug', 1705276800); print(c.hash)\"` — outputs 'abc123'",
+      "example_input": "Mock git log output string: '8f7a2c1|Alice Dev|2024-01-15 10:30:00 +0000|Add user auth\\n5e4d9b2|Bob Smith|2024-01-15 14:20:00 +0000|Refactor API\\n3c2a1b0|Alice Dev|2024-01-14 09:15:00 +0000|Fix cache bug'",
+      "example_output": "parse_commits() returns [Commit(hash='8f7a2c1', author='Alice Dev', date='2024-01-15', message='Add user auth', timestamp_unix=1705276800), ...]; group_commits_by_day() returns {'2024-01-15': [Commit(...), Commit(...)], '2024-01-14': [Commit(...)]}"
+    },
+    {
+      "id": 3,
+      "title": "OpenAI API Integration for Commit Summarization",
+      "deliverable": "`devlogsummarizer.openai_client.summarize_commits()` accepts list of Commit objects and returns dict mapping date string to summary string; function connects to OpenAI API with GPT-4o model",
+      "tasks": [
+        "Create `src/devlogsummarizer/openai_client.py` module with OpenAIClient class accepting api_key parameter in constructor",
+        "Implement `summarize_commits(grouped_commits: Dict[str, List[Commit]]) -> Dict[str, str]` method that builds prompt from commit messages per day and calls OpenAI API",
+        "Configure OpenAI API call with model 'gpt-4o', temperature 0.3, max_tokens 300, and system prompt instructing GPT-4o to generate concise daily standup summaries",
+        "Add error handling for OpenAI API failures (rate limits, authentication, network errors) and raise custom `OpenAIError` with descriptive message",
+        "Write unit tests in `tests/test_openai_client.py` with mocked OpenAI responses, testing single day, multiple days, and API error scenarios",
+        "Log API calls with commit count and response token count using Python logging module at DEBUG level"
+      ],
+      "commit_condition": "Run `pytest tests/test_openai_client.py -v` — all tests pass with zero failures; Run `python -c \"from devlogsummarizer.openai_client import OpenAIClient; c = OpenAIClient('sk-test'); print(type(c).__name__)\"` — outputs 'OpenAIClient'",
+      "example_input": "Dict with grouped commits: {'2024-01-15': [Commit(..., message='Add user auth'), Commit(..., message='Refactor API')], '2024-01-14': [Commit(..., message='Fix cache bug')]}; api_key = 'sk-...'",
+      "example_output": "summarize_commits() returns {'2024-01-15': 'Added user authentication system and refactored API endpoints for better performance.', '2024-01-14': 'Fixed critical cache invalidation bug affecting data consistency.'}"
+    },
+    {
+      "id": 4,
+      "title": "Markdown Output Formatting and CLI Command",
+      "deliverable": "`devlog summarize --since 7d` subcommand runs in any git repo, generates Markdown string with daily summaries grouped by date, and writes to stdout; `devlogsummarizer.formatter.format_markdown()` returns formatted string",
+      "tasks": [
+        "Create `src/devlogsummarizer/formatter.py` module with `format_markdown(grouped_summaries: Dict[str, str], repo_name: str = None) -> str` function",
+        "Implement markdown formatting: header '# DevLog Summary', date headers (## YYYY-MM-DD), summary text, optional metadata (repo name, generation timestamp)",
+        "Create `summarize` Click subcommand in `src/devlogsummarizer/main.py` with options: `--since` (default '7d'), `--until` (optional), `--repo-path` (default '.')",
+        "Wire `summarize` command to call git_parser, openai_client, and formatter in sequence; pass OpenAI key from environment variable `OPENAI_API_KEY`",
+        "Add command-line feedback: print status messages to stderr (e.g., 'Fetching commits...', 'Generating summaries...', 'Done') and final markdown to stdout",
+        "Write integration tests in `tests/test_cli.py` using Click's CliRunner, mocking git and OpenAI calls, verifying markdown output format and command exit codes"
+      ],
+      "commit_condition": "Run `pytest tests/test_cli.py -v` — all tests pass with zero failures; Run `OPENAI_API_KEY=sk-test devlog summarize --since 7d --repo-path /tmp/test-repo 2>&1 | head -5` — stdout starts with '# DevLog Summary' (with mocked API)"
+      ,
+      "example_input": "Git repo at /home/user/myproject with commits from past 7 days; environment variable OPENAI_API_KEY='sk-...'; terminal command: `cd /home/user/myproject && devlog summarize --since 7d`",
+      "example_output": "Terminal prints '# DevLog Summary\\n\\n## 2024-01-15\\nAdded user authentication system and refactored API endpoints for better performance.\\n\\n## 2024-01-14\\nFixed critical cache invalidation bug affecting data consistency.' to stdout; exit code 0"
+    },
+    {
+      "id": 5,
+      "title": "SQLite Caching Layer for Commit Deduplication",
+      "deliverable": "`devlogsummarizer.cache.CacheManager` class manages SQLite database at `~/.devlog/cache.db`; `get_cached_summary(commit_hash) -> str | None` returns cached summary or None; `store_summary(commit_hash, date, summary) -> None` stores for future lookups",
+      "tasks": [
+        "Create `src/devlogsummarizer/cache.py` module with CacheManager class accepting cache_dir parameter (default `~/.devlog/`)",
+        "Initialize SQLite database at cache_dir with schema: commits table (columns: hash TEXT PRIMARY KEY, date TEXT, summary TEXT, cached_at TIMESTAMP)",
+        "Implement `get_cached_summary(commit_hash: str) -> str | None` query method returning cached summary if exists, None otherwise",
+        "Implement `store_summary(commit_hash: str, date: str, summary: str) -> None` insert/update method for caching",
+        "Implement `clear_cache() -> None` and `cache_stats() -> dict` methods for cache management and diagnostics",
+        "Write unit tests in `tests/test_cache.py` covering initialization, cache hit/miss, storage, and concurrent access patterns"
+      ],
+      "commit_condition": "Run `pytest tests/test_cache.py -v` — all tests pass with zero failures; Run `python -c \"from devlogsummarizer.cache import CacheManager; cm = CacheManager(); cm.store_summary('abc123', '2024-01-15', 'Test'); print(cm.get_cached_summary('abc123'))\"` — outputs 'Test'",
+      "example_input": "CacheManager initialized; cache database empty at ~/.devlog/cache.db; call store_summary('abc123', '2024-01-15', 'Summary text')",
+      "example_output": "get_cached_summary('abc123') returns 'Summary text'; SQLite query `SELECT * FROM commits WHERE hash='abc123'` returns row with hash, date, summary, and cached_at timestamp"
+    },
+    {
+      "id": 6,
+      "title": "Configuration Management and Cache Integration",
+      "deliverable": "`devlog config --set-api-key <key>` stores key securely in `~/.devlog/config.json`; `devlog summarize` uses cached summaries to skip already-processed commits; `devlog cache-stats` displays cache statistics",
+      "tasks": [
+        "Create `src/devlogsummarizer/config.py` module with Config class reading/writing `~/.devlog/config.json` with fields: api_key, default_since, default_output_format",
+        "Implement `config` Click subcommand with options: `--set-api-key <key>`, `--set-since <days>`, `--show` (display current config), `--reset` (clear all settings)",
+        "Modify `summarize` command to fetch api_key from config.json if environment variable OPENAI_API_KEY is not set; raise error if neither exists",
+        "Integrate CacheManager into summarize workflow: check cache for each commit hash before calling OpenAI API; batch only uncached commits for summarization",
+        "Create `cache-stats` Click subcommand displaying total cached commits, cache hit rate for current run, cache directory path, and option `--clear` to delete cache",
+        "Write integration tests in `tests/test_integration.py` covering config file creation, cache hits/misses during repeated runs, and config precedence (env var overrides file)"
+      ],
+      "commit_condition": "Run `devlog config --show` (after setting api key) — displays JSON-formatted config with api_key, default_since, default_output_format; Run `devlog summarize --since 7d` twice in same repo — second run shows 'Cache hits: N/N commits' message and runs faster (mocked API); Run `pytest tests/test_integration.py -v` — all tests pass",
+      "example_input": "First run: `devlog summarize --since 7d` in repo with 5 commits; cache is empty; OPENAI_API_KEY environment variable set. Second run: same command in same repo; 5 commits already cached",
+      "example_output": "First run: calls OpenAI API for all 5 commits, stores results in ~/.devlog/cache.db, prints Markdown summary to stdout. Second run: reads all 5 summaries from cache (0 API calls), prints same Markdown summary to stdout, stderr shows 'Cache hits: 5/5'; `devlog cache-stats` returns {\"total_cached\": 5, \"cache_dir\": \"/home/user/.devlog\", \"hit_rate\": 1.0}"
+    },
+    {
+      "id": 7,
+      "title": "Output Format Options and File Writing",
+      "deliverable": "`devlog summarize --output-format markdown|json --output-file devlog.md | stdout` writes grouped summaries in selected format to file or stdout; default is markdown to devlog.md in repo root",
+      "tasks": [
+        "Extend formatter.py with `format_json(grouped_summaries: Dict[str, str], repo_name: str = None) -> str` function returning JSON-serialized output with metadata",
+        "Add Click options to `summarize` command: `--output-format` (choices: 'markdown', 'json'; default 'markdown'), `--output-file` (optional path; default 'devlog.md' in repo root or stdout)",
+        "Implement file-writing logic: if --output-file specified, write formatted output to file; otherwise print to stdout",
+        "Add validation: ensure output file path is writable, create parent directories if needed, handle overwrite prompts with --force flag",
+        "Write unit tests in `tests/test_formatter.py` for format_json output structure, and integration tests in tests/test_cli.py for file writing scenarios",
+        "Update Config class to support `default_output_format` and `default_output_file` settings persisted to config.json"
+      ],
+      "commit_condition": "Run `devlog summarize --since 7d --output-format json --output-file /tmp/devlog.json` — file /tmp/devlog.json created with valid JSON; Run `devlog summarize --since 7d --output-format markdown` (no --output-file) — Markdown printed to stdout; Run `pytest tests/test_formatter.py tests/test_cli.py -v` — all tests pass",
+      "example_input": "Run `devlog summarize --since 7d --output-format json --output-file /tmp/summary.json` in git repo with 3 days of commits",
+      "example_output": "File /tmp/summary.json created with JSON structure: {\"metadata\": {\"repo\": \"myproject\", \"generated_at\": \"2024-01-15T10:00:00Z\", \"since\": \"7d\"}, \"summaries\": {\"2024-01-15\": \"...\", \"2024-01-14\": \"...\", \"2024-01-13\": \"...\"}}"
+    },
+    {
+      "id": 8,
+      "title": "Package Distribution and Documentation",
+      "deliverable": "Package `devlogsummarizer` published to PyPI; `pip install devlogsummarizer` installs working CLI; README.md contains usage examples, installation instructions, and API key setup",
+      "tasks": [
+        "Create comprehensive README.md with sections: Overview, Installation (pip install devlogsummarizer), Quick Start (devlog config --set-api-key, devlog summarize --since 7d), Options reference (all CLI flags), Configuration (config.json location and fields), Caching (how it works, cache-stats), Examples (various command combinations)",
+        "Create CHANGELOG.md documenting version 0.1.0 features: git log parsing, OpenAI summarization, markdown/JSON output, SQLite caching, config management",
+        "Update pyproject.toml with complete metadata: author, email, description, long_description (from README), keywords, classifiers (Programming Language :: Python :: 3.11, Topic :: Utilities)",
+        "Create src/devlogsummarizer/py.typed file for PEP 561 type hint compliance",
+        "Build distribution: run `python -m build` or `python setup.py sdist bdist_wheel` to generate .tar.gz and .whl files",
+        "Create PyPI account and publish package with `twine upload dist/*` or use GitHub Actions to automate publishing on release tags"
+      ],
+      "commit_condition": "Run `pip install devlogsummarizer` from PyPI — installs successfully; Run `devlog --version` — outputs version string; Run `pip show devlogsummarizer` — displays package info with author, description, and required dependencies",
+      "example_input": "Local package directory with all source code, tests passing, and git repository ready for tagging; PyPI account credentials configured",
+      "example_output": "Run `pip install devlogsummarizer` on clean Python 3.11 environment — installs 4 dependencies (Click, requests, etc.) and creates devlog CLI; Run `devlog --help` displays full CLI help; README.md on PyPI shows usage examples with copy-pasteable commands"
+    },
+    {
+      "id": 9,
+      "title": "Error Handling, Logging, and Edge Cases",
+      "deliverable": "All error paths raise descriptive exceptions or display user-friendly messages; DEBUG logging at devlogsummarizer level shows API calls, cache operations, git commands; CLI handles missing repo, invalid since values, API failures gracefully",
+      "tasks": [
+        "Create `src/devlogsummarizer/exceptions.py` module defining custom exceptions: GitError, OpenAIError, CacheError, ConfigError, with __str__ returning user-friendly messages",
+        "Configure Python logging module in main.py with logger 'devlogsummarizer', DEBUG level for development, INFO level for production; log to stderr",
+        "Add try-except blocks in summarize command to catch GitError, OpenAIError, CacheError and display error message with exit code 1",
+        "Validate --since and --until parameters in CLI to ensure valid ISO 8601 or relative formats (e.g., '7d', '2w', '2024-01-15'); raise ValueError with helpful message for invalid input",
+        "Handle edge cases: empty git repo (no commits in range), OpenAI rate limiting (add exponential backoff retry logic), corrupt cache database (auto-delete and reinitialize)",
+        "Write tests in `tests/test_error_handling.py` covering all error paths: missing .git directory, invalid API key, malformed config file, disk full when writing output"
+      ],
+      "commit_condition": "Run `devlog summarize --since invalid` — prints error 'Invalid --since format: expected relative (7d, 2w) or date (YYYY-MM-DD)' to stderr and exits with code 1; Run `devlog summarize` in non-git directory — prints 'Error: not a git repository' to stderr and exits with code 1; Run `pytest tests/test_error_handling.py -v` — all tests pass",
+      "example_input": "Run `devlog summarize --since 999d` in git repo with only 10 days of history; or run `devlog summarize --repo-path /tmp/nonexistent`; or run with OPENAI_API_KEY='invalid-key'",
+      "example_output": "stderr: 'Error: --since 999d exceeds repository history (10 days available); consider using --since 10d'; or 'Error: repository path /tmp/nonexistent is not a valid git repository'; or 'Error: OpenAI API error: Invalid authentication token'; all exit with code 1"
+    },
+    {
+      "id": 10,
+      "title": "Test Coverage and Type Hints",
+      "deliverable": "`pytest --cov=devlogsummarizer tests/` shows ≥85% code coverage; all functions in main module have type hints; `mypy src/devlogsummarizer/` reports zero errors with strict mode",
+      "tasks": [
+        "Add type hints to all functions in git_parser.py, openai_client.py, formatter.py, cache.py, config.py using Python 3.11 syntax (str, int, Dict, List, Optional, etc.)",
+        "Create conftest.py in tests/ directory with pytest fixtures: mock_git_output, mock_openai_response, temp_cache_dir, temp_config_dir",
+        "Add pytest-cov to dev dependencies in pyproject.toml; run `pytest --cov=devlogsummarizer --cov-report=term-missing tests/` to identify uncovered lines",
+        "Write additional tests to cover edge cases and improve coverage: empty commit lists, multi-line commit messages, timezone handling, concurrent cache access",
+        "Configure mypy in pyproject.toml with strict mode; run `mypy src/devlogsummarizer/` and resolve all type errors and warnings",
+        "Create .github/workflows/tests.yml GitHub Actions workflow running pytest and mypy on push; set minimum coverage threshold to 85%"
+      ],
+      "commit_condition": "Run `pytest --cov=devlogsummarizer tests/ --cov-report=term-missing` — shows coverage ≥85%; Run `mypy src/devlogsummarizer/ --strict` — reports 'Success: no issues found in X source files'",
+      "example_input": "Source code with type hints partially added; tests covering main paths but not edge cases; mypy configuration added to pyproject.toml",
+      "example_output": "Run `pytest --cov=devlogsummarizer tests/` outputs 'PASSED N tests' and 'Name | Stmts | Miss | Cover | git_parser.py | 45 | 2 | 96% | ... | TOTAL | 234 | 28 | 88%'; Run `mypy src/devlogsummarizer/ --strict` outputs 'Success: no issues found in 6 source files'"
+    },
+    {
+      "id": 11,
+      "title": "Performance Optimization and Final Integration Tests",
+      "deliverable": "`devlog summarize --since 30d` in repo with 500+ commits completes in <5 seconds (with cache); full end-to-end test suite runs in <30 seconds with mocked APIs",
+      "tasks": [
+        "Profile summarize command with `python -m cProfile -s cumulative -m devlogsummarizer summarize --since 30d` to identify bottlenecks; optimize git log parsing if needed",
+        "Batch OpenAI API calls: group uncached commits by date and send one API request per day instead of per commit; measure API token usage reduction",
+        "Implement lazy loading of config.json and cache database; initialize only when needed (defer loading until summarize or config command is called)",
+        "Add caching of git output to temp file within same run (within-run deduplication) to avoid repeated git log calls if summarize is called twice",
+        "Create end-to-end integration test script in `tests/test_e2e.py` simulating real user workflow: set API key, run summarize with cache empty, verify output, run again to test cache hits",
+        "Benchmark cache hit performance: measure time difference between first run (cold cache) and second run (warm cache) with same repo; target >50% time reduction on second run"
+      ],
+      "commit_condition": "Run `time devlog summarize --since 30d` in test repo with 500 commits (with mocked API) — completes in <2 seconds for warm cache; Run `pytest tests/test_e2e.py -v` — end-to-end test passes; Run `python -c \"import cProfile; cProfile.run('...summarize...')\"` shows git_parser and formatter accounting for <20% of runtime"
+      ,
+      "example_input": "Git repo with 500+ commits over 30 days; first cold run with empty cache; second warm run immediately after with all commits cached",
+      "example_output": "First run (cold cache): elapsed time 4.2 seconds (1 API call per day = 30 calls), markdown written to devlog.md; Second run (warm cache): elapsed time 0.8 seconds (0 API calls, all reads from ~/.devlog/cache.db), same markdown output; cache-stats shows '500/500 cache hits, 100% hit rate'"
+    },
+    {
+      "id": 12,
+      "title": "Release and Production Readiness",
+      "deliverable": "Version 0.1.0 tagged in git; package on PyPI with stable metadata and documentation; release notes document all features, breaking changes (none), and known limitations; CLI is production-ready and passes all acceptance criteria",
+      "tasks": [
+        "Create git tag v0.1.0 with annotated message describing release: features, dependencies, installation command",
+        "Write RELEASE_NOTES.md documenting version 0.1.0 features: 'Parses git log and groups commits by day', 'Uses OpenAI GPT-4o to generate summaries', 'Caches summaries in SQLite to skip re-processing', 'Outputs to Markdown or JSON', 'Configurable via devlog config command'",
+        "Verify all acceptance criteria met: `devlog summarize --since 7d` runs in any git repo, writes devlog.md with grouped daily summaries, skips cached commits on re-runs, passes with zero external network calls except to OpenAI",
+        "Create CONTRIBUTING.md for future contributors: development setup (pip install -e .[dev]), running tests, code style (Black for formatting, isort for imports)",
+        "Update PyPI package description to emphasize ease of use: 'Drop-in CLI tool for developers', 'One command: devlog summarize --since 7d', 'Automatic caching to reduce API costs'",
+        "Final regression test: run `devlog summarize --since 7d --output-file /tmp/test.md` in 3 different repos (small, medium, large commit histories) and verify output quality"
+      ],
+      "commit_condition": "Run `git tag -l | grep v0.1.0` — returns 'v0.1.0'; Run `pip install devlogsummarizer==0.1.0` — installs from PyPI; Run final acceptance test in 3 repos: `devlog summarize --since 7d` completes without error and writes valid Markdown in all 3; `devlog cache-stats` shows cache is populated and hit rate >90% on second run"
+      ,
+      "example_input": "All source code complete, tests passing, documentation written, package published to PyPI test instance; git repository ready for tag creation",
+      "example_output": "Run `git show v0.1.0` — displays annotated tag with release notes; Run `pip install devlogsummarizer==0.1.0 --pre` — installs from PyPI; Run `devlog summarize --since 7d` in 3 real repos — all complete successfully in <5 seconds each, generate valid Markdown summaries with daily groupings, cache populated and verified with `devlog cache-stats`"
+    }
+  ]
+}
+```
