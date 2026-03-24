@@ -33,6 +33,7 @@ Return a single JSON object with this exact structure:
 ## Phase Generation Rules
 
 **Phase 1 must always be environment and project setup.** It must explicitly list:
+
 - Language version (e.g. Python 3.11, not Python3.11)
 - Package manager (pip, npm, pnpm, cargo, etc.)
 - Framework and version
@@ -50,6 +51,7 @@ Return a single JSON object with this exact structure:
 **Tasks within a phase are an UNORDERED SET of independent actions.** Present tasks as a flat JSON array of strings. The order of strings in the JSON array carries NO meaning. A developer must be able to execute them in ANY order (or in parallel) unless an explicit artifact dependency is noted.
 
 **Absolute prohibitions inside task strings:**
+
 - No numeric prefixes: "1.", "2.", "3.", "Step 1:", "Step 2:"
 - No ordinal words implying sequence between sibling tasks: "First", "Then", "Next", "After that", "Finally", "Subsequently", "Lastly", "Before the above", "Once the previous"
 - No alphabetic prefixes: "a)", "b)", "A."
@@ -59,6 +61,7 @@ Return a single JSON object with this exact structure:
 **Shuffle-test your tasks mentally:** If reordering the array would confuse a reader, you have embedded implicit sequence. Rewrite to eliminate it.
 
 **Good example (unordered, independent, no sequence indicators):**
+
 ```json
 "tasks": [
   "Install FastAPI 0.111 and uvicorn 0.29 into requirements.txt",
@@ -69,6 +72,7 @@ Return a single JSON object with this exact structure:
 ```
 
 **Bad example (numbered, sequential language):**
+
 ```json
 "tasks": ["1. Install FastAPI", "2. Then create main.py", "3. Next add health endpoint", "4. Finally write tests"]
 ```
@@ -76,6 +80,7 @@ Return a single JSON object with this exact structure:
 ## Deliverable Rules
 
 Every `deliverable` field must:
+
 - Name a specific artifact: file path, API endpoint, CLI command, URL, or deployed service
 - Use a specific verb: "returns", "displays", "connects", "stores", "renders", "serves", "exports", "generates", "validates", "authenticates"
 - **Banned words (NEVER use in ANY deliverable, including deployment phases):** "working", "complete", "functional", "ready", "done", "basic", "simple", "proper", "fully", "successful", "accessible", "operational"
@@ -92,6 +97,7 @@ Every `deliverable` field must:
 ## Commit Condition Rules
 
 Every `commit_condition` must:
+
 - Start with an action verb: Run, Execute, Test, Query, Load, Deploy, Open, Send, Call
 - Include the exact command to run (copy-pasteable into terminal)
 - Include the expected output or success criterion with specific numbers or strings
@@ -104,46 +110,55 @@ Every `commit_condition` must:
 ## Task Rules
 
 Every task must:
+
 - Start with an action verb: Create, Install, Configure, Write, Deploy, Add, Test, Connect, Register, Generate, Implement, Define, Set up, Initialize
 - Be at least 6 words long
 - Name the specific file, service, or component being modified
 - Name external services explicitly (not "cloud storage" — say "AWS S3"; not "payment provider" — say "Stripe API"; not "AI service" — say "OpenAI GPT-4 API")
+
+Before finalising each phase, re-read every task and ask: could a developer start this task without completing any other task in the list? If no, either merge the tasks or move the dependent one to the next phase.
 
 ## Example I/O Rules — MANDATORY Format Matching Per Phase Type
 
 Every phase MUST have both `example_input` and `example_output`. Select the format that matches what the phase actually produces. **Every phase must use at least one of the concrete formats below — never use vague descriptions like "the API works" or "the page loads".**
 
 **Setup/CLI phases:** Show the terminal command and its expected stdout.
+
 ```
 example_input: "Empty project directory with no dependencies installed"
 example_output: "Run `python backend/main.py` — terminal prints 'Uvicorn running on http://127.0.0.1:8000'; `curl http://localhost:8000/docs` returns Swagger UI HTML"
 ```
 
 **Database/model phases:** Show the document/row schema or a query with its result.
+
 ```
 example_input: "MongoDB 'users' collection exists but contains no documents"
 example_output: "db.users.findOne() returns {\"_id\": \"64a1b...\", \"email\": \"test@example.com\", \"hashed_password\": \"$2b$12...\", \"created_at\": \"2024-01-15T10:00:00Z\"}"
 ```
 
 **API phases:** Show a concrete `curl` command and the JSON response body with status code.
+
 ```
 example_input: "curl -X POST http://localhost:8000/api/topics -H 'Authorization: Bearer eyJ...' -H 'Content-Type: application/json' -d '{\"name\": \"Algebra\", \"subject\": \"Math\"}'"
 example_output: "HTTP 201: {\"id\": \"64a1b2c3\", \"name\": \"Algebra\", \"subject\": \"Math\", \"created_at\": \"2024-01-15T10:00:00Z\"}"
 ```
 
 **UI/Frontend phases:** Describe what the user sees — page URL, components rendered, interactive elements, and visible data.
+
 ```
 example_input: "Browser at http://localhost:3000/dashboard — blank page with nav bar only"
 example_output: "Browser at http://localhost:3000/dashboard — grid of topic cards with title, progress bar (e.g., '65% unlocked'), and 'Study' button; sidebar shows user stats"
 ```
 
 **Export/file generation phases:** Describe file content, format, and size or structure.
+
 ```
 example_input: "curl -X GET http://localhost:8000/api/export/pdf/64a1b2c3 -H 'Authorization: Bearer eyJ...'"
 example_output: "HTTP 200 with Content-Type: application/pdf — 3-page PDF containing 15 questions with answers, topic title as header"
 ```
 
 **Deployment phases:** Show the deploy command and the verification step.
+
 ```
 example_input: "Run `docker-compose up -d` on AWS EC2 instance with .env configured"
 example_output: "Run `curl -s https://api.example.com/health` — returns {\"status\": \"ok\", \"version\": \"1.0.0\"}; `docker ps` shows 3 containers running (api, mongodb, nginx)"
