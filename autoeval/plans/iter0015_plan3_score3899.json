@@ -1,0 +1,219 @@
+```json
+{
+  "project": {
+    "name": "StudyBattles",
+    "language": "Python 3.11",
+    "runtime": "web",
+    "package_manager": "pip",
+    "framework": "FastAPI 0.111",
+    "database": "MongoDB 7.0",
+    "deployment": "Docker + AWS EC2",
+    "external_services": [
+      "AWS S3",
+      "OpenAI GPT-4 API",
+      "YouTube Data API"
+    ]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Environment Setup and Project Initialization",
+      "deliverable": "Run `python backend/main.py` — terminal prints 'Uvicorn running on http://127.0.0.1:8000'; `curl http://localhost:8000/health` returns {\"status\": \"ok\"}",
+      "tasks": [
+        "Install Python 3.11, pip, and create virtual environment in project root",
+        "Install FastAPI 0.111, uvicorn 0.29, python-dotenv 1.0, pydantic 2.5 into requirements.txt",
+        "Install pymongo 4.6, python-multipart 0.0.6, aiofiles 23.2 into requirements.txt",
+        "Install openai 1.3, boto3 1.34 for AWS S3 integration into requirements.txt",
+        "Create `backend/main.py` with FastAPI app instance and CORS middleware accepting localhost:3000",
+        "Configure .env file with MongoDB connection URI, AWS S3 credentials, and OpenAI API key placeholders",
+        "Add `GET /health` endpoint in `backend/routes/health.py` returning {\"status\": \"ok\"}",
+        "Initialize React 18 frontend with `npx create-react-app frontend`",
+        "Create `docker-compose.yml` with MongoDB 7.0 service and volumes for local development"
+      ],
+      "commit_condition": "Run `python backend/main.py` — terminal prints 'Uvicorn running on http://127.0.0.1:8000'; in another terminal run `curl http://localhost:8000/health` — returns {\"status\": \"ok\"}",
+      "example_input": "Empty project directory with no dependencies installed or code files",
+      "example_output": "Run `python backend/main.py` — terminal prints 'Uvicorn running on http://127.0.0.1:8000'; `curl http://localhost:8000/health` returns {\"status\": \"ok\"}; MongoDB container running with `docker-compose up -d`"
+    },
+    {
+      "id": 2,
+      "title": "MongoDB Schema and Database Connection",
+      "deliverable": "Run `python -c 'from backend.db import get_db; db = get_db(); print(db.sessions.create_index(\"created_at\"))'` — prints index creation confirmation; `db.sessions.findOne()` returns document with _id, user_session_token, tree_id, current_node_id, answers",
+      "tasks": [
+        "Create `backend/db.py` with MongoClient initialization, connection pooling, and get_db() function",
+        "Define MongoDB collections schema in `backend/models.py`: sessions, trees (topic hierarchies), nodes, questions, answers",
+        "Create sessions collection with indexes on user_session_token and created_at for session management",
+        "Create trees collection schema with fields: tree_id, name, topic_name, root_node_id, created_at, expires_at",
+        "Create nodes collection schema with fields: node_id, tree_id, content, depth (0-3), children_ids, parent_id, is_locked, defeated_children_count",
+        "Create questions collection schema with fields: question_id, node_id, question_type (Define/Solve/Compare/ELI5/FinishAnswer), question_text, key_points",
+        "Create answers collection schema with fields: answer_id, question_id, user_response, marks, feedback, marked_at",
+        "Write validation functions in `backend/models.py` for tree_id format, node depth limits, and question type enums"
+      ],
+      "commit_condition": "Run `python -c 'from backend.db import get_db; db = get_db(); print(list(db.list_collection_names()))'` — returns ['sessions', 'trees', 'nodes', 'questions', 'answers']; `python -c 'from backend.models import TreeCreate; t = TreeCreate(topic_name=\"Algebra\", root_node_id=\"n1\"); print(t.topic_name)'` — returns 'Algebra'",
+      "example_input": "MongoDB 7.0 container running via docker-compose; no collections exist",
+      "example_output": "db.sessions.findOne() returns {\"_id\": ObjectId(...), \"user_session_token\": \"sess_abc123\", \"tree_id\": \"tree_001\", \"current_node_id\": \"node_root\", \"answers\": [], \"created_at\": ISODate(\"2024-01-15T10:00:00Z\")}; db.trees.findOne() returns {\"tree_id\": \"tree_001\", \"topic_name\": \"Algebra\", \"root_node_id\": \"node_root\", \"created_at\": ISODate(...)}"
+    },
+    {
+      "id": 3,
+      "title": "AWS S3 Integration and Document Upload Endpoint",
+      "deliverable": "`POST /api/upload` accepts multipart PPTX/DOCX/video URL, stores file in AWS S3 bucket, returns {\"file_url\": \"s3://bucket/uploads/...\", \"file_name\": \"...\", \"file_type\": \"...\"}",
+      "tasks": [
+        "Create `backend/services/s3_service.py` with S3Client wrapper, upload_file() and generate_presigned_url() functions",
+        "Configure AWS S3 bucket name, region, and IAM credentials from .env in s3_service.py",
+        "Create `backend/routes/upload.py` with POST /api/upload endpoint accepting multipart form data",
+        "Implement file type validation in upload.py for PPTX, DOCX, and YouTube URL detection",
+        "Add file size limit (max 50MB) and virus scan placeholder in upload.py",
+        "Generate unique file names with timestamp prefix before S3 upload in upload.py",
+        "Implement error handling for S3 connection failures and invalid file types",
+        "Write unit test in `tests/test_upload.py` for valid DOCX upload and S3 URL generation"
+      ],
+      "commit_condition": "Run `pytest tests/test_upload.py -v` — all tests pass; send curl -X POST http://localhost:8000/api/upload -F 'file=@sample.docx' — returns HTTP 200 with {\"file_url\": \"s3://studybattles-bucket/uploads/2024-01-15-12345-sample.docx\", \"file_type\": \"docx\"} and file exists in S3",
+      "example_input": "AWS S3 bucket created with name 'studybattles-bucket'; .env contains AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY; sample.docx file ready for upload",
+      "example_output": "Run `curl -X POST http://localhost:8000/api/upload -F 'file=@algebra-notes.docx'` — returns HTTP 201: {\"file_url\": \"s3://studybattles-bucket/uploads/2024-01-15-abc123-algebra-notes.docx\", \"file_name\": \"algebra-notes.docx\", \"file_type\": \"docx\", \"uploaded_at\": \"2024-01-15T10:00:00Z\"}; file is accessible in S3"
+    },
+    {
+      "id": 4,
+      "title": "OpenAI Integration for Topic Tree Generation",
+      "deliverable": "`POST /api/generate-tree` accepts file_url and file_type, calls OpenAI GPT-4, stores topic tree in MongoDB, returns {\"tree_id\": \"...\", \"root_node\": {...}, \"total_nodes\": N}",
+      "tasks": [
+        "Create `backend/services/openai_service.py` with OpenAI client initialization and gpt4_completion() helper",
+        "Implement document parsing in `backend/services/document_parser.py` for PPTX (use python-pptx) and DOCX (use python-docx)",
+        "Write extract_text_from_pptx() function to parse slide titles and content into structured text",
+        "Write extract_text_from_docx() function to parse headings and paragraphs into hierarchical text",
+        "Create tree generation prompt in `backend/services/tree_generator.py` instructing GPT-4 to create 3-level hierarchy with max 5 children per node",
+        "Implement parse_gpt_response() function to convert GPT-4 JSON response into node objects with enforced max depth 3",
+        "Create `backend/routes/generate.py` with POST /api/generate-tree endpoint accepting file_url and topic_name",
+        "Store generated tree in MongoDB and assign unique tree_id; enforce max 50 total nodes per tree"
+      ],
+      "commit_condition": "Run `pytest tests/test_tree_generation.py -v` — all tests pass; send curl -X POST http://localhost:8000/api/generate-tree -H 'Content-Type: application/json' -d '{\"file_url\": \"s3://bucket/sample.docx\", \"file_type\": \"docx\", \"topic_name\": \"Algebra\"}'` — returns HTTP 200 with tree_id and root_node structure in response",
+      "example_input": "S3 file uploaded at s3://studybattles-bucket/uploads/algebra-notes.docx containing text about quadratic equations, polynomials, and factoring",
+      "example_output": "curl -X POST http://localhost:8000/api/generate-tree -d '{\"file_url\": \"s3://studybattles-bucket/uploads/algebra-notes.docx\", \"file_type\": \"docx\", \"topic_name\": \"Algebra\"}' — returns HTTP 200: {\"tree_id\": \"tree_64a1b2c3\", \"root_node\": {\"node_id\": \"node_root\", \"content\": \"Algebra\", \"depth\": 0, \"children_ids\": [\"node_1\", \"node_2\"], \"is_locked\": false}, \"total_nodes\": 12}; db.trees.findOne({tree_id: \"tree_64a1b2c3\"}) contains full node hierarchy stored with max depth 3"
+    },
+    {
+      "id": 5,
+      "title": "Question Generation and Storage for Leaf Nodes",
+      "deliverable": "`POST /api/nodes/{node_id}/generate-questions` calls OpenAI for each question type, stores 5 questions (Define, Solve, Compare, ELI5, FinishAnswer) in MongoDB, returns {\"node_id\": \"...\", \"questions\": [{...}, {...}], \"count\": 5}",
+      "tasks": [
+        "Create question generation prompts for each type (Define, Solve, Compare, ELI5, FinishAnswer) in `backend/services/question_generator.py`",
+        "Implement generate_questions_for_node() to call OpenAI GPT-4 five times (once per type) with node content as context",
+        "Extract key_points from GPT-4 response and store alongside each question for later marking",
+        "Create `backend/routes/questions.py` with POST /api/nodes/{node_id}/generate-questions endpoint",
+        "Validate that node exists, is a leaf node (depth=2), and has not been processed before",
+        "Store generated questions in MongoDB questions collection with node_id and question_type fields",
+        "Implement question caching to prevent regeneration if questions already exist for node_id",
+        "Write test in `tests/test_question_generation.py` for GPT-4 prompt handling and question count validation"
+      ],
+      "commit_condition": "Run `pytest tests/test_question_generation.py -v` — all tests pass; send curl -X POST http://localhost:8000/api/nodes/node_5/generate-questions — returns HTTP 200 with {\"node_id\": \"node_5\", \"count\": 5}; db.questions.find({node_id: \"node_5\"}).toArray() returns exactly 5 documents with distinct question_type values",
+      "example_input": "Tree generated with leaf node node_5 at depth 2 containing content 'Quadratic Formula'; questions collection empty for this node_id",
+      "example_output": "curl -X POST http://localhost:8000/api/nodes/node_5/generate-questions — returns HTTP 200: {\"node_id\": \"node_5\", \"questions\": [{\"question_id\": \"q_001\", \"question_type\": \"Define\", \"question_text\": \"Define the quadratic formula\", \"key_points\": [\"x = -b ± √(b²-4ac) / 2a\", \"uses coefficients a, b, c\"]}, {...}], \"count\": 5}; db.questions.find({node_id: \"node_5\"}) returns 5 documents with types [Define, Solve, Compare, ELI5, FinishAnswer]"
+    },
+    {
+      "id": 6,
+      "title": "Answer Submission and LLM-Based Marking",
+      "deliverable": "`POST /api/answers/submit` accepts question_id and user_response, calls OpenAI to generate mark and feedback against key_points, stores answer in MongoDB, returns {\"answer_id\": \"...\", \"marks\": N/10, \"feedback\": \"...\", \"key_points_covered\": [...]}",
+      "tasks": [
+        "Create marking prompt in `backend/services/marking_service.py` instructing GPT-4 to compare user response against key_points and assign 0-10 marks",
+        "Implement submit_answer() function in marking_service.py that calls OpenAI GPT-4 with question, key_points, and user_response",
+        "Extract marks (numeric) and feedback (text) from GPT-4 response with validation for 0-10 range",
+        "Create `backend/routes/answers.py` with POST /api/answers/submit endpoint accepting question_id and user_response",
+        "Validate that question_id exists and belongs to current session's tree",
+        "Store answer in MongoDB answers collection with answer_id, question_id, user_response, marks, feedback, marked_at",
+        "Implement error handling for OpenAI API timeouts and invalid question_id values",
+        "Write test in `tests/test_marking.py` for mark extraction and feedback generation"
+      ],
+      "commit_condition": "Run `pytest tests/test_marking.py -v` — all tests pass; send curl -X POST http://localhost:8000/api/answers/submit -H 'Content-Type: application/json' -d '{\"question_id\": \"q_001\", \"user_response\": \"x equals negative b plus minus square root of b squared minus 4ac over 2a\"}'` — returns HTTP 200 with marks between 0-10 and non-empty feedback",
+      "example_input": "Question q_001 exists in MongoDB with question_text: 'Define the quadratic formula' and key_points: ['x = -b ± √(b²-4ac) / 2a', 'uses coefficients a, b, c']; user submits response",
+      "example_output": "curl -X POST http://localhost:8000/api/answers/submit -d '{\"question_id\": \"q_001\", \"user_response\": \"The quadratic formula is x equals negative b plus or minus the square root of b squared minus 4ac all divided by 2a\"}'` — returns HTTP 201: {\"answer_id\": \"ans_64a1b2c3\", \"marks\": 8, \"feedback\": \"Correct formula and explanation. Minor: you said 'or minus' instead of '±' symbol.\", \"key_points_covered\": [\"x = -b ± √(b²-4ac) / 2a\"], \"marked_at\": \"2024-01-15T10:05:00Z\"}; db.answers stores document with marks: 8 and feedback text"
+    },
+    {
+      "id": 7,
+      "title": "Node Unlock Mechanism and Tree Navigation Backend",
+      "deliverable": "`GET /api/nodes/{node_id}` returns node with is_locked, defeated_children_count, children_ids, and unlock status; `POST /api/nodes/{node_id}/unlock` verifies all children defeated and marks parent as unlocked, returns {\"node_id\": \"...\", \"is_locked\": false, \"parent_node_id\": \"...\"}",
+      "tasks": [
+        "Create unlock logic in `backend/services/unlock_service.py` to check if all children of a node have defeated_children_count >= total_children",
+        "Implement check_unlock_conditions() function that queries MongoDB for child node completion status",
+        "Create `backend/routes/nodes.py` with GET /api/nodes/{node_id} endpoint returning node data including is_locked status",
+        "Add POST /api/nodes/{node_id}/unlock endpoint that validates unlock condition and updates MongoDB is_locked field",
+        "Implement traversal of tree to unlock parent node cascade (if parent becomes fully defeated, its parent unlocks)",
+        "Store session_id in requests to track which student defeated which nodes (link to sessions collection)",
+        "Add GET /api/nodes/{tree_id}/tree endpoint returning full tree structure with locked/unlocked status per session",
+        "Write test in `tests/test_unlock.py` for unlock condition validation and parent cascade logic"
+      ],
+      "commit_condition": "Run `pytest tests/test_unlock.py -v` — all tests pass; send curl -X GET http://localhost:8000/api/nodes/node_5 — returns JSON with is_locked, defeated_children_count, parent_node_id; send curl -X POST http://localhost:8000/api/nodes/node_2/unlock after all children answered — returns HTTP 200 with is_locked: false",
+      "example_input": "Tree with node_2 (depth 1) having 3 children at depth 2; all 3 children have all 5 questions answered with marks stored",
+      "example_output": "curl -X GET http://localhost:8000/api/nodes/node_2 — returns {\"node_id\": \"node_2\", \"content\": \"Polynomials\", \"depth\": 1, \"is_locked\": true, \"parent_node_id\": \"node_root\", \"children_ids\": [\"node_5\", \"node_6\", \"node_7\"], \"defeated_children_count\": 0}; after all children have answers, curl -X POST http://localhost:8000/api/nodes/node_2/unlock — returns {\"node_id\": \"node_2\", \"is_locked\": false, \"parent_node_id\": \"node_root\", \"defeated_children_count\": 3}; curl -X GET http://localhost:8000/api/nodes/node_root — returns is_locked: false (parent unlocks automatically)"
+    },
+    {
+      "id": 8,
+      "title": "React Frontend UI for Document Upload and Tree Navigation",
+      "deliverable": "Frontend renders at http://localhost:3000 with upload form uploading to `/api/upload`, displays topic tree as interactive graph with locked/unlocked nodes, click node to view details and answer questions",
+      "tasks": [
+        "Create React component `frontend/src/pages/UploadPage.jsx` with file input form for PPTX/DOCX/YouTube URL",
+        "Implement file upload handler in UploadPage.jsx calling POST /api/upload and storing file_url in component state",
+        "Add loading spinner while document processes and tree generates",
+        "Create React component `frontend/src/pages/TreePage.jsx` displaying topic tree as visual graph using react-force-graph library",
+        "Render nodes as circles with locked/unlocked visual indicators (color, icon, opacity); show parent-child relationships as edges",
+        "Implement click handler on nodes to navigate to node detail modal or separate page",
+        "Create `frontend/src/components/NodeDetailModal.jsx` showing node content, children count, and defeated children count",
+        "Add 'View Questions' button in NodeDetailModal to navigate to question answering interface"
+      ],
+      "commit_condition": "Run `npm start` in frontend directory — app opens at localhost:3000; render and interact with UploadPage component; successfully submit test file and see upload success message; navigate to TreePage and verify node graph renders with clickable nodes",
+      "example_input": "Frontend started with `npm start`; no tree loaded yet; browser at http://localhost:3000/upload",
+      "example_output": "Browser at http://localhost:3000/upload — page displays file input field labeled 'Upload Study Material', accepts .docx/.pptx files, shows 'Upload' button; user selects algebra-notes.docx and clicks upload; loading spinner appears for 5 seconds; redirect to http://localhost:3000/tree/tree_64a1b2c3 — displays visual tree graph with root node 'Algebra' in center (unlocked, green), 2 child nodes 'Polynomials' and 'Equations' (locked, red) as smaller circles connected with edges, 6 leaf nodes visible (locked, gray)"
+    },
+    {
+      "id": 9,
+      "title": "React Frontend Question Answering and Answer Submission Interface",
+      "deliverable": "Frontend at `/question/{question_id}` displays question text and type-specific input (text for Define/ELI5, equation for Solve, comparison table for Compare, fill-in-blank for FinishAnswer), POST to `/api/answers/submit` returns marks and feedback displayed in modal",
+      "tasks": [
+        "Create `frontend/src/components/QuestionComponent.jsx` rendering question text and question_type-specific input field",
+        "Implement Define question type with textarea for free-text response",
+        "Implement Solve question type with math equation input (LaTeX or plain text for algebra/arithmetic)",
+        "Implement Compare question type with two text inputs for comparing concepts",
+        "Implement ELI5 question type with textarea for simple explanation",
+        "Implement FinishAnswer question type with text input for completing a sentence or formula",
+        "Create submit handler calling POST /api/answers/submit with question_id and user_response",
+        "Create `frontend/src/components/MarksFeedbackModal.jsx` displaying marks (0-10), feedback text, and key_points_covered list"
+      ],
+      "commit_condition": "Run `npm start` in frontend; navigate to question page; fill in answer for each question type; submit answer — MarksFeedbackModal appears with marks 0-10, feedback text, and key_points; no console errors; localStorage contains submitted answer data",
+      "example_input": "TreePage open with node_5 selected; user clicks 'View Questions' button for leaf node; QuestionComponent renders question_id q_001, question_type 'Define', question_text 'Define the quadratic formula'",
+      "example_output": "Browser displays question page with textarea input field; user types 'The quadratic formula is x = -b ± √(b²-4ac) / 2a'; clicks 'Submit Answer' button; POST /api/answers/submit sent; MarksFeedbackModal appears showing: marks: 8/10, feedback: 'Correct definition. Missing explanation of coefficients a, b, c.', key_points_covered: ['x = -b ± √(b²-4ac) / 2a']; user can click 'Next Question' or 'Back to Tree'"
+    },
+    {
+      "id": 10,
+      "title": "Session Persistence and State Management Across Page Reloads",
+      "deliverable": "localStorage stores session_id, tree_id, answered_questions[], marks[], and node_unlock_status{}; page reload at any point restores tree state, answered questions, and unlocked nodes without API call; `GET /api/session/restore` syncs localStorage with MongoDB",
+      "tasks": [
+        "Create React context `frontend/src/context/SessionContext.jsx` storing session_id, tree_id, answered_questions, current_tree_state",
+        "Implement useEffect hook in App.jsx to read localStorage on mount and initialize session context",
+        "Generate or retrieve session_id from localStorage (uuidv4 for anonymous users); store in sessions MongoDB collection",
+        "Create `frontend/src/hooks/usePersistState.js` custom hook wrapping useState with localStorage synchronization",
+        "Apply usePersistState to all question answers, marks, and node unlock status throughout frontend",
+        "Create GET /api/session/restore endpoint in backend that returns current session state from MongoDB",
+        "Implement session sync in frontend useEffect to call /api/session/restore on app load and merge with localStorage",
+        "Add session expiration (24 hours) in MongoDB with TTL index on sessions.expires_at"
+      ],
+      "commit_condition": "Run frontend; upload document; answer 3 questions with marks stored; refresh browser page (Ctrl+R or F5); verify tree state, answered questions count, and marks persist without API calls; check localStorage in DevTools Application tab; run curl -X GET http://localhost:8000/api/session/restore?session_id=... — returns session state matching localStorage",
+      "example_input": "User completes 3 questions with marks [7, 9, 6]; tree_id stored in SessionContext; user manually refreshes browser page",
+      "example_output": "After page reload, TreePage renders with previous tree visible; clicking previously answered question shows 'Already answered with 7/10 marks'; localStorage shows: {\"session_id\": \"sess_abc123\", \"tree_id\": \"tree_001\", \"answered_questions\": [{\"question_id\": \"q_1\", \"marks\": 7}, {\"question_id\": \"q_2\", \"marks\": 9}, {\"question_id\": \"q_3\", \"marks\": 6}]}; GET /api/session/restore?session_id=sess_abc123 returns {\"session_id\": \"sess_abc123\", \"tree_id\": \"tree_001\", \"answered_questions\": [...], \"unlocked_nodes\": [...]}"
+    },
+    {
+      "id": 11,
+      "title": "Frontend Polish, Error Handling, and End-to-End Testing",
+      "deliverable": "All pages have loading states, error modals for API failures, responsive layout for mobile (Tailwind CSS), no console errors; Cypress E2E test suite covers upload → tree view → answer questions → unlock nodes flow with 100% pass rate",
+      "tasks": [
+        "Add loading spinners to UploadPage, TreePage, and QuestionComponent using React state and conditional rendering",
+        "Create global error boundary in App.jsx catching exceptions and displaying error modal with retry button",
+        "Implement error handling middleware in FastAPI backend to return consistent {\"error\": \"...\", \"status\": N} format",
+        "Add error modals in React components for 5xx server errors, 4xx validation errors, and network timeouts",
+        "Apply Tailwind CSS utility classes to all components for responsive mobile layout (breakpoints sm, md, lg)",
+        "Install and configure Cypress 13.6 for E2E testing in `frontend/cypress/e2e/`",
+        "Write Cypress test `upload.spec.js` covering file upload flow with assertions on file_url response",
+        "Write Cypress test `tree-navigation.spec.js` covering tree loading, node clicks, and lock status display"
+      ],
+      "commit_condition": "Run `npm run build` in frontend — build succeeds with no warnings; run `npm run cypress:run` — all E2E tests pass (upload.spec.js, tree-navigation.spec.js, question-submission.spec.js, unlock-cascade.spec.js); run `pytest tests/ -v --tb=short` — all backend tests pass with 0 failures; open http://localhost:3000 on mobile device (or DevTools mobile emulation) — layout renders correctly with no horizontal scroll",
+      "example_input": "Frontend components built with basic styling; backend API routes complete; no error handling or mobile responsiveness; Cypress not configured",
+      "example_output": "Run `npm run cypress:run` — test suite executes; output shows: 'upload.spec.js: 3 tests pass' (upload dialog visible, file selection works, success message shown), 'tree-navigation.spec.js: 4 tests pass' (tree graph renders, click node opens modal, locked nodes show lock icon, unlock button enabled after children defeated), 'question-submission.spec.js: 5 tests pass' (Define question renders textarea, Solve renders equation input, submit calls API, feedback modal appears with marks 0-10, next question loads), 'unlock-cascade.spec.js: 3 tests pass' (all leaf children answered, parent unlocks automatically, grandparent unlocks, root unlocked); DevTools console shows 0 errors; mobile view on Chrome DevTools shows tree graph and input fields centered with proper spacing, no horizontal overflow"
+    }
+  ]
+}
+```

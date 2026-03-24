@@ -1,0 +1,181 @@
+```json
+{
+  "project": {
+    "name": "StudyBattles",
+    "language": "Python 3.11",
+    "runtime": "web (FastAPI backend + React frontend)",
+    "package_manager": "pip (backend), npm (frontend)",
+    "framework": "FastAPI 0.111, React 18",
+    "database": "MongoDB 7.0",
+    "deployment": "Docker + AWS EC2",
+    "external_services": ["OpenAI GPT-4 API", "AWS S3"]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Backend Environment Setup and FastAPI Scaffold",
+      "deliverable": "`GET http://localhost:8000/health` returns {\"status\": \"ok\", \"environment\": \"development\"}",
+      "tasks": [
+        "Install Python 3.11, create virtual environment, and initialize pip with requirements.txt containing FastAPI 0.111, uvicorn 0.29, pydantic 2.4, pymongo 4.6, python-dotenv 1.0, and openai 1.3",
+        "Create backend directory structure with main.py, routes/, models/, services/, utils/, and .env.example file",
+        "Configure .env file with OpenAI API key placeholder, AWS S3 credentials (ACCESS_KEY, SECRET_KEY, BUCKET_NAME, REGION), MongoDB connection string, and server port",
+        "Initialize FastAPI app in backend/main.py with CORS middleware allowing localhost:3000, basic request logging middleware, and health check route",
+        "Create MongoDB connection utility in backend/utils/mongo.py using pymongo with MongoClient and async context manager pattern"
+      ],
+      "commit_condition": "Run `cd backend && python main.py` — terminal prints 'Uvicorn running on http://127.0.0.1:8000'; Run `curl http://localhost:8000/health` — returns {\"status\": \"ok\", \"environment\": \"development\"}",
+      "example_input": "Empty project directory with no dependencies or source code",
+      "example_output": "Run `python backend/main.py` — Uvicorn starts on port 8000; Run `curl http://localhost:8000/health` returns {\"status\": \"ok\", \"environment\": \"development\"}; Run `pip list` shows FastAPI 0.111, uvicorn 0.29, pymongo 4.6, openai 1.3"
+    },
+    {
+      "id": 2,
+      "title": "Frontend Environment Setup and React Scaffold",
+      "deliverable": "`http://localhost:3000` displays React app with navigation bar, placeholder hero section, and no JavaScript errors in browser console",
+      "tasks": [
+        "Create frontend directory and initialize React 18 app using create-react-app with TypeScript, remove default boilerplate, and install axios 1.6 for API communication",
+        "Create frontend/public/index.html with title 'StudyBattles', favicon, and meta tags for responsive viewport",
+        "Set up frontend/.env with REACT_APP_API_BASE_URL=http://localhost:8000 for local development",
+        "Create frontend/src/App.tsx with basic React Router v6 setup defining routes for /home, /upload, /battle/:battleId, and /results/:battleId",
+        "Create frontend/src/components/Navigation.tsx displaying logo, page title, and placeholder user session indicator using localStorage"
+      ],
+      "commit_condition": "Run `cd frontend && npm start` — React app opens at http://localhost:3000; Check browser developer console — zero JavaScript errors; Run `curl http://localhost:3000` — returns HTML with '<title>StudyBattles</title>'",
+      "example_input": "Empty frontend directory with no React or npm dependencies",
+      "example_output": "Browser at http://localhost:3000 displays 'StudyBattles' in navigation bar, hero section with 'Welcome to StudyBattles', and navigation links for Upload and Battle; browser console shows no errors; Run `npm list react` shows react@18.2.0"
+    },
+    {
+      "id": 3,
+      "title": "MongoDB Schema Design and Core Models",
+      "deliverable": "MongoDB collections `sessions`, `documents`, `battles`, and `nodes` created with validated Pydantic models in backend/models/",
+      "tasks": [
+        "Create backend/models/session.py with Pydantic SessionModel including fields: session_id (UUID), created_at (datetime), updated_at (datetime), and store initialization code to generate sessions in MongoDB",
+        "Create backend/models/document.py with DocumentModel including: document_id (UUID), session_id (UUID), filename (str), s3_key (str), file_type (str: 'pptx'|'docx'|'youtube'), content_metadata (dict), created_at (datetime)",
+        "Create backend/models/battle.py with BattleModel including: battle_id (UUID), session_id (UUID), document_id (UUID), root_node_id (UUID), status (str: 'in_progress'|'complete'), started_at (datetime), completed_at (optional datetime)",
+        "Create backend/models/node.py with NodeModel including: node_id (UUID), battle_id (UUID), topic (str), depth (int, 0-3), children_ids (list of UUIDs), parent_id (optional UUID), is_defeated (bool, default False), node_type (str: 'boss'|'minion'), created_at (datetime)",
+        "Create backend/models/answer.py with AnswerModel including: answer_id (UUID), node_id (UUID), question_id (UUID), student_response (str), question_type (str: 'Define'|'Solve'|'Compare'|'ELI5'|'FinishAnswer'), llm_feedback (str), marks_awarded (int), max_marks (int), created_at (datetime)"
+      ],
+      "commit_condition": "Run `cd backend && python -c \"from models.session import SessionModel; from models.document import DocumentModel; from models.battle import BattleModel; from models.node import NodeModel; from models.answer import AnswerModel; print('All models imported successfully')\"` — prints 'All models imported successfully'; Run `python -c \"import pymongo; client = pymongo.MongoClient('mongodb://localhost:27017'); db = client['studybattles']; print(db.list_collection_names())\"` — confirms MongoDB connection",
+      "example_input": "MongoDB 7.0 running locally on port 27017; database 'studybattles' does not exist",
+      "example_output": "Run `db.sessions.findOne()` — initially returns null; After first session creation, returns {\"_id\": \"...\", \"session_id\": \"...\", \"created_at\": \"2024-...\"}; Run `db.getCollectionNames()` returns [\"sessions\", \"documents\", \"battles\", \"nodes\", \"answers\"]"
+    },
+    {
+      "id": 4,
+      "title": "Document Upload and S3 Integration",
+      "deliverable": "`POST /api/documents/upload` accepts multipart/form-data file and session_id, stores file in AWS S3, and returns {\"document_id\": \"...\", \"filename\": \"...\", \"s3_key\": \"...\"}",
+      "tasks": [
+        "Create backend/services/s3_service.py with S3Manager class wrapping boto3 client for upload_file() returning s3_key, get_presigned_url() for later retrieval, and delete_file() for cleanup",
+        "Create backend/routes/documents.py with POST /api/documents/upload endpoint validating file type (pptx, docx, or youtube URL), extracting text content via python-pptx or python-docx library, and storing document record in MongoDB",
+        "Implement file type detection and basic metadata extraction in backend/services/file_parser.py using python-pptx for PPTX files and python-docx for DOCX files",
+        "Install boto3 3.28 in requirements.txt and configure AWS credentials via .env variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_S3_BUCKET_NAME, AWS_REGION)",
+        "Write endpoint validation in POST /api/documents/upload to reject files larger than 50MB, require session_id header, and return 400 for unsupported file types"
+      ],
+      "commit_condition": "Run `pip install boto3 python-pptx python-docx` — installation succeeds; Run `curl -X POST http://localhost:8000/api/documents/upload -F 'file=@test.pptx' -H 'X-Session-Id: test-session-123'` — returns HTTP 201 with {\"document_id\": \"...\", \"filename\": \"test.pptx\", \"s3_key\": \"...\"}; Verify file exists in AWS S3 bucket",
+      "example_input": "AWS S3 bucket 'studybattles-documents' exists and is empty; session_id 'test-session-123' exists in MongoDB",
+      "example_output": "Upload PPTX file via curl — HTTP 201 returns {\"document_id\": \"64a1b2c3\", \"filename\": \"algebra.pptx\", \"s3_key\": \"64a1b2c3/algebra.pptx\", \"file_type\": \"pptx\"}; Run `aws s3 ls s3://studybattles-documents/64a1b2c3/` — shows algebra.pptx object (2.4MB)"
+    },
+    {
+      "id": 5,
+      "title": "Topic Hierarchy Generation via OpenAI",
+      "deliverable": "`POST /api/battles/generate-tree` accepts document_id and session_id, calls OpenAI GPT-4 API to generate topic hierarchy, and returns {\"battle_id\": \"...\", \"root_node_id\": \"...\", \"tree_depth\": 3, \"total_nodes\": ...}",
+      "tasks": [
+        "Create backend/services/openai_service.py with OpenAIManager class wrapping openai.ChatCompletion.create() for prompt-based tree generation and answer evaluation",
+        "Implement tree generation prompt in backend/services/openai_service.py that accepts extracted document text and returns JSON-formatted tree with max depth 3, each node containing topic name, children array, and question suggestions",
+        "Create backend/routes/battles.py with POST /api/battles/generate-tree endpoint that retrieves document content, calls OpenAIManager.generate_topic_tree(), parses JSON response, stores nodes in MongoDB, and returns battle_id and root_node_id",
+        "Implement recursive node storage function in backend/services/battle_service.py that walks the tree, creates NodeModel instances with parent/child relationships, assigns node_type ('boss' for leaf nodes, 'minion' for parents), and validates tree depth does not exceed 3",
+        "Add error handling in POST /api/battles/generate-tree to catch OpenAI API failures, timeout errors, and malformed responses, returning 500 with error message"
+      ],
+      "commit_condition": "Run `curl -X POST http://localhost:8000/api/battles/generate-tree -H 'Content-Type: application/json' -d '{\"document_id\": \"64a1b2c3\", \"session_id\": \"test-session-123\"}'` — returns HTTP 201 with {\"battle_id\": \"...\", \"root_node_id\": \"...\", \"tree_depth\": 3}; Run `db.nodes.find({\"battle_id\": \"...\"}).count()` — returns ≥5 nodes",
+      "example_input": "Document 'algebra.pptx' stored in MongoDB with content_metadata containing extracted text: 'Chapter 1: Linear Equations...Chapter 2: Quadratic Equations...'; OpenAI API key configured in .env",
+      "example_output": "POST /api/battles/generate-tree returns HTTP 201: {\"battle_id\": \"64b2c3d4\", \"root_node_id\": \"64b2c3d4-root\", \"tree_depth\": 3, \"total_nodes\": 12}; Run `db.nodes.findOne({\"topic\": \"Linear Equations\"})` returns {\"node_id\": \"...\", \"battle_id\": \"64b2c3d4\", \"depth\": 1, \"children_ids\": [\"...\", \"...\"], \"is_defeated\": false}"
+    },
+    {
+      "id": 6,
+      "title": "Question Generation and Question Database",
+      "deliverable": "`GET /api/nodes/{node_id}/questions` returns array of 1–3 questions with fields {\"question_id\": \"...\", \"question_type\": \"Define|Solve|Compare|ELI5|FinishAnswer\", \"question_text\": \"...\"}",
+      "tasks": [
+        "Create backend/models/question.py with QuestionModel including: question_id (UUID), node_id (UUID), question_type (str: 'Define'|'Solve'|'Compare'|'ELI5'|'FinishAnswer'), question_text (str), mark_scheme_prompt (str for LLM evaluation), max_marks (int), created_at (datetime)",
+        "Implement question generation function in backend/services/openai_service.py that accepts node_topic and depth, generates 1–3 questions of different types using separate prompts per question_type, and returns QuestionModel list",
+        "Create backend/routes/nodes.py with GET /api/nodes/{node_id}/questions endpoint that retrieves node by ID, generates or retrieves cached questions via OpenAI, stores questions in MongoDB, and returns question array with question_id but no answer key",
+        "Add caching logic to avoid re-generating questions for the same node; store generated questions in MongoDB questions collection with node_id and battle_id indices",
+        "Implement question type distribution logic ensuring each node receives one question from each type (Define, Solve, Compare, ELI5) when possible, with fallback to repeated types if tree is sparse"
+      ],
+      "commit_condition": "Run `curl http://localhost:8000/api/nodes/64b2c3d4-node1/questions` — returns HTTP 200 with array of 3–4 question objects; Run `db.questions.find({\"node_id\": \"64b2c3d4-node1\"}).count()` — returns 3–4 documents",
+      "example_input": "Node 'Linear Equations' exists in database with node_id '64b2c3d4-node1', topic 'Linear Equations', depth 1; OpenAI API key configured",
+      "example_output": "GET /api/nodes/64b2c3d4-node1/questions returns HTTP 200: [{\"question_id\": \"q1\", \"question_type\": \"Define\", \"question_text\": \"What is a linear equation?\"}, {\"question_id\": \"q2\", \"question_type\": \"Solve\", \"question_text\": \"Solve 2x + 5 = 13\"}, {\"question_id\": \"q3\", \"question_type\": \"ELI5\", \"question_text\": \"Explain linear equations to a 5-year-old\"}]"
+    },
+    {
+      "id": 7,
+      "title": "Answer Submission and LLM-Based Marking",
+      "deliverable": "`POST /api/answers/submit` accepts {\"node_id\": \"...\", \"question_id\": \"...\", \"question_type\": \"...\", \"student_response\": \"...\"} and returns {\"answer_id\": \"...\", \"marks_awarded\": int, \"max_marks\": int, \"feedback\": \"...\", \"node_defeated\": bool}",
+      "tasks": [
+        "Create backend/routes/answers.py with POST /api/answers/submit endpoint accepting question_id, student_response, and question_type, validating response is non-empty string, and storing AnswerModel in MongoDB",
+        "Implement LLM-based marking in backend/services/openai_service.py with generate_mark_scheme() creating a rubric prompt, and evaluate_answer() comparing student response against rubric and assigning marks 0–10",
+        "Create node defeat detection logic in backend/services/battle_service.py: after each answer submission, query all questions for node_id, check if all are answered with marks_awarded ≥7 (out of 10), and set node.is_defeated = True if condition met",
+        "Implement parent node unlock logic in backend/services/battle_service.py: after node defeat, query parent_node.children_ids, check if all children have is_defeated = True, and set parent.is_defeated = False but mark it as 'unlocked_pending' to signal frontend",
+        "Add feedback generation in POST /api/answers/submit by calling OpenAI to generate a text explanation of marks awarded based on key points from mark scheme"
+      ],
+      "commit_condition": "Run `curl -X POST http://localhost:8000/api/answers/submit -H 'Content-Type: application/json' -d '{\"node_id\": \"64b2c3d4-node1\", \"question_id\": \"q1\", \"question_type\": \"Define\", \"student_response\": \"A linear equation is an equation with variables of degree 1\"}'` — returns HTTP 201 with {\"answer_id\": \"...\", \"marks_awarded\": 9, \"max_marks\": 10, \"feedback\": \"...\", \"node_defeated\": false}",
+      "example_input": "Node '64b2c3d4-node1' has 3 questions generated; student submits answer to question 'q1' with response 'A linear equation has degree 1'",
+      "example_output": "POST /api/answers/submit returns HTTP 201: {\"answer_id\": \"a1\", \"marks_awarded\": 8, \"max_marks\": 10, \"feedback\": \"Good understanding. Key points missing: example applications.\", \"node_defeated\": false}; Run `db.answers.findOne({\"question_id\": \"q1\"})` returns answer document with llm_feedback, marks_awarded fields"
+    },
+    {
+      "id": 8,
+      "title": "React Battle Interface and Node Tree Visualization",
+      "deliverable": "Browser at `http://localhost:3000/battle/{battleId}` displays collapsible tree of nodes with defeated/locked status, clickable leaf nodes opening question panel, and answer form",
+      "tasks": [
+        "Create frontend/src/components/NodeTree.tsx displaying hierarchical tree structure using recursive component, indenting by depth, and showing node status (locked/unlocked/defeated) via color/icon",
+        "Create frontend/src/components/QuestionPanel.tsx rendering question_type badge, question_text, responsive textarea for student_response, and 'Submit Answer' button with loading spinner",
+        "Create frontend/src/pages/BattlePage.tsx fetching battle_id from URL params, calling GET /api/battles/{battleId} to retrieve root_node_id, and rendering NodeTree and QuestionPanel side-by-side",
+        "Implement node click handler in NodeTree that calls GET /api/nodes/{node_id}/questions and passes questions to QuestionPanel; add conditional rendering to show questions only for leaf nodes (depth 3)",
+        "Create frontend/src/services/api.ts with axios-based functions: fetchBattle(), fetchNode(), fetchNodeQuestions(), submitAnswer(), all handling errors gracefully and returning typed responses"
+      ],
+      "commit_condition": "Run React dev server; open `http://localhost:3000/battle/64b2c3d4` — tree renders with 12+ nodes; click a leaf node — QuestionPanel appears with question text and textarea; verify no console errors",
+      "example_input": "Browser navigates to http://localhost:3000/battle/64b2c3d4; battle_id '64b2c3d4' exists in MongoDB with 12 nodes (root has 4 children, each child has 3 children)",
+      "example_output": "Page displays tree: 'Root Topic' at top, indented children below, leaf nodes at depth 3; leaf nodes are clickable with cursor pointer; clicking a leaf shows 'Define: What is X?' in question panel; textarea and blue 'Submit Answer' button visible; no console errors"
+    },
+    {
+      "id": 9,
+      "title": "Session Persistence and Tree State Management",
+      "deliverable": "localStorage stores session_id, battle_id, and node state; reloading page at `/battle/{battleId}` restores tree progress, defeated nodes remain highlighted, and student can continue answering without data loss",
+      "tasks": [
+        "Create frontend/src/hooks/useSessionStorage.ts custom hook to read/write session_id from localStorage on mount, generate UUID v4 if not exists, and pass session_id in X-Session-Id header on all API calls",
+        "Implement state persistence in frontend/src/pages/BattlePage.tsx: store battle_id, fetched node tree, and node.is_defeated status in localStorage after each API response; restore from localStorage on page reload before fetching",
+        "Modify backend answer submission endpoint to return updated node state (is_defeated, parent unlock status) so frontend can refresh tree without full re-fetch",
+        "Create frontend/src/utils/treeState.ts with functions updateNodeInTree() and getNodeStatus() to modify and query node defeat status in client-side tree data structure",
+        "Add useEffect in BattlePage to listen for storage events (other tabs) and sync tree state across browser tabs; update tree when defeated node is marked in one tab"
+      ],
+      "commit_condition": "Navigate to http://localhost:3000/battle/64b2c3d4; submit answer to a leaf node; reload page — tree re-renders with same node marked defeated; check browser DevTools Storage → localStorage — entries exist for 'session_id', 'battle_id', 'nodes_state'",
+      "example_input": "Student at http://localhost:3000/battle/64b2c3d4; answers 3 questions, defeating leaf node 'Solving Linear Eqs'; localStorage is empty",
+      "example_output": "After answering: localStorage shows {\"session_id\": \"uuid-1\", \"battle_id\": \"64b2c3d4\", \"nodes_state\": {\"node1\": {\"is_defeated\": true}, ...}}; Reload page — tree renders with 'Solving Linear Eqs' highlighted as defeated; student can click another leaf node and continue"
+    },
+    {
+      "id": 10,
+      "title": "Results Display and Feedback Rendering",
+      "deliverable": "`GET /api/battles/{battleId}/results` returns {\"nodes_defeated\": int, \"total_nodes\": int, \"answers\": [{\"question_text\": \"...\", \"marks\": int, \"feedback\": \"...\"}]} and `/results/{battleId}` page displays marks, feedback, and unlocked parent nodes",
+      "tasks": [
+        "Create backend/routes/results.py with GET /api/battles/{battleId}/results endpoint querying all answers for battle_id, calculating total marks and node count, and returning results object with answer details and key-point feedback",
+        "Create frontend/src/pages/ResultsPage.tsx fetching results from GET /api/battles/{battleId}/results and rendering: progress bar (nodes_defeated/total_nodes), table of questions with marks and feedback, and 'View Tree' button to return to battle",
+        "Implement frontend/src/components/FeedbackCard.tsx displaying individual question feedback, marks awarded vs. max, and highlighting key points missed (from LLM feedback text)",
+        "Add mark-based color coding: marks ≥8/10 green, 6–7/10 yellow, <6/10 red; display feedback explaining why marks were awarded",
+        "Create route link in BattlePage to navigate to ResultsPage after defeating all children of root node, showing 'Battle Complete!' and results summary"
+      ],
+      "commit_condition": "Run `curl http://localhost:8000/api/battles/64b2c3d4/results` — returns HTTP 200 with {\"nodes_defeated\": 12, \"total_nodes\": 12, \"answers\": [...], \"total_marks\": 96, \"average_mark\": 8}; navigate to http://localhost:3000/results/64b2c3d4 — page displays progress bar at 100%, table with 12 question rows, all marked with color coding",
+      "example_input": "Battle complete: all 12 nodes defeated, 12 answers submitted with varying marks (7–10); student navigates to http://localhost:3000/results/64b2c3d4",
+      "example_output": "ResultsPage displays: 'Battle Complete!' heading, progress bar showing 12/12 nodes (green); table listing each question with question_type badge, student response snippet, marks (8/10), and feedback 'Good definition, missing real-world example'; total score 96/120 displayed at bottom"
+    },
+    {
+      "id": 11,
+      "title": "Frontend Polish, Error Handling, and End-to-End Testing",
+      "deliverable": "Full StudyBattles workflow tested end-to-end: upload PPTX → generate tree → answer all questions → unlock all parents → session persists → results display; no console errors, all error states handled with user-facing messages, responsive layout on mobile",
+      "tasks": [
+        "Implement global error boundary in frontend/src/components/ErrorBoundary.tsx catching React errors and displaying fallback UI with 'Something went wrong' message and refresh button",
+        "Add HTTP error handling in frontend/src/services/api.ts: catch network errors, 400–500 responses, and timeouts; display toast notification with error message via toast library (react-toastify 9.1)",
+        "Create loading skeleton components for tree (frontend/src/components/NodeTreeSkeleton.tsx) and question panel (frontend/src/components/QuestionPanelSkeleton.tsx) showing while data fetches",
+        "Implement responsive CSS using Tailwind CSS 3.3 for mobile breakpoints: stack tree and question panel vertically on <768px screens, add touch-friendly button sizes (min 44px height)",
+        "Write comprehensive pytest integration tests in backend/tests/test_e2e.py: create session, upload document, generate tree, submit answers, verify marks, check node defeats, validate results endpoint"
+      ],
+      "commit_condition": "Run `pytest backend/tests/test_e2e.py -v` — all 8 tests pass (upload, tree generation, question fetch, answer submission ×3 types, node defeat, results); Run `npm run build` in frontend — no build warnings; open http://localhost:3000 on mobile (375px width) — layout is readable, buttons clickable, no overflow",
+      "example_input": "Full StudyBattles backend running on port 8000, React dev server on 3000, MongoDB with all collections, AWS S3 bucket, OpenAI API key configured; test PPTX file (2.4MB) available locally",
+      "example_output": "E2E test flow: Upload test.pptx → HTTP 201 document created; Generate tree → HTTP 201 battle with 12 nodes; Fetch questions → HTTP 200 questions array; Submit answer (Define) → HTTP 201 marks=8/10; Submit answer (Solve) → HTTP 201 marks=9/10; Submit answer (ELI5) → HTTP 201 marks=7/10; Query node state → is_defeated=true for leaf; Query parent node → is_defeated=false but children all defeated; Fetch results → HTTP 200 results with 12 answers, total 96/120; Mobile viewport test at 375px shows stacked layout with no horizontal scroll"
+    }
+  ]
+}
+```
