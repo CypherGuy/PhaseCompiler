@@ -5,6 +5,10 @@ on:
     - cron: "0 * * * *"   # every 60 min (UTC)
   workflow_dispatch:        # manual trigger from Actions tab
 
+concurrency:
+  group: autoeval
+  cancel-in-progress: false
+
 permissions:
   contents: write           # needed to commit results back
 
