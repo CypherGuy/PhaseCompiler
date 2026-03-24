@@ -60,4 +60,5 @@ jobs:
           # Only commit if something actually changed
           git diff --staged --quiet && echo "Nothing to commit." || \
             git commit -m "autoeval: iteration $(date -u +%Y%m%dT%H%M%SZ)"
+          git pull --rebase
           git push
