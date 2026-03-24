@@ -10,6 +10,7 @@ import csv
 import glob
 import json
 import os
+import re
 import webbrowser
 
 BASE         = os.path.dirname(os.path.abspath(__file__))
@@ -71,6 +72,19 @@ def compute_per_test_pcts(score_data: dict) -> dict[str, float]:
         k: round(100 * totals[k] / MAX_PER_TEST[k], 1)
         for k in MAX_PER_TEST
     }
+
+
+def analysis_to_bullets(text: str, max_bullets: int = 10) -> str:
+    """Convert analysis paragraph into an HTML bullet list (up to max_bullets items)."""
+    # Split on numbered markers like (1), (2), ...
+    parts = re.split(r"\s*\(\d+\)\s*", text)
+    parts = [p.strip().rstrip(".") for p in parts if p.strip()]
+    if len(parts) <= 1:
+        # Fall back to sentence splitting
+        parts = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()]
+    bullets = parts[:max_bullets]
+    items = "".join(f"<li>{b}</li>" for b in bullets)
+    return f"<ul>{items}</ul>"
 
 
 def generate_html(rows: list[dict], latest_score_data: dict | None) -> str:
@@ -140,7 +154,7 @@ def generate_html(rows: list[dict], latest_score_data: dict | None) -> str:
           <td colspan="7">
             <div class="analysis-panel">
               <div class="analysis-label">Analysis</div>
-              <div class="analysis-body">{r.get('analysis','')}</div>
+              <div class="analysis-body">{analysis_to_bullets(r.get('analysis',''))}</div>
             </div>
           </td>
         </tr>"""
@@ -203,8 +217,10 @@ def generate_html(rows: list[dict], latest_score_data: dict | None) -> str:
   .analysis-label {{ font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.1em;
                      color: #6366f1; font-family: 'SF Mono', 'Fira Code', monospace;
                      margin-bottom: 8px; }}
-  .analysis-body {{ color: #cbd5e1; font-size: 0.825rem; line-height: 1.65;
-                    white-space: pre-wrap; word-break: break-word; }}
+  .analysis-body {{ color: #cbd5e1; font-size: 0.825rem; line-height: 1.65; word-break: break-word; }}
+  .analysis-body ul {{ list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }}
+  .analysis-body li {{ padding-left: 1.2em; position: relative; }}
+  .analysis-body li::before {{ content: "–"; position: absolute; left: 0; color: #6366f1; }}
   .badge {{ display: inline-block; padding: 3px 9px; border-radius: 4px;
             font-size: 0.65rem; font-weight: 700; text-transform: uppercase;
             letter-spacing: 0.06em; font-family: 'SF Mono', 'Fira Code', monospace; }}
