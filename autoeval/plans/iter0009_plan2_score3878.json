@@ -1,0 +1,114 @@
+```json
+{
+  "project": {
+    "name": "StudyBattles",
+    "language": "Python 3.11",
+    "runtime": "web (FastAPI backend + React frontend)",
+    "package_manager": "pip (backend), npm (frontend)",
+    "framework": "FastAPI 0.111 (backend), React 18 (frontend)",
+    "database": "MongoDB 7.0",
+    "deployment": "Docker + AWS EC2",
+    "external_services": ["OpenAI GPT-4 API", "AWS S3", "YouTube API (for video metadata extraction)"]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Environment Setup and Project Scaffolding",
+      "deliverable": "Monorepo with FastAPI server listening on `http://localhost:8000` and React dev server on `http://localhost:3000`; `GET /health` endpoint returns `{\"status\": \"ok\"}`",
+      "tasks": [
+        "Install Python 3.11, pip, and Node.js 18.x with npm; create project root directory with `backend/` and `frontend/` subdirectories",
+        "Initialize backend: create `backend/requirements.txt` with FastAPI 0.111, uvicorn 0.29, python-multipart 0.0.6, pymongo 4.6, pydantic 2.6, python-dotenv 1.0, and openai 1.13",
+        "Initialize frontend: run `npx create-react-app frontend` with React 18 and axios 1.6 installed",
+        "Configure `.env.example` file listing `OPENAI_API_KEY`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `MONGODB_URI` variables and create `.env` with actual values",
+        "Create `backend/main.py` with FastAPI app instance, CORS middleware configured for `http://localhost:3000`, and environment variable loading via python-dotenv",
+        "Add `GET /health` endpoint in `backend/routes/health.py` returning `{\"status\": \"ok\", \"timestamp\": \"ISO-8601\"}` and test with curl"
+      ],
+      "commit_condition": "Run `cd backend && python main.py` in one terminal and `cd frontend && npm start` in another; verify `curl http://localhost:8000/health` returns `{\"status\": \"ok\"}` and React app loads at `http://localhost:3000`",
+      "example_input": "Empty project directory with no dependencies or source files",
+      "example_output": "Terminal 1: `Uvicorn running on http://127.0.0.1:8000`; Terminal 2: `webpack compiled successfully; On Your Network: http://192.168.x.x:3000`; `curl http://localhost:8000/health` returns `{\"status\": \"ok\", \"timestamp\": \"2024-01-15T10:00:00Z\"}`"
+    },
+    {
+      "id": 2,
+      "title": "MongoDB Schema Design and Connection",
+      "deliverable": "MongoDB `studybattles` database with collections `sessions`, `documents`, `trees`, `nodes`, `answers` initialized with indexes and Pydantic models in `backend/models/`",
+      "tasks": [
+        "Start MongoDB 7.0 locally or via Docker; verify connection to `mongodb://localhost:27017/studybattles`",
+        "Create `backend/db/connection.py` with MongoClient initialization, connection pool configuration, and health-check function",
+        "Define Pydantic models in `backend/models/session.py`: Session with fields `session_id` (UUID), `created_at`, `documents` (list of doc refs), `tree_id` (nullable until tree generated)",
+        "Define Pydantic models in `backend/models/document.py`: Document with fields `document_id` (UUID), `filename`, `s3_key`, `upload_timestamp`, `document_type` (enum: PPTX, DOCX, VIDEO), `file_size_bytes`",
+        "Define Pydantic models in `backend/models/tree.py`: Tree with fields `tree_id` (UUID), `document_id`, `root_node_id`, `max_depth` (set to 3), `created_at`; Node with fields `node_id` (UUID), `tree_id`, `label`, `depth` (0–3), `parent_id` (nullable), `children_ids` (list), `is_leaf` (boolean), `question_type` (enum for leaf nodes), `unlock_status` (LOCKED, UNLOCKED), `questions` (list of question IDs for leaf nodes)",
+        "Define Pydantic models in `backend/models/answer.py`: Answer with fields `answer_id` (UUID), `node_id`, `session_id`, `student_answer` (text), `mark_percentage` (0–100), `key_points_response` (JSON from LLM), `submitted_at`",
+        "Create MongoDB indexes on `sessions.session_id`, `documents.document_id`, `trees.tree_id`, `nodes.node_id`, `nodes.tree_id`, and `answers.node_id` for query performance"
+      ],
+      "commit_condition": "Run `python -c \"from backend.db.connection import check_connection; check_connection()\"` — prints `Connected to MongoDB studybattles at localhost:27017`; query `db.sessions.count_documents({})` returns 0",
+      "example_input": "MongoDB service running on `localhost:27017`, empty `studybattles` database",
+      "example_output": "MongoDB `studybattles` database contains 5 empty collections (`sessions`, `documents`, `trees`, `nodes`, `answers`) with compound indexes created; `backend/models/` contains `session.py`, `document.py`, `tree.py`, and `answer.py` with Pydantic BaseModel classes each having ≥4 validated fields"
+    },
+    {
+      "id": 3,
+      "title": "Document Upload and AWS S3 Integration",
+      "deliverable": "`POST /api/documents/upload` accepts multipart FormData with file (PPTX/DOCX/MP4 URL), stores file to AWS S3, creates Document record in MongoDB, and returns `{\"document_id\": \"uuid\", \"filename\": \"...\", \"s3_key\": \"...\"}`",
+      "tasks": [
+        "Install boto3 4.33 in `backend/requirements.txt` for AWS S3 integration",
+        "Create `backend/services/s3_uploader.py` with `upload_file_to_s3(file_bytes, filename, document_type)` function that stores to AWS S3 bucket `studybattles-uploads` under key `documents/{document_id}/{filename}` and returns s3_key",
+        "Create `backend/routes/documents.py` with `POST /api/documents/upload` endpoint accepting multipart form data with `file` (required), `session_id` (required, UUID string), and `document_type` (optional enum: PPTX, DOCX, VIDEO)",
+        "Implement file validation in upload endpoint: check MIME type (application/vnd.openxmlformats-officedocument.presentationml.presentation for PPTX, application/vnd.openxmlformats-officedocument.wordprocessingml.document for DOCX), reject files >100MB, reject non-UTF8 filenames",
+        "Write Document record to MongoDB `documents` collection with fields: `document_id`, `filename`, `s3_key`, `upload_timestamp`, `document_type`, `file_size_bytes`, and return Document JSON with HTTP 201",
+        "Add error handling for S3 upload failures (network timeout, invalid credentials, bucket full) and return HTTP 500 with error message `{\"error\": \"S3 upload failed: ...\"}`"
+      ],
+      "commit_condition": "Run `curl -F 'file=@test_document.pptx' -F 'session_id=550e8400-e29b-41d4-a716-446655440000' -F 'document_type=PPTX' http://localhost:8000/api/documents/upload` — returns HTTP 201 with `{\"document_id\": \"...\", \"filename\": \"test_document.pptx\", \"s3_key\": \"documents/.../test_document.pptx\", \"upload_timestamp\": \"2024-01-15T...\"}`; verify file exists in AWS S3 bucket `studybattles-uploads`",
+      "example_input": "AWS S3 bucket `studybattles-uploads` exists with empty contents; student has file `algebra_notes.pptx` (5MB); session UUID is `550e8400-e29b-41d4-a716-446655440000`",
+      "example_output": "HTTP 201 response: `{\"document_id\": \"64a1b2c3-d4e5-6f7g-8h9i-0j1k2l3m4n5o\", \"filename\": \"algebra_notes.pptx\", \"s3_key\": \"documents/64a1b2c3-d4e5-6f7g-8h9i-0j1k2l3m4n5o/algebra_notes.pptx\", \"upload_timestamp\": \"2024-01-15T10:30:45Z\", \"document_type\": \"PPTX\", \"file_size_bytes\": 5242880}`; MongoDB `documents` collection contains new document with matching `document_id`; file readable from S3 at returned `s3_key`"
+    },
+    {
+      "id": 4,
+      "title": "Topic Tree Generation via OpenAI",
+      "deliverable": "`POST /api/trees/generate` accepts `document_id` and `session_id`, extracts text from S3 document, calls OpenAI GPT-4 to generate hierarchical tree (max depth 3), stores tree and nodes in MongoDB, and returns `{\"tree_id\": \"uuid\", \"root_node_id\": \"uuid\", \"nodes_count\": 15}`",
+      "tasks": [
+        "Create `backend/services/document_parser.py` with `extract_text_from_pptx(s3_key)` (use python-pptx 0.6.23), `extract_text_from_docx(s3_key)` (use python-docx 0.8.11), and `extract_video_metadata(youtube_url)` (use youtube-transcript-api 0.6.2) functions that retrieve raw text from S3 or YouTube and return ≤10000 chars",
+        "Create `backend/services/tree_generator.py` with `generate_tree_from_text(text, max_depth)` function that calls OpenAI GPT-4 with prompt: 'Given text on [topic], generate a hierarchical tree of sub-topics in JSON format: {\"root\": \"Topic\", \"children\": [{\"label\": \"...\", \"children\": [...]}]}. Max depth 3. Return only JSON, no markdown.' and parses response into nested dict",
+        "Create `backend/services/tree_mapper.py` with `map_tree_to_mongo(tree_dict, tree_id, document_id)` function that flattens nested tree dict into MongoDB Node documents with `node_id` (UUID), `tree_id`, `label`, `depth`, `parent_id`, `children_ids` (references), `is_leaf` (True only for depth 3), `unlock_status` (LOCKED for all children, UNLOCKED for root), and leaf nodes initialized with empty `questions` list",
+        "Create `backend/routes/trees.py` with `POST /api/trees/generate` endpoint accepting JSON body `{\"document_id\": \"uuid\", \"session_id\": \"uuid\"}`, validating document exists, extracting text via document_parser, calling tree_generator, persisting tree and nodes to MongoDB, and returning JSON with `tree_id`, `root_node_id`, `nodes_count`",
+        "Implement error handling: catch S3 retrieval errors (404, timeout), document parse errors (malformed PPTX/DOCX), OpenAI API errors (rate limit, invalid key, timeout >60s) and return HTTP 500 with descriptive error message",
+        "Write unit tests in `tests/test_tree_generator.py` with 3 test cases: (1) simple 2-level tree generation, (2) deep 3-level tree generation, (3) malformed JSON rejection"
+      ],
+      "commit_condition": "Run `pytest tests/test_tree_generator.py -v` — all 3 tests pass; then manually test: `curl -X POST http://localhost:8000/api/trees/generate -H 'Content-Type: application/json' -d '{\"document_id\": \"64a1b2c3-...\", \"session_id\": \"550e8400-...\"}'` — returns HTTP 201 with `{\"tree_id\": \"...\", \"root_node_id\": \"...\", \"nodes_count\": 12}` (node count should be between 6 and 30 depending on text).",
+      "example_input": "AWS S3 contains document `documents/64a1b2c3-.../algebra_notes.pptx` with 5000 chars of text on Algebra basics; MongoDB `documents` collection contains matching document record; no tree exists yet for this document",
+      "example_output": "HTTP 201: `{\"tree_id\": \"64c2d3e4-f5g6-7h8i-9j0k-1l2m3n4o5p6q\", \"root_node_id\": \"64c2d3e4-f5g6-7h8i-9j0k-1l2m3n4o5p6r\", \"nodes_count\": 15}`; MongoDB `trees` collection contains new tree document; MongoDB `nodes` collection contains 15 nodes: 1 root (depth 0, UNLOCKED), 5 level-1 nodes (depth 1, LOCKED), 9 leaf nodes (depth 2, LOCKED, each with empty `questions` list); node hierarchy is consistent (all children reference parent_id, all parents reference children_ids)"
+    },
+    {
+      "id": 5,
+      "title": "Question Generation and Assignment to Leaf Nodes",
+      "deliverable": "Leaf nodes in MongoDB `nodes` collection contain 5 questions each; `POST /api/nodes/{node_id}/generate-questions` returns `{\"node_id\": \"uuid\", \"questions\": [{\"question_id\": \"uuid\", \"type\": \"Define\", \"prompt\": \"...\"}, ...], \"question_count\": 5}`",
+      "tasks": [
+        "Create `backend/services/question_generator.py` with `generate_questions_for_node(node_label, node_context)` function that calls OpenAI GPT-4 with prompt: 'For the topic \"[node_label]\", generate 5 educational questions in JSON format: [{\"type\": \"[Define|Solve|Compare|ELI5|Finish]\", \"prompt\": \"...\"}]. Return only JSON array, no markdown.' and parses response into list of dicts with `question_id` (UUID), `type`, `prompt`",
+        "Define enum `QuestionType` with 5 values: `Define` (explain concept in 1–2 sentences), `Solve` (solve numerical problem), `Compare` (compare two concepts), `ELI5` (explain like a 5-year-old), `Finish` (complete the sentence with key term)",
+        "Create `backend/routes/nodes.py` with `POST /api/nodes/{node_id}/generate-questions` endpoint that retrieves node from MongoDB, validates node is a leaf (depth = 3), calls question_generator with node label, stores generated questions to MongoDB `questions` collection with fields `question_id`, `node_id`, `type`, `prompt`, and updates node document to reference question IDs in `questions` field",
+        "Store mark scheme with each question: append to question_generator prompt: 'Also generate 3 key points for a mark scheme.' Parse response and store as `key_points_template` (list of 3 strings) in MongoDB `questions` collection alongside each question",
+        "Implement error handling: catch OpenAI API errors, log failures, return HTTP 500 if question generation fails; allow manual re-generation by calling endpoint again (overwrite existing questions)",
+        "Write integration test in `tests/test_question_generation.py` that mocks OpenAI API, verifies 5 questions are created, and validates all 5 question types appear at least once"
+      ],
+      "commit_condition": "Run `pytest tests/test_question_generation.py -v` — passes; then `curl -X POST http://localhost:8000/api/nodes/64c2d3e4-f5g6-7h8i-9j0k-1l2m3n4o5p6r/generate-questions` — returns HTTP 201 with `{\"node_id\": \"...\", \"questions\": [{\"question_id\": \"...\", \"type\": \"Define\", \"prompt\": \"...\"}, ...], \"question_count\": 5}`; query MongoDB `nodes` collection for node with `_id` matching node_id — `questions` array has 5 IDs",
+      "example_input": "MongoDB `nodes` collection contains leaf node with `_id`: \"64c2d3e4-...\", `label`: \"Quadratic Equations\", `depth`: 2, `is_leaf`: true, `questions`: []",
+      "example_output": "HTTP 201: `{\"node_id\": \"64c2d3e4-f5g6-7h8i-9j0k-1l2m3n4o5p6r\", \"questions\": [{\"question_id\": \"64d3e4f5-...\", \"type\": \"Define\", \"prompt\": \"Define a quadratic equation and give an example.\"}, {\"question_id\": \"64d3e4f5-...\", \"type\": \"Solve\", \"prompt\": \"Solve x^2 + 5x + 6 = 0 using the quadratic formula.\"}, {\"question_id\": \"64d3e4f5-...\", \"type\": \"Compare\", \"prompt\": \"Compare factoring and the quadratic formula.\"}, {\"question_id\": \"64d3e4f5-...\", \"type\": \"ELI5\", \"prompt\": \"Explain quadratic equations like I'm 5.\"}, {\"question_id\": \"64d3e4f5-...\", \"type\": \"Finish\", \"prompt\": \"Complete: The quadratic formula is ___.\"}, ], \"question_count\": 5}`; MongoDB `questions` collection contains 5 documents, each with `node_id` matching input, 3-item `key_points_template` list, and `prompt` field"
+    },
+    {
+      "id": 6,
+      "title": "Answer Submission and LLM-Based Grading",
+      "deliverable": "`POST /api/answers/submit` accepts `{\"node_id\": \"uuid\", \"session_id\": \"uuid\", \"question_id\": \"uuid\", \"student_answer\": \"text\"}`, grades via OpenAI GPT-4, stores Answer record with `mark_percentage` (0–100) and `key_points_response`, and returns `{\"answer_id\": \"uuid\", \"mark_percentage\": 85, \"key_points\": [\"...\", \"...\", \"...\"]}`",
+      "tasks": [
+        "Create `backend/services/grader.py` with `grade_answer(question_id, student_answer)` function that retrieves question and key_points_template from MongoDB, calls OpenAI GPT-4 with prompt: 'Question: [prompt]. Mark scheme (key points): [key_points_template]. Student answer: [student_answer]. Grade on a scale of 0–100 and return JSON: {\"mark_percentage\": X, \"feedback\": \"...\"}.' and parses response to extract mark_percentage and feedback",
+        "Create `backend/routes/answers.py` with `POST /api/answers/submit` endpoint accepting JSON body with `node_id`, `session_id`, `question_id`, `student_answer` (string, 1–5000 chars), validating all references exist in MongoDB, calling grader service, storing Answer record to MongoDB `answers` collection with fields `answer_id`, `node_id`, `session_id`, `question_id`, `student_answer`, `mark_percentage`, `feedback`, `submitted_at`",
+        "Implement validation: reject empty `student_answer`, validate `question_id` belongs to `node_id`, validate `node_id` is a leaf (depth 3), validate `session_id` exists, return HTTP 400 for invalid input with descriptive error message",
+        "Create `backend/services/unlock_checker.py` with `check_and_unlock_parent(node_id)` function that queries MongoDB for all sibling nodes (same parent_id), counts how many have ≥1 Answer with mark_percentage ≥75, and if all siblings defeated (100% of siblings have ≥1 answer ≥75%), updates parent node `unlock_status` to UNLOCKED and returns `{\"parent_unlocked\": true, \"parent_id\": \"uuid\"}`",
+        "Add unlock logic to answer submission endpoint: call unlock_checker after storing Answer, if parent unlocked, append to response: `\"parent_unlocked\": true, \"parent_id\": \"...\"`",
+        "Write integration test in `tests/test_grading.py` that mocks OpenAI API responses, submits 3 answers with varying marks (50%, 85%, 95%), verifies marks stored correctly, and validates unlock logic"
+      ],
+      "commit_condition": "Run `pytest tests/test_grading.py -v` — all tests pass; then `curl -X POST http://localhost:8000/api/answers/submit -H 'Content-Type: application/json' -d '{\"node_id\": \"...\", \"session_id\": \"...\", \"question_id\": \"...\", \"student_answer\": \"A quadratic equation is an equation of the form ax^2 + bx + c = 0.\"}'` — returns HTTP 201 with `{\"answer_id\": \"...\", \"mark_percentage\": 80, \"feedback\": \"...\", \"submitted_at\": \"2024-01-15T...\"}`; verify Answer record in MongoDB with matching `answer_id`",
+      "example_input": "MongoDB `nodes` collection contains leaf node \"64c2d3e4-...\"; `questions` collection contains question with `question_id`: \"64d3e4f5-...\" and `key_points_template`: [\"Quadratic equation is degree 2\", \"Has form ax^2+bx+c=0\", \"Can have 0-2 real roots\"]; student types answer: \"A quadratic equation has x squared in it.\"",
+      "example_output": "HTTP 201: `{\"answer_id\": \"64e4f5g6-...\", \"mark_percentage\": 60, \"feedback\": \"Correct that quadratic has x squared, but missing the standard form ax^2+bx+c=0 and root count info. Good start!\", \"submitted_at\": \"2024-01-15T10:45:30Z\"}`; MongoDB `answers` collection contains new document with all 5 input fields plus `mark_percentage: 60`, `feedback`, `submitted_at`; if this is the 5th and final answer for all 5 siblings to reach ≥75%, response also includes `\"parent_unlocked\": true, \"parent_id\": \"64c2d3e4-...\"`"
+    },
+    {
+      "id": 7,
+      "title": "Node Unlock Mechanics and Tree Navigation API",
+      "deliverable": "`GET /api/trees/{tree_id}/nodes` returns list of all nodes with `unlock_status`, `is_leaf`, `children_ids`

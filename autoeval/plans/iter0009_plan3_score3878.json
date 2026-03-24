@@ -1,0 +1,124 @@
+```json
+{
+  "project": {
+    "name": "StudyBattles",
+    "language": "Python 3.11",
+    "runtime": "web",
+    "package_manager": "pip",
+    "framework": "FastAPI 0.111",
+    "database": "MongoDB 7.0",
+    "deployment": "Docker + AWS EC2",
+    "external_services": ["OpenAI GPT-4 API", "AWS S3"]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Environment Setup and Project Scaffolding",
+      "deliverable": "Running FastAPI backend on http://localhost:8000 with `/health` endpoint returning {\"status\": \"ok\"} and React frontend on http://localhost:3000 displaying static landing page",
+      "tasks": [
+        "Initialize Python 3.11 virtual environment and create `requirements.txt` with FastAPI 0.111, uvicorn 0.29, python-multipart 0.0.7, pymongo 4.6, python-dotenv 1.0, openai 1.14, and boto3 1.34",
+        "Create `backend/main.py` with FastAPI app instance, CORS middleware configured for localhost:3000, and environment variable loading from `.env` file",
+        "Add `GET /health` endpoint in `backend/routes/health.py` returning {\"status\": \"ok\"}",
+        "Initialize React 18 project with `npx create-react-app frontend` and install axios 1.7 for HTTP client",
+        "Create `frontend/src/pages/LandingPage.jsx` displaying StudyBattles title, description paragraph, and blue Upload Document button (non-functional stub)",
+        "Configure `.gitignore` for Python venv, `__pycache__`, `.env`, `node_modules`, and `build/` directory",
+        "Create `.env.example` documenting required keys: `MONGODB_URI`, `OPENAI_API_KEY`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_BUCKET_NAME`"
+      ],
+      "commit_condition": "Run `python backend/main.py` in one terminal — logs show 'Uvicorn running on http://127.0.0.1:8000'; in another terminal run `npm start` from `frontend/` — browser opens to http://localhost:3000 showing landing page; run `curl http://localhost:8000/health | jq .status` — returns \"ok\"",
+      "example_input": "Empty project directory with no code or dependencies",
+      "example_output": "Terminal 1: 'Uvicorn running on http://127.0.0.1:8000'; Terminal 2: 'webpack compiled'; Browser at http://localhost:3000 shows landing page with title 'StudyBattles' and Upload Document button"
+    },
+    {
+      "id": 2,
+      "title": "MongoDB Connection and User Session Model",
+      "deliverable": "MongoDB 7.0 connection working with `/api/session/create` endpoint returning {\"session_id\": \"...\", \"created_at\": \"...\"} and `sessions` collection storing documents with structure {\"_id\": ObjectId, \"session_id\": string, \"created_at\": ISODate, \"tree\": null}",
+      "tasks": [
+        "Install MongoDB 7.0 locally or configure connection string in `.env` pointing to MongoDB Atlas cluster or local instance",
+        "Create `backend/database.py` with MongoClient initialization, database and collection references for `sessions`, `topics`, `questions`, `user_answers`, and `unlock_states`",
+        "Define `Session` Pydantic model in `backend/models/session.py` with fields: `session_id` (UUID string), `created_at` (ISO datetime), `tree` (nullable JSON object)",
+        "Implement `POST /api/session/create` endpoint in `backend/routes/session.py` generating UUID session ID, storing session document in MongoDB, and returning {\"session_id\": session_id, \"created_at\": timestamp}",
+        "Create `backend/utils/db.py` with helper functions `create_session()`, `get_session(session_id)`, and `update_session(session_id, update_dict)` wrapping MongoDB operations",
+        "Write pytest tests in `tests/test_session.py` covering session creation, retrieval, and update with mocked MongoDB using pytest-mock"
+      ],
+      "commit_condition": "Run `pytest tests/test_session.py -v` — all 6 tests pass; run `curl -X POST http://localhost:8000/api/session/create -H 'Content-Type: application/json' | jq '.session_id'` — returns a valid UUID string; query MongoDB with `db.sessions.findOne()` — document structure matches expected schema",
+      "example_input": "MongoDB running on localhost:27017 with empty 'studybattles' database; FastAPI backend running",
+      "example_output": "MongoDB 'sessions' collection contains document: {\"_id\": ObjectId(\"64a1b2c3d4e5f6g7h8i9j0k1\"), \"session_id\": \"550e8400-e29b-41d4-a716-446655440000\", \"created_at\": ISODate(\"2024-01-15T10:00:00Z\"), \"tree\": null}; curl to `/api/session/create` returns {\"session_id\": \"550e8400-e29b-41d4-a716-446655440000\", \"created_at\": \"2024-01-15T10:00:00Z\"}"
+    },
+    {
+      "id": 3,
+      "title": "AWS S3 Integration and Document Upload Endpoint",
+      "deliverable": "`POST /api/documents/upload` endpoint accepting multipart PPTX/DOCX files up to 50MB, storing in AWS S3 bucket under path `documents/{session_id}/{filename}`, and returning {\"document_id\": \"...\", \"filename\": \"...\", \"s3_key\": \"...\", \"uploaded_at\": \"...\"}",
+      "tasks": [
+        "Configure AWS S3 credentials in `.env` with `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_S3_BUCKET_NAME` values",
+        "Create `backend/services/s3_service.py` with S3Client wrapper using boto3 for uploading files and generating signed URLs valid for 24 hours",
+        "Define `Document` Pydantic model in `backend/models/document.py` with fields: `document_id` (UUID), `session_id` (string), `filename` (string), `s3_key` (string), `file_type` (enum: pptx, docx), `uploaded_at` (ISO datetime)",
+        "Implement `POST /api/documents/upload` endpoint in `backend/routes/documents.py` accepting multipart file upload, validating file type is PPTX or DOCX, uploading to S3, storing document metadata in MongoDB `documents` collection, and returning document JSON",
+        "Add validation in upload endpoint enforcing maximum file size of 50MB and permitted MIME types `application/vnd.openxmlformats-officedocument.presentationml.presentation` and `application/vnd.openxmlformats-officedocument.wordprocessingml.document`",
+        "Write integration tests in `tests/test_upload.py` covering valid PPTX/DOCX uploads, file type rejection, size limit rejection, and S3 upload verification using mocked boto3"
+      ],
+      "commit_condition": "Run `pytest tests/test_upload.py -v` — all 8 tests pass; run `curl -X POST http://localhost:8000/api/documents/upload -F 'file=@sample.pptx' -F 'session_id=550e8400-e29b-41d4-a716-446655440000'` — returns HTTP 201 with JSON containing document_id, filename, and s3_key; verify file exists in AWS S3 bucket under `documents/{session_id}/{filename}` key",
+      "example_input": "AWS S3 bucket configured; FastAPI backend running; session created with ID 550e8400-e29b-41d4-a716-446655440000; user has sample.pptx (2MB) on disk",
+      "example_output": "HTTP 201: {\"document_id\": \"64a1b2c4d4e5f6g7h8i9j0k2\", \"filename\": \"sample.pptx\", \"s3_key\": \"documents/550e8400-e29b-41d4-a716-446655440000/sample.pptx\", \"uploaded_at\": \"2024-01-15T10:05:00Z\"}; MongoDB 'documents' collection contains matching document; AWS S3 bucket contains file at specified key"
+    },
+    {
+      "id": 4,
+      "title": "Document Parsing and Topic Tree Generation via OpenAI",
+      "deliverable": "`POST /api/trees/generate` endpoint accepting document_id and session_id, extracting text from uploaded PPTX/DOCX via python-pptx 0.6.23 and python-docx 0.8.11, calling OpenAI GPT-4 API with structured prompt, returning tree JSON with structure {\"root\": {\"id\": \"...\", \"title\": \"...\", \"children\": [...]}} with max depth of 3 levels",
+      "tasks": [
+        "Install python-pptx 0.6.23 and python-docx 0.8.11 in requirements.txt for document parsing",
+        "Create `backend/services/document_parser.py` with functions `extract_text_from_pptx(s3_key)` and `extract_text_from_docx(s3_key)` downloading file from S3 and parsing content into concatenated string",
+        "Create `backend/services/tree_generator.py` with function `generate_tree_from_text(document_text, session_id)` calling OpenAI GPT-4 API with system prompt instructing it to create hierarchical topic tree with exactly 3 levels: root topic, subtopics (2–4 children), and leaf nodes (2–3 children per parent), returning JSON",
+        "Define `TreeNode` Pydantic model in `backend/models/tree.py` with fields: `id` (UUID), `title` (string), `level` (int 0–2), `parent_id` (nullable UUID), `children` (list of TreeNode objects), `is_leaf` (boolean)",
+        "Implement `POST /api/trees/generate` endpoint in `backend/routes/trees.py` accepting document_id and session_id, calling document parser and tree generator, storing tree structure in MongoDB `sessions` collection under `tree` field, and returning complete tree JSON",
+        "Write tests in `tests/test_tree_generation.py` covering text extraction from sample PPTX and DOCX files, tree generation with valid structure (depth ≤3, all leaves have no children), and MongoDB persistence using mocked OpenAI API"
+      ],
+      "commit_condition": "Run `pytest tests/test_tree_generation.py -v` — all 7 tests pass; run `curl -X POST http://localhost:8000/api/trees/generate -H 'Content-Type: application/json' -d '{\"document_id\": \"64a1b2c4d4e5f6g7h8i9j0k2\", \"session_id\": \"550e8400-e29b-41d4-a716-446655440000\"}' | jq '.root.children | length'` — returns integer ≥2; verify tree depth with `jq '.root.children[0].children[0].children | length'` — returns integer ≥0 and ≤3",
+      "example_input": "Sample PPTX uploaded to S3 with content 'Introduction to Algebra\\n- Linear Equations\\n- Quadratic Equations'; session 550e8400-e29b-41d4-a716-446655440000 exists in MongoDB",
+      "example_output": "HTTP 200: {\"root\": {\"id\": \"...\", \"title\": \"Algebra\", \"level\": 0, \"parent_id\": null, \"children\": [{\"id\": \"...\", \"title\": \"Linear Equations\", \"level\": 1, \"parent_id\": \"...\", \"children\": [{\"id\": \"...\", \"title\": \"Solving ax + b = c\", \"level\": 2, \"parent_id\": \"...\", \"children\": []}]}, ...]}; MongoDB session document field 'tree' contains same structure"
+    },
+    {
+      "id": 5,
+      "title": "Question Generation and Question Type System",
+      "deliverable": "`POST /api/questions/generate` endpoint accepting tree_node_id and session_id, calling OpenAI GPT-4 API to generate 5 questions per question type (Define, Solve, Compare, ELI5, Finish the Answer) for the node topic, storing in MongoDB `questions` collection with structure {\"_id\": ObjectId, \"question_id\": string, \"node_id\": string, \"question_type\": string, \"question_text\": string, \"expected_key_points\": [string], \"difficulty\": string, \"created_at\": ISODate}",
+      "tasks": [
+        "Define `Question` and `QuestionType` models in `backend/models/question.py` with enum for question types: Define, Solve, Compare, ELI5, FinishTheAnswer; include fields for question_id, node_id, question_type, question_text, expected_key_points (list), difficulty (easy/medium/hard), and created_at",
+        "Create `backend/services/question_generator.py` with function `generate_questions_for_node(node_title, node_context, num_per_type)` calling OpenAI GPT-4 API with structured prompt for each question type and returning list of 25 Question objects (5 per type)",
+        "Implement `POST /api/questions/generate` endpoint in `backend/routes/questions.py` accepting tree_node_id and session_id, retrieving node from tree, calling question generator, storing all questions in MongoDB `questions` collection, and returning list of generated questions",
+        "Add validation ensuring questions are generated only for leaf nodes (is_leaf=true) and at most once per node (check for existing questions by node_id)",
+        "Create `backend/prompts/question_generation.py` with five separate prompt templates, one per question type, each instructing OpenAI to generate a specific format: Define (no more than 50 words), Solve (with step-by-step solution), Compare (contrast two concepts), ELI5 (simple analogy), FinishTheAnswer (incomplete statement to complete)",
+        "Write tests in `tests/test_question_generation.py` covering generation for each question type, validation that only leaf nodes can be questioned, idempotency (duplicate requests return same questions), and expected_key_points extraction from OpenAI responses using mocked OpenAI API"
+      ],
+      "commit_condition": "Run `pytest tests/test_question_generation.py -v` — all 9 tests pass; run `curl -X POST http://localhost:8000/api/questions/generate -H 'Content-Type: application/json' -d '{\"node_id\": \"...\", \"session_id\": \"550e8400-e29b-41d4-a716-446655440000\"}'` — returns HTTP 201 with array of 25 question objects; run `db.questions.count({node_id: \"...\"})` in MongoDB — returns 25",
+      "example_input": "Tree generated with leaf node {\"id\": \"node_leaf_001\", \"title\": \"Solving Quadratic Equations\", \"level\": 2, \"is_leaf\": true}; session 550e8400-e29b-41d4-a716-446655440000 exists",
+      "example_output": "HTTP 201: [{\"question_id\": \"q1\", \"node_id\": \"node_leaf_001\", \"question_type\": \"Define\", \"question_text\": \"What is a quadratic equation?\", \"expected_key_points\": [\"polynomial\", \"degree 2\", \"ax² + bx + c\"], \"difficulty\": \"easy\", \"created_at\": \"2024-01-15T10:10:00Z\"}, ..., {\"question_id\": \"q25\", \"node_id\": \"node_leaf_001\", \"question_type\": \"FinishTheAnswer\", \"question_text\": \"The discriminant of ax² + bx + c is ...\", \"expected_key_points\": [\"b² - 4ac\", \"determines number of roots\"], \"difficulty\": \"medium\", \"created_at\": \"2024-01-15T10:10:05Z\"}]; MongoDB 'questions' collection contains all 25 documents"
+    },
+    {
+      "id": 6,
+      "title": "Answer Submission and LLM-Based Mark Scheme Evaluation",
+      "deliverable": "`POST /api/answers/submit` endpoint accepting session_id, node_id, question_id, question_type, and answer_text, calling OpenAI GPT-4 API to evaluate answer against expected_key_points, returning {\"answer_id\": \"...\", \"score\": float (0–1), \"feedback\": string, \"key_points_covered\": [string], \"missing_key_points\": [string], \"submitted_at\": ISODate}",
+      "tasks": [
+        "Define `UserAnswer` and `MarkingResult` models in `backend/models/answer.py` with fields: answer_id (UUID), session_id (string), node_id (string), question_id (string), question_type (string), answer_text (string), score (0–1 float), feedback (string), key_points_covered (list), missing_key_points (list), submitted_at (ISO datetime)",
+        "Create `backend/services/answer_evaluator.py` with function `evaluate_answer(question_text, answer_text, expected_key_points, question_type)` calling OpenAI GPT-4 API with system prompt instructing grading by key point coverage, returning MarkingResult with score (proportional to key points covered), feedback (1–2 sentences explaining score and suggesting improvement), and identified key points",
+        "Implement `POST /api/answers/submit` endpoint in `backend/routes/answers.py` accepting answer JSON, validating that question_id exists in MongoDB and belongs to specified node, calling answer evaluator, storing result in MongoDB `user_answers` collection, and returning MarkingResult JSON",
+        "Create `backend/prompts/answer_evaluation.py` with prompt template instructing OpenAI to: (1) identify which expected key points are present in the answer, (2) assign score as (key_points_covered / total_key_points), (3) write brief feedback with tone matching question_type (e.g., encouraging for Define, technical for Solve)",
+        "Add answer storage in MongoDB with document structure capturing full submission state for session persistence and result review",
+        "Write integration tests in `tests/test_answer_evaluation.py` covering scoring for each question type, edge cases (empty answer, perfect answer, partial answer), feedback generation, and key point identification using mocked OpenAI API"
+      ],
+      "commit_condition": "Run `pytest tests/test_answer_evaluation.py -v` — all 10 tests pass; run `curl -X POST http://localhost:8000/api/answers/submit -H 'Content-Type: application/json' -d '{\"session_id\": \"...\", \"node_id\": \"...\", \"question_id\": \"...\", \"question_type\": \"Define\", \"answer_text\": \"A quadratic equation is a polynomial of degree 2.\"}' | jq '.score'` — returns float between 0.0 and 1.0; verify MongoDB `user_answers` collection contains submitted answer document",
+      "example_input": "Question in MongoDB: {\"question_id\": \"q1\", \"node_id\": \"node_leaf_001\", \"question_type\": \"Define\", \"question_text\": \"What is a quadratic equation?\", \"expected_key_points\": [\"polynomial\", \"degree 2\", \"ax² + bx + c\"]}; student submits answer text: \"A quadratic equation is a second-degree polynomial of the form ax² + bx + c.\"",
+      "example_output": "HTTP 200: {\"answer_id\": \"ans_001\", \"score\": 0.9, \"feedback\": \"Excellent! You've identified the degree and general form. Next time, also mention that it has a variable with a maximum exponent of 2.\", \"key_points_covered\": [\"degree 2\", \"ax² + bx + c\"], \"missing_key_points\": [\"polynomial\"], \"submitted_at\": \"2024-01-15T10:15:00Z\"}; MongoDB 'user_answers' collection contains document with all above fields"
+    },
+    {
+      "id": 7,
+      "title": "Node Unlock Mechanics and Boss Defeat System",
+      "deliverable": "Unlock state tracking in MongoDB `unlock_states` collection with document structure {\"_id\": ObjectId, \"session_id\": string, \"node_id\": string, \"is_unlocked\": boolean, \"children_defeated\": [node_id], \"parent_defeated_at\": ISODate} and `POST /api/nodes/check-unlock` endpoint returning {\"node_id\": \"...\", \"is_unlocked\": boolean, \"reason\": string (locked/unlocked_all_children/already_unlocked)}",
+      "tasks": [
+        "Define `UnlockState` model in `backend/models/unlock.py` with fields: session_id (string), node_id (string), is_unlocked (boolean), children_defeated (list of node IDs), parent_defeated_at (nullable ISO datetime)",
+        "Create `backend/services/unlock_service.py` with functions: `get_unlock_state(session_id, node_id)`, `defeat_node(session_id, node_id)` (marking node as defeated by threshold score), `check_parent_unlock(session_id, parent_node_id)` (checking if all children are defeated)",
+        "Implement `POST /api/nodes/check-unlock` endpoint in `backend/routes/unlock.py` accepting session_id and node_id, checking if all children nodes have average score ≥0.7 across all submitted answers, unlocking parent if so, and returning current unlock state with reason field explaining decision",
+        "Define defeat threshold logic: a node is considered defeated when the session has submitted ≥2 answers for that node with average score ≥0.7",
+        "Add unlock_states collection initialization in database setup ensuring every tree node has corresponding unlock document created when tree is generated",
+        "Write tests in `tests/test_unlock.py` covering unlock conditions (all children defeated vs. incomplete), re-locking prevention (once unlocked, always unlocked), and parent unlock cascade using mocked answer data"
+      ],
+      "commit_condition": "Run `pytest tests/test_unlock.py -v` — all 8 tests pass; run `curl -X POST http://localhost:8000/api/nodes/check-unlock -H 'Content-Type: application/json' -d '{\"session_id\": \"...\", \"node_id\": \"node_parent_001\"}'` — returns JSON with is_unlocked: true/false and reason string; verify MongoDB `unlock_states` collection documents reflect unlock state changes after simulated answer submissions",
+      "example_input": "Session 550e8400-e29b-41d4-a716-446655440000 with tree containing parent node \"Solving Equations\" (node_id: np1) with two children \"Linear\" (nl1) and \"Quadratic\" (nq1); user has submitted answers for nl1 with scores [0.9, 0.8] and nq1 with scores [0.85, 0.
