@@ -1,0 +1,191 @@
+```json
+{
+  "project": {
+    "name": "StudyBattles",
+    "language": "Python 3.11",
+    "runtime": "web (monorepo with REST API backend and React frontend)",
+    "package_manager": "pip (backend), npm (frontend)",
+    "framework": "FastAPI 0.111 (backend), React 18 (frontend)",
+    "database": "MongoDB 7.0",
+    "deployment": "Docker + AWS EC2",
+    "external_services": [
+      "OpenAI GPT-4 API",
+      "AWS S3",
+      "AWS EC2"
+    ]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Backend & Database Setup",
+      "deliverable": "`GET /health` endpoint returns {\"status\": \"ok\"} on http://127.0.0.1:8000",
+      "tasks": [
+        "Install Python 3.11, create virtual environment, install FastAPI 0.111 and uvicorn 0.29 in requirements.txt",
+        "Configure MongoDB 7.0 connection string in .env file and test database connection with MongoClient",
+        "Create `backend/main.py` with FastAPI app instance, MongoDB client initialization, and CORS middleware enabled",
+        "Define Pydantic models for User session, Topic node, Question, and Answer in `backend/models.py`",
+        "Configure AWS S3 client credentials in .env with boto3 initialization in `backend/services/s3_service.py`",
+        "Create `GET /health` endpoint returning status 200 with {\"status\": \"ok\"}"
+      ],
+      "commit_condition": "Run `python backend/main.py` — uvicorn starts on http://127.0.0.1:8000; run `curl -s http://localhost:8000/health | jq .status` — returns \"ok\"",
+      "example_input": "Empty project directory with Python 3.11 and pip installed",
+      "example_output": "Terminal shows 'Uvicorn running on http://127.0.0.1:8000'; curl returns HTTP 200 with {\"status\": \"ok\"}"
+    },
+    {
+      "id": 2,
+      "title": "MongoDB Collections & Document Upload Infrastructure",
+      "deliverable": "`POST /api/upload` accepts multipart PPTX/DOCX file and returns {\"upload_id\": \"uuid\", \"filename\": \"string\", \"s3_url\": \"string\", \"status\": \"pending\"} with HTTP 201",
+      "tasks": [
+        "Create MongoDB collections: 'documents', 'topics', 'questions', 'answers', 'sessions' with validation schemas",
+        "Implement document storage service in `backend/services/storage_service.py` to save file metadata and S3 URLs to 'documents' collection",
+        "Install python-multipart and create `backend/routes/upload.py` with POST /api/upload endpoint accepting PPTX and DOCX files",
+        "Integrate AWS S3 upload logic in upload endpoint using boto3 to store files in StudyBattles S3 bucket with unique keys",
+        "Add request validation to reject files larger than 50MB and non-PPTX/DOCX MIME types with HTTP 400 response"
+      ],
+      "commit_condition": "Run `curl -X POST -F 'file=@sample.pptx' http://localhost:8000/api/upload` — returns HTTP 201 with upload_id, filename, s3_url, and status 'pending'",
+      "example_input": "MongoDB collections empty; local PPTX file 'sample.pptx' (2MB) in test directory",
+      "example_output": "Document stored in MongoDB 'documents' collection: {\"upload_id\": \"550e8400-e29b-41d4-a716-446655440000\", \"filename\": \"sample.pptx\", \"s3_url\": \"https://studybattles-s3.amazonaws.com/550e8400.pptx\", \"status\": \"pending\", \"created_at\": \"2024-01-15T10:00:00Z\"}"
+    },
+    {
+      "id": 3,
+      "title": "Topic Tree Generation via OpenAI",
+      "deliverable": "`POST /api/topics/generate` accepts upload_id, calls OpenAI GPT-4 to extract text and generate topic hierarchy, stores tree in MongoDB, returns {\"topic_id\": \"uuid\", \"root_node\": {...}, \"total_nodes\": int} with HTTP 201",
+      "tasks": [
+        "Install openai Python library and configure OPENAI_API_KEY in .env with GPT-4 model selection",
+        "Create text extraction service in `backend/services/extraction_service.py` to convert PPTX/DOCX to plain text using python-pptx and python-docx libraries",
+        "Implement `backend/services/tree_generation_service.py` with GPT-4 prompt that parses extracted text into topic hierarchy with max depth 3 and returns JSON tree structure",
+        "Define recursive Node data structure in `backend/models.py` with fields: id, title, description, level, parent_id, children[], is_leaf, questions_per_node",
+        "Create `backend/routes/topics.py` with POST /api/topics/generate endpoint that orchestrates extraction, tree generation via OpenAI, and stores complete tree in MongoDB 'topics' collection"
+      ],
+      "commit_condition": "Run `curl -X POST http://localhost:8000/api/topics/generate -H 'Content-Type: application/json' -d '{\"upload_id\": \"550e8400-e29b-41d4-a716-446655440000\"}' — returns HTTP 201 with topic_id, root node object, and total_nodes count ≥ 5",
+      "example_input": "Document uploaded in Phase 2; MongoDB 'documents' collection has entry with upload_id and S3 URL; extracted text: 'Photosynthesis is the process...'",
+      "example_output": "MongoDB 'topics' collection: {\"topic_id\": \"64a1b2c3d4e5f6g7h8i9j0k1\", \"root_node\": {\"id\": \"root_0\", \"title\": \"Photosynthesis\", \"level\": 0, \"children\": [{\"id\": \"node_1a\", \"title\": \"Light Reactions\", \"level\": 1, \"children\": [{\"id\": \"node_2a\", \"title\": \"Photosystem II\", \"level\": 2, \"is_leaf\": true}]}]}, \"total_nodes\": 8, \"created_at\": \"2024-01-15T10:05:00Z\"}"
+    },
+    {
+      "id": 4,
+      "title": "Question Generation per Leaf Node",
+      "deliverable": "`POST /api/nodes/{node_id}/questions/generate` returns {\"node_id\": \"string\", \"questions\": [{\"question_id\": \"uuid\", \"type\": \"Define|Solve|Compare|ELI5|FinishAnswer\", \"text\": \"string\", \"mark_scheme\": [...]}]} with HTTP 201; 5 questions per leaf node stored in MongoDB",
+      "tasks": [
+        "Create question type schema in `backend/models.py` with question types: Define, Solve, Compare, ELI5 (Explain Like I'm Five), FinishAnswer (complete the sentence)",
+        "Implement `backend/services/question_generation_service.py` with GPT-4 prompts that generate 5 unique questions per node type based on node title and description",
+        "Design mark scheme generation in same service: GPT-4 produces 3–5 key points and rubric (e.g., 'Mention X for 2 points, mention Y for 1 point') for each question",
+        "Create `backend/routes/questions.py` with POST /api/nodes/{node_id}/questions/generate endpoint that generates and stores questions + mark schemes in MongoDB 'questions' collection",
+        "Add GET /api/nodes/{node_id}/questions endpoint returning all 5 questions for a leaf node without mark schemes (mark schemes hidden until answer submission)"
+      ],
+      "commit_condition": "Run `curl -X POST http://localhost:8000/api/nodes/node_2a/questions/generate` — returns HTTP 201 with 5 questions, each with question_id, type in [Define, Solve, Compare, ELI5, FinishAnswer], text, and mark_scheme array",
+      "example_input": "Topic tree generated in Phase 3; leaf node 'Photosystem II' (node_2a) exists in MongoDB with title and description",
+      "example_output": "MongoDB 'questions' collection: {\"question_id\": \"64a1b2c3d4e5f6g7h8i9j0k2\", \"node_id\": \"node_2a\", \"type\": \"Define\", \"text\": \"Define photosystem II and its role in light reactions\", \"mark_scheme\": [{\"key_point\": \"Membrane protein complex in thylakoid\", \"points\": 2}, {\"key_point\": \"Absorbs light at 680nm wavelength\", \"points\": 1}]}"
+    },
+    {
+      "id": 5,
+      "title": "Answer Submission & LLM-Based Marking",
+      "deliverable": "`POST /api/answers` accepts {\"session_id\": \"string\", \"question_id\": \"uuid\", \"answer_text\": \"string\"} and returns {\"answer_id\": \"uuid\", \"marks_awarded\": int, \"max_marks\": int, \"feedback\": \"string\", \"key_points_hit\": []} with HTTP 201; marks calculated by GPT-4 against stored mark scheme",
+      "tasks": [
+        "Create answer submission endpoint `POST /api/answers` in `backend/routes/answers.py` accepting session_id, question_id, and answer_text",
+        "Implement `backend/services/marking_service.py` that retrieves mark scheme for question and calls GPT-4 with prompt: 'Score this answer against the mark scheme: [key points]. Award points for each key concept mentioned. Return JSON with marks_awarded (0–max_marks), feedback string, and key_points_hit array.'",
+        "Store answer record in MongoDB 'answers' collection with fields: answer_id, session_id, question_id, answer_text, marks_awarded, max_marks, feedback, key_points_hit, timestamp",
+        "Add validation to reject answer_text longer than 5000 characters and enforce non-empty submission",
+        "Create GET /api/sessions/{session_id}/answers endpoint returning all answers for a session with marks and feedback"
+      ],
+      "commit_condition": "Run `curl -X POST http://localhost:8000/api/answers -H 'Content-Type: application/json' -d '{\"session_id\": \"sess_123\", \"question_id\": \"64a1b2c3d4e5f6g7h8i9j0k2\", \"answer_text\": \"PS2 is a protein complex that absorbs light at 680nm\"}' — returns HTTP 201 with answer_id, marks_awarded (1–3), max_marks, feedback, and key_points_hit array with 1+ elements",
+      "example_input": "Question with id '64a1b2c3d4e5f6g7h8i9j0k2' and mark scheme stored in MongoDB; student submits answer text",
+      "example_output": "HTTP 201: {\"answer_id\": \"ans_64a1b2c3d4e5f6g7\", \"session_id\": \"sess_123\", \"question_id\": \"64a1b2c3d4e5f6g7h8i9j0k2\", \"marks_awarded\": 2, \"max_marks\": 3, \"feedback\": \"Good identification of the 680nm absorption wavelength and protein complex nature. Consider mentioning the electron transport role.\", \"key_points_hit\": [\"Protein complex in thylakoid\", \"Absorbs light at 680nm wavelength\"]}"
+    },
+    {
+      "id": 6,
+      "title": "Node Unlock Mechanics & Session State",
+      "deliverable": "`GET /api/sessions/{session_id}/nodes/{node_id}` returns node data with unlocked: boolean; `POST /api/sessions/{session_id}/nodes/{node_id}/check-unlock` evaluates if all child questions answered with ≥50% mark average and returns {\"unlocked\": boolean, \"parent_node_unlocked\": boolean} with HTTP 200",
+      "tasks": [
+        "Define unlock logic: non-leaf node unlocks when ALL direct children are unlocked; leaf node unlocks when ≥4 of 5 questions answered with average marks ≥50% (2.5+ out of 5)",
+        "Create `backend/services/unlock_service.py` with recursive function to check unlock conditions and propagate unlocks up the tree to root",
+        "Create `backend/routes/sessions.py` with POST /api/sessions to initialize session with topic_id and student name, store in MongoDB 'sessions' collection with session_id",
+        "Add POST /api/sessions/{session_id}/nodes/{node_id}/check-unlock endpoint that calls unlock service and returns unlock status for node and parent",
+        "Implement GET /api/sessions/{session_id}/tree endpoint returning full topic tree with unlocked status for each node (true/false) based on session progress"
+      ],
+      "commit_condition": "Run `curl -X POST http://localhost:8000/api/sessions/{session_id}/nodes/node_2a/check-unlock` — returns HTTP 200 with {\"unlocked\": true/false, \"parent_node_unlocked\": true/false} based on question answer count and mark average",
+      "example_input": "Session 'sess_123' with 4 questions answered in node_2a: marks [3, 2, 2, 1] (average 2 out of 5, 40%)",
+      "example_output": "HTTP 200: {\"node_id\": \"node_2a\", \"unlocked\": false, \"reason\": \"Average marks 40% below 50% threshold\", \"parent_node_unlocked\": false} — on fifth question with mark 3 (average becomes 50%), recheck returns {\"unlocked\": true, \"parent_node_unlocked\": false} (parent still locked if sibling nodes not unlocked)"
+    },
+    {
+      "id": 7,
+      "title": "React Frontend Core UI & Navigation",
+      "deliverable": "React app at http://localhost:3000 displays: (1) Document upload form at /upload, (2) Topic tree visualization at /study/{topic_id} with clickable nodes, (3) Question answering page at /study/{topic_id}/{node_id} with form inputs per question type, (4) Results page showing marks and feedback. localStorage persists session_id across reloads.",
+      "tasks": [
+        "Initialize React 18 project with npm, install axios, react-router-dom, and tailwindcss for styling; create .env.REACT_APP_API_URL pointing to http://localhost:8000",
+        "Create `src/pages/UploadPage.jsx` with file input for PPTX/DOCX, upload button calling POST /api/upload, loading spinner, success message with upload_id, and error handling for file size/type",
+        "Create `src/pages/StudyPage.jsx` with tree visualization showing hierarchical topic nodes; nodes are clickable buttons, leaf nodes styled differently (e.g., darker background); display lock icon on locked nodes",
+        "Create `src/pages/QuestionPage.jsx` with layout: node title, 5 question cards (one per type: Define, Solve, Compare, ELI5, FinishAnswer), each card has input field (textarea for long answers, text input for short), Submit button per question",
+        "Create `src/pages/ResultsPage.jsx` displaying marks/max marks, feedback text, key points hit as bullet list, 'Next Question' button, and progress bar showing unlocked nodes",
+        "Create `src/services/api.js` with axios instance and functions: uploadFile, generateTopic, getQuestions, submitAnswer, checkUnlock, getTree",
+        "Implement localStorage persistence in `src/hooks/useSession.js` to save session_id and topic_id; load on app initialization"
+      ],
+      "commit_condition": "Run `npm start` in frontend directory — React app opens at http://localhost:3000/upload; upload a file, see loading spinner, receive upload_id; navigate to /study/{topic_id}, see topic tree with nodes (at least 5 nodes); click leaf node, see 5 question form fields; reload page, verify session_id and topic_id persist in localStorage and UI shows same state",
+      "example_input": "Backend API running on http://localhost:8000; MongoDB and S3 configured; document upload and tree generation complete",
+      "example_output": "Browser at http://localhost:3000/upload shows: centered form with label 'Upload Study Material', file input field, blue 'Upload' button, error message area (hidden by default). After upload: success message 'Upload successful! Study ID: 550e8400-e29b-41d4-a716-446655440000' with 'Start Studying' link. Navigate to /study/64a1b2c3d4e5f6g7h8i9j0k1: left sidebar shows topic tree with indented hierarchy (root 'Photosynthesis' → child 'Light Reactions' → child 'Photosystem II' marked with lock icon); main area shows selected node title and description. Click 'Photosystem II', navigate to /study/64a1b2c3d4e5f6g7h8i9j0k1/node_2a: page displays 5 cards in a column, each with question type label (e.g., 'Define'), question text, textarea input field with placeholder 'Type your answer here...', and blue 'Submit' button."
+    },
+    {
+      "id": 8,
+      "title": "Full End-to-End Workflow Integration",
+      "deliverable": "Complete user flow works: upload document → generate tree → view and answer 5 questions in leaf node → receive marks + feedback → unlock parent node → see parent node unlocked in tree. All state persists in MongoDB and frontend localStorage across page reloads.",
+      "tasks": [
+        "Test document upload with sample PPTX file end-to-end: verify file stored in S3, metadata in MongoDB 'documents' collection, upload_id returned to frontend",
+        "Test tree generation: verify GPT-4 generates valid JSON tree with ≥5 nodes, tree stored in MongoDB 'topics', frontend displays tree correctly",
+        "Test question generation: verify 5 questions generated per leaf node, mark schemes created, questions visible on question page",
+        "Test answer submission and marking: submit 4 answers to leaf node with marks ≥2.5 average, verify unlock endpoint confirms child node unlocked, check MongoDB shows parent node marked as unlocked",
+        "Test parent node unlock propagation: verify parent node becomes clickable and answerable after child unlock",
+        "Test localStorage persistence: submit answer, reload page, verify session_id and topic_id persist, UI shows same question and previous answer text (if implemented), marks from previous submission still visible"
+      ],
+      "commit_condition": "Run `pytest tests/test_end_to_end.py -v` — all 6 test cases pass (upload, tree generation, question generation, marking and unlock, parent unlock, localStorage persistence); run manual test flow in browser: upload file, see tree, answer questions, confirm unlock message, reload page, verify state restored",
+      "example_input": "Backend running with MongoDB and OpenAI configured; React frontend running; empty sessions and topics collections; test PPTX file available",
+      "example_output": "All pytest tests pass; manual browser test: 1) Upload sample.pptx, receive upload_id 'abc123' 2) Tree displays with 8 nodes 3) Click leaf node, answer 4 questions with marks [3, 2, 2, 1] 4) Fifth answer mark 3 triggers unlock 5) Parent node 'Light Reactions' now clickable 6) Reload page at /study/topic123/node2a, see same node displayed, localStorage shows session_id and marks from previous answers"
+    },
+    {
+      "id": 9,
+      "title": "Result Feedback Display & UI Enhancements",
+      "deliverable": "Results page displays: marks awarded with visual progress bar (e.g., '6/10 = 60%' filled green), feedback text from GPT-4, key points hit as checkmarks, key points missed as bullet list, 'Next Question' button navigates to next unanswered question or parent node if all answers complete. Loading states and error messages on all async operations.",
+      "tasks": [
+        "Create `src/components/ResultsCard.jsx` displaying: mark progress bar (CSS width based on marks_awarded/max_marks × 100), feedback text, key_points_hit as ✓ bullets, key_points_missed as ✗ bullets, timestamp",
+        "Add loading spinners to all async operations: upload, tree generation, question generation, answer submission (show spinner overlay with 'Submitting...' text until response received)",
+        "Create global error boundary in `src/components/ErrorBoundary.jsx` to catch and display API errors with retry button",
+        "Add toast notifications for success events (e.g., 'Answer submitted successfully!') using a lightweight library like react-hot-toast",
+        "Style results page with Tailwind: centered card layout, color-coded marks (green ≥50%, yellow 25–49%, red <25%), smooth animations for progress bar fill"
+      ],
+      "commit_condition": "Run `npm run build && npm start` in frontend — navigate to completed question, see results page with progress bar at correct percentage, feedback text visible, key points with ✓/✗ icons, spinner visible during submission, no visual glitches on mobile viewport (test with Firefox DevTools 375px width)",
+      "example_input": "Answer submitted with marks 2 out of 3, feedback 'Good start', key_points_hit ['point1', 'point2'], max_marks 3",
+      "example_output": "Browser at /results shows: centered card with title 'Question Result', progress bar labeled '2 out of 3 points (67%)' with bar filled 67% in green, feedback text 'Good start' below bar, 'Key Points Hit' section with 2 checkmark bullets, 'Key Points to Review' section (if any missed) with 0+ ✗ bullets, 'Next Question' button (blue, bottom-right), timestamp 'Answered at 10:05 AM', smooth fade-in animation on page load"
+    },
+    {
+      "id": 10,
+      "title": "Responsive Layout & Mobile Optimization",
+      "deliverable": "Frontend responsive at 375px (mobile), 768px (tablet), 1024px+ (desktop) without horizontal scroll or cut-off text. Tree visualization collapses to vertical list on mobile. Question cards stack vertically on all sizes. Textarea inputs auto-expand with text. Tested on Chrome DevTools device emulation.",
+      "tasks": [
+        "Refactor StudyPage tree visualization: on mobile (<768px) display as collapsible accordion instead of hierarchical tree; on tablet/desktop show side-by-side sidebar + content layout",
+        "Update QuestionPage: on mobile, stack 5 question cards vertically in full-width column with no horizontal scroll; on desktop display 2-column grid if space allows",
+        "Add CSS media queries to all components: hide 'Study Now' button labels on mobile (icon-only), reduce padding/margins by 50% on mobile, increase touch target sizes to ≥44px height",
+        "Implement textarea auto-expand in QuestionPage: textarea grows in height as user types, max-height 300px, implement with ResizeObserver or ref-based calculation",
+        "Test responsive layout: Chrome DevTools emulation for iPhone 12 (390px), iPad (768px), desktop 1920px; verify no overflow, all buttons clickable, text readable (min 16px font on mobile)"
+      ],
+      "commit_condition": "Open Chrome DevTools, toggle device emulation to iPhone 12 (390px); load /study/{topic_id} page, scroll tree without horizontal scroll appearing, click leaf node, see questions in vertical stack, submit answer, see results page formatted for mobile (no cut-off text), test iPad emulation (768px), verify sidebar tree and main content side-by-side, test desktop 1920px, verify 2-column grid for questions (if implemented)",
+      "example_input": "React app at http://localhost:3000 with current layout; Chrome with DevTools open",
+      "example_output": "iPhone 12 emulation (390px width): /study page shows full-width accordion tree with 'Light Reactions' expandable label, tapping expands to show children; questions page shows 5 question cards in vertical column, each card full-width with textarea taking 100% width, 'Submit' button 44px tall, no horizontal scrollbar visible. iPad emulation (768px): sidebar tree 25% width on left, questions grid in remaining space, readable without pinch-zoom. Desktop 1920px: 3-column layout possible with additional sidebar for progress tracking."
+    },
+    {
+      "id": 11,
+      "title": "Comprehensive Testing & Deployment",
+      "deliverable": "Pytest test suite with ≥80 tests covering API endpoints, marking logic, unlock mechanics, and MongoDB queries. All tests passing. Docker image builds successfully. App deployable to AWS EC2 via docker-compose. README documents setup, API routes, deployment steps.",
+      "tasks": [
+        "Write pytest tests in `tests/test_api.py`: 15 tests for upload, tree generation, question generation, answer submission endpoints with valid/invalid inputs, status code assertions, response schema validation",
+        "Write pytest tests in `tests/test_marking.py`: 20 tests for marking service covering diverse answer texts (missing key points, partial matches, exact matches), mark scheme edge cases, feedback generation",
+        "Write pytest tests in `tests/test_unlock.py`: 15 tests for unlock mechanics (leaf node unlock at 50% threshold, parent unlock when all children unlocked, recursive propagation up tree)",
+        "Write pytest tests in `tests/test_integration.py`: 10+ end-to-end tests uploading document, generating tree, answering all questions, verifying marks and unlocks",
+        "Create `Dockerfile` for backend: FROM python:3.11, copy requirements.txt, RUN pip install -r requirements.txt, COPY backend, EXPOSE 8000, CMD uvicorn backend.main:app --host 0.0.0.0",
+        "Create `docker-compose.yml` with services: backend (FastAPI), frontend (React, npm build), mongodb (image mongo:7.0), environment variables for MongoDB URI and OpenAI key",
+        "Create comprehensive `README.md` with: project overview, tech stack, setup instructions (Python venv, npm install, .env template), API endpoint documentation (curl examples), deployment steps (docker-compose up), testing instructions (pytest command)"
+      ],
+      "commit_condition": "Run `pytest tests/ -v --cov=backend --cov-report=term-missing` — all ≥80 tests pass, coverage ≥70%; run `docker-compose up` — all services start without error; run `curl http://localhost:8000/health` — returns {\"status\": \"ok\"}; run `npm run build` in frontend directory — build succeeds with 0 errors; README.md exists with ≥200 words, includes API examples, deployment instructions, and environment variable template",
+      "example_input": "Completed backend code, React frontend, MongoDB and S3 configured, OpenAI API key set",
+      "example_output": "Terminal shows: 'collected 82 tests' → 'passed 82 in 12.34s' with coverage report showing backend/services/marking_service.py 85%, backend/routes/answers.py 92%; docker-compose output shows 'backend-1 | Uvicorn running on 0.0.0.0:8000', 'frontend-1 | Compiled successfully', 'mongodb-1 | waiting for connections on port 27017'; curl returns HTTP 200 {\"status\": \"ok\"}; npm build output: 'successfully compiled to ./build/' with 0 warnings; README.md lists 25+ API endpoints, includes 5+ curl example commands, docker-compose deployment section, and .env.example file with OPENAI_API_KEY, MONGODB_URI, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY placeholders"
+    }
+  ]
+}
+```
