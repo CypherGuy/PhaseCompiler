@@ -1,0 +1,208 @@
+```json
+{
+  "project": {
+    "name": "StudyBattles",
+    "language": "Python 3.11",
+    "runtime": "web",
+    "package_manager": "pip",
+    "framework": "FastAPI 0.111 (backend), React 18 (frontend)",
+    "database": "MongoDB 7.0",
+    "deployment": "Docker + AWS EC2",
+    "external_services": [
+      "AWS S3 (document storage)",
+      "OpenAI GPT-4 API (tree generation, question generation, answer evaluation)",
+      "Multer or FormData (frontend file upload)"
+    ]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Environment Setup and Project Scaffolding",
+      "deliverable": "`python backend/main.py` runs FastAPI server on http://127.0.0.1:8000; `npm start` runs React dev server on http://localhost:3000; `GET /health` returns {\"status\": \"ok\"}",
+      "tasks": [
+        "Install Python 3.11, pip, and FastAPI 0.111, uvicorn 0.29, python-multipart 0.0.6 into backend/requirements.txt",
+        "Create backend/main.py with FastAPI app instance, CORS middleware for localhost:3000, and GET /health endpoint",
+        "Initialize Node.js 18.x and npm, create frontend/package.json with React 18, axios 1.6, react-router-dom 6.20",
+        "Generate MongoDB 7.0 connection string for local instance running on 127.0.0.1:27017 and add to backend/.env",
+        "Configure AWS S3 credentials (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, AWS_S3_BUCKET) in backend/.env",
+        "Configure OpenAI API key (OPENAI_API_KEY) in backend/.env",
+        "Create frontend/src/App.jsx with React Router setup including placeholder pages for Upload, Dashboard, and Study"
+      ],
+      "commit_condition": "Run `python backend/main.py` in terminal A, `npm start` in terminal B — both start without errors; run `curl -s http://localhost:8000/health` — returns {\"status\": \"ok\"}; browser at http://localhost:3000 renders App component with navigation links",
+      "example_input": "Empty project directory with no dependencies installed, no .env files",
+      "example_output": "Run `python backend/main.py` — terminal prints 'Uvicorn running on http://127.0.0.1:8000'; run `npm start` from frontend/ — webpack dev server starts on http://localhost:3000; run `curl http://localhost:8000/health` — returns {\"status\": \"ok\"}"
+    },
+    {
+      "id": 2,
+      "title": "Database Schema and MongoDB Connection",
+      "deliverable": "MongoDB collections `sessions`, `documents`, `topics`, and `answers` exist with validated schema; `backend/database.py` exports MongoClient singleton with type hints",
+      "tasks": [
+        "Create backend/database.py with PyMongo MongoClient instance connected to MongoDB URI from .env",
+        "Define Pydantic models in backend/models.py for Session, Document, Topic, and Answer with all required fields",
+        "Create MongoDB collection `sessions` with unique index on session_id (UUID, 36 chars); add TTL index for expiry (24 hours)",
+        "Create MongoDB collection `documents` with fields: _id (ObjectId), session_id (string), filename (string), s3_key (string), uploaded_at (ISO timestamp), content_preview (string max 500 chars)",
+        "Create MongoDB collection `topics` with fields: _id (ObjectId), session_id (string), document_id (ObjectId), name (string), level (int 0–2), parent_id (ObjectId or null), children_ids (array of ObjectId), is_boss (bool), unlocked (bool), created_at (ISO timestamp)",
+        "Create MongoDB collection `answers` with fields: _id (ObjectId), session_id (string), topic_id (ObjectId), answer_text (string), question_type (enum: Define/Solve/Compare/ELI5/FinishAnswer), marks_awarded (float 0–10), max_marks (float 10), key_points (array of strings), feedback (string), answered_at (ISO timestamp)",
+        "Write backend/database.py function get_session_or_create(session_id: str) returning Session document, creating with new UUID if absent"
+      ],
+      "commit_condition": "Run `python -c \"from backend.database import db; print(db.sessions.find_one())\"` — returns None (empty collection) or a document; run `python -c \"from backend.models import Session; print(Session.model_json_schema())\"` — returns valid JSON Schema with all required fields",
+      "example_input": "MongoDB 7.0 running on 127.0.0.1:27017; empty database",
+      "example_output": "Run `python -c \"from backend.database import db; print(list(db.list_collection_names()))\"` — returns ['answers', 'documents', 'sessions', 'topics']; run `db.sessions.find_one()` in MongoDB shell — returns null or a document with _id, session_id, created_at fields"
+    },
+    {
+      "id": 3,
+      "title": "Document Upload and S3 Integration",
+      "deliverable": "`POST /api/upload` accepts multipart form-data (file + session_id), stores file in AWS S3, saves Document record to MongoDB, returns {\"document_id\": \"64a1b2c3\", \"filename\": \"slides.pptx\", \"s3_key\": \"session-uuid/slides.pptx\"}",
+      "tasks": [
+        "Install boto3 3.26 in backend/requirements.txt for AWS S3 client",
+        "Create backend/s3.py with boto3 S3 client initialized from AWS credentials in .env; implement upload_to_s3(file_bytes: bytes, session_id: str, filename: str) → s3_key: str",
+        "Create backend/routes/upload.py with POST /api/upload endpoint accepting multipart file and session_id query param",
+        "Implement upload endpoint to call upload_to_s3, extract first 500 chars of file as preview (for PPTX/DOCX use python-pptx or python-docx library), save Document to MongoDB, return document_id and metadata",
+        "Install python-pptx 0.6.21 and python-docx 1.0.0 in backend/requirements.txt for extracting text from PPTX and DOCX files",
+        "Create backend/document_parser.py with functions parse_pptx(file_bytes) → str and parse_docx(file_bytes) → str; both return first 500 chars of extracted text",
+        "Add error handling in upload endpoint: validate file extension (only .pptx, .docx allowed), catch S3 upload failures, return 400 for invalid format, 500 for S3 errors"
+      ],
+      "commit_condition": "Run `curl -X POST http://localhost:8000/api/upload -F 'file=@test.pptx' -F 'session_id=test-session-123'` with a valid PPTX file — returns HTTP 201 with JSON {\"document_id\": string, \"filename\": \"test.pptx\", \"s3_key\": string}; verify file exists in AWS S3 bucket at returned s3_key",
+      "example_input": "curl -X POST http://localhost:8000/api/upload -F 'file=@algebra_slides.pptx' -F 'session_id=session-abc123' with a 2MB PPTX containing 5 slides",
+      "example_output": "HTTP 201: {\"document_id\": \"64a1b2c3d4e5f6g7h8i9j0k1\", \"filename\": \"algebra_slides.pptx\", \"s3_key\": \"session-abc123/algebra_slides.pptx\"}; file is accessible at https://aws-s3-bucket-name.s3.amazonaws.com/session-abc123/algebra_slides.pptx"
+    },
+    {
+      "id": 4,
+      "title": "Topic Tree Generation via OpenAI",
+      "deliverable": "`POST /api/generate-tree` accepts document_id and session_id, calls OpenAI GPT-4 API, creates Topic hierarchy (max 3 levels) in MongoDB, returns tree structure as JSON with parent-child relationships",
+      "tasks": [
+        "Install openai 1.3.5 in backend/requirements.txt for OpenAI GPT-4 API",
+        "Create backend/llm.py with OpenAI client initialized from OPENAI_API_KEY in .env",
+        "Implement backend/llm.py function generate_topic_tree(document_text: str, max_depth: int = 3) → list[dict] returning tree structure with name, level, and children keys",
+        "Create backend/routes/generate_tree.py with POST /api/generate-tree endpoint accepting document_id and session_id",
+        "Implement generate_tree endpoint to retrieve Document from MongoDB, extract S3 file and parse it (use parse_pptx or parse_docx from Phase 3), call generate_topic_tree LLM function with 3-level max depth",
+        "Implement Topic creation logic in generate_tree endpoint: save root topic at level 0, recursively insert child topics at levels 1 and 2, set parent_id relationships, mark all leaf topics as is_boss=true, set all topics unlocked=false except root",
+        "Add LLM system prompt ensuring tree respects constraints: max 3 levels, max 5 children per node, leaf nodes marked as boss nodes; return structured JSON with name and children arrays"
+      ],
+      "commit_condition": "Run `curl -X POST http://localhost:8000/api/generate-tree -H 'Content-Type: application/json' -d '{\"document_id\": \"64a1b2c3\", \"session_id\": \"session-abc123\"}'` — returns HTTP 200 with JSON containing root topic with nested children; verify MongoDB `db.topics.find({\"session_id\": \"session-abc123\"})` returns 8+ documents with level, parent_id, is_boss fields correctly set",
+      "example_input": "curl -X POST http://localhost:8000/api/generate-tree -H 'Content-Type: application/json' -d '{\"document_id\": \"64a1b2c3\", \"session_id\": \"session-xyz\"}'",
+      "example_output": "HTTP 200: {\"root_id\": \"64a1b2c3\", \"name\": \"Linear Algebra\", \"level\": 0, \"children\": [{\"_id\": \"64a1b2c4\", \"name\": \"Vectors\", \"level\": 1, \"children\": [{\"_id\": \"64a1b2c5\", \"name\": \"Vector Addition\", \"level\": 2, \"is_boss\": true}]}, {\"_id\": \"64a1b2c6\", \"name\": \"Matrices\", \"level\": 1}]}; MongoDB now contains 12 Topic documents for this session"
+    },
+    {
+      "id": 5,
+      "title": "Question Generation and Marking Scheme via OpenAI",
+      "deliverable": "`POST /api/topics/{topic_id}/questions` returns JSON with 5 predefined question types (Define, Solve, Compare, ELI5, FinishAnswer), each containing prompt, expected_answer_outline (string), and max_marks (int 10); mark scheme stored in MongoDB",
+      "tasks": [
+        "Implement backend/llm.py function generate_questions(topic_name: str, parent_context: str) → dict with keys for each question type (Define, Solve, Compare, ELI5, FinishAnswer)",
+        "Each question type in generate_questions returns dict with: prompt (string), expected_answer_outline (string, LLM-generated key points), max_marks (int, always 10)",
+        "Create backend/routes/questions.py with POST /api/topics/{topic_id}/questions endpoint that retrieves Topic from MongoDB, calls generate_questions with topic name and parent context",
+        "Store generated questions in a `questions` collection with fields: _id (ObjectId), topic_id (ObjectId), question_type (enum), prompt (string), expected_answer_outline (string), max_marks (int), generated_at (ISO timestamp)",
+        "Implement POST endpoint response: return all 5 question types with prompts and max_marks visible to frontend; do not expose expected_answer_outline to frontend (server-side only for marking)",
+        "Add LLM system prompt constraint: each question must be answerable in 2–5 sentences for Define/Compare/ELI5, 1–3 steps for Solve, and 1–2 phrases for FinishAnswer"
+      ],
+      "commit_condition": "Run `curl -X POST http://localhost:8000/api/topics/64a1b2c5/questions -H 'Content-Type: application/json' -d '{\"session_id\": \"session-abc123\"}'` — returns HTTP 200 with JSON containing Define, Solve, Compare, ELI5, FinishAnswer keys; verify MongoDB `db.questions.find({\"topic_id\": ObjectId(\"64a1b2c5\")})` returns 5 documents with question_type and expected_answer_outline fields",
+      "example_input": "curl -X POST http://localhost:8000/api/topics/64a1b2c5/questions -H 'Content-Type: application/json' -d '{\"session_id\": \"session-xyz\"}'",
+      "example_output": "HTTP 200: {\"Define\": {\"prompt\": \"What is a vector?\", \"max_marks\": 10}, \"Solve\": {\"prompt\": \"Add vectors [1,2] and [3,4]. What is the result?\", \"max_marks\": 10}, \"Compare\": {\"prompt\": \"How do vectors differ from matrices?\", \"max_marks\": 10}, \"ELI5\": {\"prompt\": \"Explain vector addition like I'm 5 years old.\", \"max_marks\": 10}, \"FinishAnswer\": {\"prompt\": \"The cross product of two vectors produces a ___\", \"max_marks\": 10}}; MongoDB `questions` collection now has 5 new documents with expected_answer_outline pre-computed"
+    },
+    {
+      "id": 6,
+      "title": "Answer Submission and LLM-Based Marking",
+      "deliverable": "`POST /api/answers` accepts topic_id, session_id, answer_text, and question_type; calls OpenAI to evaluate against mark scheme; returns {\"marks_awarded\": 7.5, \"max_marks\": 10, \"key_points\": [...], \"feedback\": \"...\"}; saves Answer to MongoDB",
+      "tasks": [
+        "Implement backend/llm.py function evaluate_answer(expected_outline: str, student_answer: str, question_type: str) → dict with marks_awarded (float 0–10), key_points (list of strings), and feedback (string)",
+        "evaluate_answer calls OpenAI GPT-4 with prompt: student answer, expected outline, and question type; LLM scores out of 10 and lists key points covered",
+        "Create backend/routes/answers.py with POST /api/answers endpoint accepting JSON body with topic_id, session_id, answer_text, and question_type",
+        "POST /api/answers retrieves expected_answer_outline from questions collection, calls evaluate_answer, stores result in answers collection, returns marks_awarded, max_marks, key_points, feedback to frontend",
+        "After marking, check if all siblings of the answered topic are also answered: query answers collection for all topic_id values in Topic.children_ids, count answered vs total",
+        "If all children answered, query parent Topic and set unlocked=true; recursively check grandparent and unlock if all children are unlocked (max 2 recursions for 3-level tree)",
+        "Add LLM system prompt: mark on evidence of understanding of key concepts; award 0–3 points for missing key points, 3–7 for partial understanding, 7–10 for complete understanding"
+      ],
+      "commit_condition": "Run `curl -X POST http://localhost:8000/api/answers -H 'Content-Type: application/json' -d '{\"topic_id\": \"64a1b2c5\", \"session_id\": \"session-abc123\", \"answer_text\": \"A vector is a quantity with magnitude and direction\", \"question_type\": \"Define\"}'` — returns HTTP 201 with JSON {\"marks_awarded\": number, \"max_marks\": 10, \"key_points\": [...], \"feedback\": string}; verify MongoDB `db.answers.findOne({\"session_id\": \"session-abc123\"})` returns document with marks_awarded and key_points fields",
+      "example_input": "curl -X POST http://localhost:8000/api/answers -H 'Content-Type: application/json' -d '{\"topic_id\": \"64a1b2c5\", \"session_id\": \"session-xyz\", \"answer_text\": \"A vector is a mathematical object that has both magnitude and direction, often represented as an arrow in space.\", \"question_type\": \"Define\"}'",
+      "example_output": "HTTP 201: {\"answer_id\": \"64a1b2c7\", \"marks_awarded\": 8.5, \"max_marks\": 10, \"key_points\": [\"magnitude\", \"direction\", \"arrow representation\"], \"feedback\": \"Good understanding. You mentioned magnitude and direction, but didn't explicitly state 'quantity' or give an example in 3D.\"}; MongoDB now contains answer document; if all siblings of topic 64a1b2c5 are answered, parent topic is now unlocked"
+    },
+    {
+      "id": 7,
+      "title": "Frontend: Upload, Tree Display, and Question-Answer Flow",
+      "deliverable": "React component at http://localhost:3000/upload renders file input and submit button; tree component displays hierarchical nodes as clickable cards; answering flow modal shows 5 question types, accepts text input, displays marks and feedback",
+      "tasks": [
+        "Create frontend/src/pages/Upload.jsx with form accepting .pptx or .docx file; on submit call POST /api/upload with FormData and session_id from localStorage",
+        "Implement Upload page to store returned document_id in localStorage, redirect to /tree-generation on success, display error toast on S3 upload failure",
+        "Create frontend/src/pages/TreeDisplay.jsx fetching topic tree from POST /api/topics/{root_id}/tree (new backend endpoint to return tree structure), render as nested TreeNode components",
+        "Implement TreeNode.jsx component displaying topic name, level badge (0/1/2), locked/unlocked state, and clickable to open QuestionModal for leaf nodes only",
+        "Create frontend/src/components/QuestionModal.jsx displaying all 5 question types as tabs (Define/Solve/Compare/ELI5/FinishAnswer), showing prompt and max_marks, textarea for answer input",
+        "Implement QuestionModal submit to call POST /api/answers, display returned marks, key_points, and feedback in results card; add retry button to re-answer same question",
+        "Add frontend/src/utils/sessionStorage.js with functions to read/write session_id from localStorage, persist across page reloads"
+      ],
+      "commit_condition": "Browser at http://localhost:3000/upload — renders file input labeled 'Upload Study Material' and submit button; upload a valid PPTX file — redirects to /tree-generation; wait 10 seconds for tree generation — tree displays with root node and children visible; click a leaf node — QuestionModal opens with Define tab active; enter answer and submit — modal displays marks (0–10 number) and feedback string within 5 seconds",
+      "example_input": "Browser at http://localhost:3000/upload with no file uploaded; user selects algebra_slides.pptx (2MB) and clicks submit",
+      "example_output": "Page redirects to /tree-generation and displays loading spinner for 10 seconds; then renders tree diagram with root 'Linear Algebra' and 2 child branches 'Vectors' and 'Matrices', each with 2–3 leaf nodes; user clicks 'Vector Addition' leaf node; QuestionModal opens with tabs Define/Solve/Compare/ELI5/FinishAnswer; Define tab shows prompt 'What is vector addition?'; user types answer and clicks Submit; within 5 seconds, modal displays 'Marks: 8/10' and feedback text"
+    },
+    {
+      "id": 8,
+      "title": "Tree Unlock Mechanics and Node State Persistence",
+      "deliverable": "Locked parent nodes display 'Defeat all children to unlock'; after all children answered with marks > 0, parent node unlocks visually and updates unlocked field in MongoDB; tree state persists across page reloads",
+      "tasks": [
+        "Create backend/routes/topics.py with GET /api/topics/{root_id}/tree endpoint returning full tree structure with unlocked status for each node from MongoDB",
+        "Implement GET /api/topics/{root_id}/tree to recursively build JSON tree from topics collection, including parent_id, children_ids, and unlocked boolean for each node",
+        "Add backend route GET /api/answers/{topic_id}/status returning JSON {\"children_answered\": int, \"total_children\": int, \"all_defeated\": bool} for frontend to determine unlock state",
+        "Update POST /api/answers to check answer.marks_awarded > 0 (not all marks need to be awarded to defeat a child); unlock parent only if all children have at least 1 answer with marks > 0",
+        "Implement recursive unlock logic: after answering a leaf, check parent's all children answered; if true, set parent.unlocked=true and recursively check grandparent",
+        "Frontend: update TreeNode component to fetch /api/answers/{topic_id}/status on mount and after each answer submission; re-render tree with updated unlocked states",
+        "Frontend: add visual indicator for locked nodes (greyed-out, lock icon); clickable only if unlocked or is a leaf node (leaf nodes always clickable)"
+      ],
+      "commit_condition": "Answer all children of a parent node with marks > 0 for each — verify parent node unlocked in UI (color changes, lock icon disappears); refresh browser at /tree-generation — tree state persists with same unlocked nodes; query MongoDB `db.topics.findOne({\"_id\": parent_id})` — unlocked field is true",
+      "example_input": "Tree displayed with 'Vector Addition' and 'Vector Subtraction' as locked children of 'Vectors' parent; answer both questions (marks awarded 6 and 7 respectively)",
+      "example_output": "After answering second question, 'Vectors' parent node visually unlocks (color changes from grey to blue, lock icon removed); user can click 'Vectors' to view its sub-topics or parent 'Linear Algebra'; user refreshes page — tree state identical, 'Vectors' still unlocked; MongoDB query returns parent topic with unlocked: true"
+    },
+    {
+      "id": 9,
+      "title": "Session Persistence and Result History Display",
+      "deliverable": "localStorage persists session_id, document_id, and answered question IDs across page reloads; frontend displays results page showing all answered questions with marks, key points, and feedback for each",
+      "tasks": [
+        "Create frontend/src/pages/Results.jsx component displaying table of all answered questions with columns: Topic, Question Type, Marks (X/10), and clickable row to expand key_points and feedback",
+        "Implement Results page to fetch POST /api/answers?session_id={session_id} returning all Answer documents for current session, sorted by answered_at descending",
+        "Create backend/routes/answers.py GET /api/answers endpoint accepting session_id query param, returning list of answers with topic_name joined from topics collection, sorted by answered_at",
+        "Add Results page score summary: total marks earned across all answers, max possible marks (10 × number of answers), percentage score, and count of questions answered",
+        "Update frontend/src/utils/sessionStorage.js to persist answered_question_ids (array) to localStorage, update on each answer submission in QuestionModal",
+        "Add frontend navigation: Add Results link to header/nav bar; navigable from /tree-generation, displays alongside tree in two-column layout (tree left, results right) on desktop, stacked on mobile",
+        "Ensure all localStorage data (session_id, document_id, tree structure) persists and syncs with MongoDB state on component mount; add warning if localStorage and server state differ"
+      ],
+      "commit_condition": "Answer 3 questions in the tree; navigate to /results — table displays all 3 answers with marks, key_points, feedback; refresh page — same 3 answers visible with identical data; verify localStorage contains session_id, answered_question_ids array; query MongoDB `db.answers.find({\"session_id\": \"session-xyz\"})` returns 3 documents matching displayed results",
+      "example_input": "User answered 'Vector Addition' (Define, 8/10), 'Matrix Multiplication' (Solve, 6/10), and 'Eigenvalues' (ELI5, 9/10); navigates to /results page",
+      "example_output": "Results page displays table with 3 rows: (Vector Addition, Define, 8/10), (Matrix Multiplication, Solve, 6/10), (Eigenvalues, ELI5, 9/10); summary shows 'Total: 23/30 (76%)'; clicking row expands to show key_points and feedback; refreshing page preserves all data; localStorage contains session_id, document_id, and [question_id_1, question_id_2, question_id_3]"
+    },
+    {
+      "id": 10,
+      "title": "Frontend Polish, Loading States, and Error Handling",
+      "deliverable": "Upload page shows spinner during S3 upload (3–30 sec); tree generation shows animated loading skeleton (10–60 sec); question submission shows submit button disabled with spinner; all error messages display as toast notifications (max 5 seconds); responsive layout on mobile (320px+)",
+      "tasks": [
+        "Implement frontend loading states: Upload.jsx shows button disabled and spinner during POST /api/upload; tree-generation shows skeleton loader while waiting for tree from backend",
+        "Implement QuestionModal submit button disabled state: disable on click until POST /api/answers returns; show spinner icon and 'Evaluating...' text during request (typically 5–10 sec)",
+        "Create frontend/src/components/Toast.jsx reusable component with success/error/info variants; toast auto-dismisses after 5 seconds; max 3 concurrent toasts on screen",
+        "Add error handling in Upload.jsx: catch 400 (invalid file format) and 500 (S3 error), display toast with error message; offer retry button",
+        "Add error handling in TreeDisplay.jsx: if POST /api/generate-tree fails or times out (>60 sec), display error toast and retry button",
+        "Add error handling in QuestionModal: if POST /api/answers fails, display error toast, keep answer text in textarea, allow user to retry",
+        "Implement responsive CSS: use CSS Grid/Flexbox for 3-column layout on desktop (tree nav left, tree display center, results right); stack vertically on mobile (<768px); ensure text readable and buttons clickable on 320px width"
+      ],
+      "commit_condition": "Upload a file — spinner shows for duration of upload, disappears on success or error; tree generation takes 15 seconds — skeleton loader animates for full duration; submit answer — submit button disables with spinner, re-enables in 5 seconds; trigger network error in DevTools — error toast displays with dismiss button; resize browser to 375px (mobile width) — layout stacks vertically and text/buttons remain readable",
+      "example_input": "User uploads 5MB DOCX file; network is throttled to 1 Mbps; browser window resized to iPhone width (375px); question answer submission intentionally fails (simulate network error in DevTools)",
+      "example_output": "Upload page shows spinning loader icon for ~40 seconds; once complete, redirects to /tree-generation; tree generation displays animated skeleton of tree structure for ~15 seconds, then renders real data; on mobile, tree takes full width, results stacked below; answering question shows 'Evaluating...' spinner for 5 seconds; network error shows red toast 'Failed to submit answer. Retry?' with button; answer text preserved in textarea; all text readable on 375px screen"
+    },
+    {
+      "id": 11,
+      "title": "End-to-End Testing, Documentation, and Deployment",
+      "deliverable": "pytest suite with 18+ tests covering upload, tree generation, question answering, marking, and unlock logic; end-to-end test script validates full workflow upload → tree → answer → unlock; API documentation at `/docs` Swagger UI; Docker Compose runs full stack locally; deployment guide for AWS EC2 with docker-compose up",
+      "tasks": [
+        "Create backend/tests/test_upload.py with pytest tests: upload valid PPTX returns 201 with document_id, upload .txt file returns 400, missing session_id returns 400, S3 upload failure returns 500",
+        "Create backend/tests/test_tree_generation.py with tests: generate_tree returns valid JSON with 3-level hierarchy, max 5 children per node, leaf nodes marked is_boss=true, topics persisted in MongoDB",
+        "Create backend/tests/test_questions.py with tests: generate_questions returns 5 question types, each with prompt and expected_answer_outline, max_marks always 10",
+        "Create backend/tests/test_answers.py with tests: submit answer returns marks 0–10, key_points list, feedback string; marks > 0 on leaf marks parent answerable; all children answered unlocks parent",
+        "Create backend/tests/test_unlock.py with tests: answering all children sets parent unlocked=true, answering all leaf nodes unlocks all ancestors, refresh endpoint returns current unlock state",
+        "Create backend/tests/test_e2e.py with 1 comprehensive test: upload document → wait for tree generation → answer all leaf questions → verify all ancestors unlocked → fetch results endpoint → assert marks and key_points present",
+        "Create Dockerfile for backend and frontend; docker-compose.yml with services: api (FastAPI), web (React), mongodb, and mock S3 (localstack optional); add .dockerignore and frontend/.dockerignore to exclude node_modules, __pycache__",
+        "Create DEPLOYMENT.md with steps: set .env variables (AWS keys, OpenAI key, MongoDB URI), run `docker-compose up`, verify `curl http://localhost:8000/health` and `curl http://localhost:3000`, instructions for AWS EC2 EC2 instance, domain setup",
+        "Generate API documentation: Swagger at `/docs` auto-generated by FastAPI; add docstrings to all route handlers with endpoint description, request/response schemas"
+      ],
+      "commit_condition": "Run `pytest backend/tests/ -v` — all 18+ tests pass with 0 failures and 100% coverage of routes (upload, generate_tree, questions, answers); run backend/tests/test_e2e.py::test_full_workflow — completes upload-to-unlock flow in <2 minutes; run `docker-compose up` — all 4 services start without errors; run `curl -s http://localhost:8000/docs` — returns Swagger UI HTML; open http://localhost:3000 in browser — app loads and upload form visible",
+      "example_input": "Run `pytest backend/tests/ -v --cov=backend --cov-report=term-missing` with full backend test suite; run `docker-compose up` with all services configured",
+      "example_output": "Pytest output: '18 passed in 2.45s' with 85% code coverage; test_e2e.py completes full workflow (upload 1MB PPTX → tree generated in 12s → answer 5 questions in 8s → all parents unlocked) in 45 seconds total; `docker-compose up` output shows: 'api running on 0.0.0.0:8000', 'web listening on 0.0.0.0:3000', 'mongodb ready on port 27017'; `curl http://localhost:8000/docs` returns Swagger UI with all endpoints listed (POST /api/upload, POST /api/generate-tree, POST /api/topics/{topic_id}/questions, etc.); browser at http://localhost:3000 renders Upload page with file input and submit button"
+    }
+  ]
+}
+```

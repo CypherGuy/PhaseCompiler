@@ -53,13 +53,15 @@ Return a single JSON object with this exact structure:
 
 **Independence test:** Before finalizing each phase, verify: can a developer start ANY task in the list without completing any other task in that same phase? If not, either merge the dependent tasks into one task, add an explicit artifact reference, or move the dependent task to the next phase.
 
+**Structural independence enforcement:** Tasks that create a file and tasks that test/use that file are NOT independent. Either merge them into one task (e.g., "Create `routes/auth.py` with POST /login endpoint and write `tests/test_auth.py` validating 200 and 401 responses") or place the testing task in a later phase. Tasks that install a dependency and tasks that configure that dependency ARE independent if configuration only requires the dependency at runtime, not at write-time.
+
 **Good example (unordered, independent):**
 ```json
 "tasks": [
   "Install FastAPI 0.111 and uvicorn 0.29 into requirements.txt",
   "Create `backend/main.py` with FastAPI app instance and CORS middleware",
   "Add `GET /health` endpoint returning {\"status\": \"ok\"} in `backend/routes/health.py`",
-  "Write pytest test for health endpoint in `tests/test_health.py`"
+  "Write pytest test for health endpoint in `tests/test_health.py` (imports from `backend/routes/health.py`)"
 ]
 ```
 
@@ -77,12 +79,10 @@ Every `deliverable` field must:
 
 **Bad:** "Working PDF export feature"
 **Bad:** "Basic user authentication system"
-**Bad:** "Application fully functional on AWS EC2"
-**Bad:** "Deployed service accessible at https://..."
-**Bad:** "Valid JWT token returned on login"
+**Bad:** "Running FastAPI server on http://localhost:8000 with Swagger docs, initialized React frontend"
 **Good:** "`GET /api/export/pdf/{topic_id}` returns a binary PDF stream of unlocked questions"
 **Good:** "`POST /api/auth/login` validates credentials against MongoDB users collection and returns a signed JWT"
-**Good:** "`https://app.example.com/health` returns {\"status\": \"ok\"} from Docker container on AWS EC2"
+**Good:** "`http://localhost:8000/health` returns `{\"status\": \"ok\"}`; `http://localhost:3000` renders React welcome page"
 
 ## Commit Condition Rules
 
@@ -105,12 +105,12 @@ Every task must:
 
 ## Example I/O Rules — MANDATORY Format Matching Per Phase Type
 
-Every phase MUST have both `example_input` and `example_output`. Select the format that matches what the phase actually produces.
+Every phase MUST have both `example_input` and `example_output`. Select the format that matches what the phase actually produces. Both fields must contain concrete, specific data — not descriptions of categories of data.
 
 **Setup/CLI phases:** Show terminal command and expected stdout.
 ```
 example_input: "Empty project directory with no dependencies installed"
-example_output: "Run `python backend/main.py` — terminal prints 'Uvicorn running on http://127.0.0.1:8000'; `curl http://localhost:8000/docs` returns Swagger UI HTML"
+example_output: "Run `python backend/main.py` — terminal prints 'Uvicorn running on http://127.0.0.1:8000'; `curl http://localhost:8000/health` returns {\"status\": \"ok\"}"
 ```
 
 **Database/model phases:** Show document/row schema or query with result.
@@ -143,13 +143,25 @@ example_input: "Run `docker-compose up -d` on AWS EC2 instance with .env configu
 example_output: "Run `curl -s https://api.example.com/health` — returns {\"status\": \"ok\", \"version\": \"1.0.0\"}; `docker ps` shows 3 containers running (api, mongodb, nginx)"
 ```
 
-**Documentation/packaging phases:** Show the specific command that generates or verifies docs, and describe the resulting artifact.
+**Documentation/packaging phases:** Show the specific command that generates or verifies docs.
 ```
 example_input: "All source files documented with docstrings; no generated docs exist"
-example_output: "Run `mkdocs build` — generates `site/` directory; open `site/index.html` — renders project overview with API reference section listing 12 endpoints and installation guide"
+example_output: "Run `mkdocs build` — generates `site/` directory; open `site/index.html` — renders project overview with API reference section listing 12 endpoints"
 ```
 
-**For projects with no frontend (CLI tools, libraries, pure APIs):** Use CLI, API, or library-call examples for every phase. Do NOT fabricate UI examples. If a phase produces a library module, show an import statement and function call with expected return value.
+**CLI tool phases (no frontend):** Show the exact CLI invocation and terminal output.
+```
+example_input: "Run `mytool --help` — shows usage with 'generate' subcommand listed"
+example_output: "Run `mytool generate --input data.csv --format json` — stdout prints {\"records\": 42, \"output\": \"output.json\"}; file `output.json` contains 42 JSON records"
+```
+
+**Library phases (no frontend, no CLI):** Show import and function call with return value.
+```
+example_input: "from mylib import parser; parser module exists with no public functions"
+example_output: "from mylib.parser import extract_fields; extract_fields('invoice.pdf') returns {\"vendor\": \"Acme\", \"total\": 150.00, \"date\": \"2024-01-15\"}"
+```
+
+**For projects with no frontend (CLI tools, libraries, pure APIs):** Use CLI, API, or library-call examples for every phase. Do NOT fabricate UI examples. Every phase must still show concrete data — command + output, function call + return value, or curl + JSON response.
 
 **For projects with a frontend:** Every phase that modifies frontend code must include a UI-type example_output describing what the browser renders at a specific URL.
 
@@ -169,21 +181,31 @@ example_output: "Run `mkdocs build` — generates `site/` directory; open `site/
 - Write for a mid-level developer who knows the stack — do not over-explain basic concepts
 - Be confident and prescriptive. Every sentence either defines a task, names an artifact, or states a constraint.
 
+## Text Quality Rules
+
+- Spell all technical names exactly: FastAPI (not Fastapi), PostgreSQL (not Postgresql), MongoDB (not Mongo DB), JavaScript (not Javascript), TypeScript (not Typescript), GitHub (not Github), npm (not NPM), pytest (not Pytest when referring to the command)
+- Format versions consistently: "Python 3.11" (space before version), "Node.js 18.x", "FastAPI 0.111", "MongoDB 7.0"
+- Capitalize phase titles in Title Case: "User Authentication and JWT Integration" not "user authentication and jwt integration"
+- End every task string without a trailing period — tasks are list items, not sentences
+- Use backticks around all file paths, commands, endpoint routes, and environment variable names in task strings: "Create `backend/models/user.py` with Pydantic model for user registration"
+- Maintain consistent punctuation: all tasks either use or omit Oxford commas — do not mix
+
 ## Pre-Output Validation Checklist — Execute Every Check
 
 Before returning the JSON, verify each of these. If any check fails, fix it before outputting:
 
-1. **No sequential indicators in tasks:** Scan every task string. None starts with a digit followed by "." or ")". None contains "First,", "Then ", "Next,", "After that", "Finally,", "Subsequently", "Lastly". Verify tasks in each phase read naturally in any order. If task B only makes sense after task A, merge them, add an artifact reference, or move one to a different phase.
-2. **No banned words in deliverables:** Scan every deliverable for "working", "complete", "functional", "ready", "done", "basic", "simple", "proper", "fully", "successful", "accessible", "operational", "valid", "running", "installed". If found, replace with a specific verb + artifact. Check deployment-phase deliverables especially carefully.
-3. **Every example_input and example_output is concrete and format-appropriate:** Verify every phase's example_output matches one of the seven format templates above. If it matches none, rewrite it.
+1. **No sequential indicators in tasks:** Scan every task string. None starts with a digit followed by "." or ")". None contains "First,", "Then ", "Next,", "After that", "Finally,", "Subsequently", "Lastly". Verify tasks in each phase can be started in any order. If task B only makes sense after task A, merge them, add an artifact reference, or move one to a different phase.
+2. **No banned words in deliverables:** Scan every deliverable for "working", "complete", "functional", "ready", "done", "basic", "simple", "proper", "fully", "successful", "accessible", "operational", "valid", "running", "installed". If found, replace with a specific verb + artifact. Check Phase 1 and deployment-phase deliverables especially carefully.
+3. **Every example_input and example_output is concrete and format-appropriate:** Verify every phase's example_output contains actual data values (strings, numbers, JSON, file names) — not just category descriptions. Match one of the format templates above.
 4. **Every commit_condition starts with an action verb and contains a copy-pasteable command** with specific expected output.
 5. **Every task is ≥6 words and starts with an action verb.**
 6. **Phase count is between 6 and 12.**
 7. **No phase has fewer than 2 or more than 7 tasks.**
 8. **The plan is COMPLETE.** The JSON closes properly. The final phase covers deployment or documentation.
-9. **Deliverables name specific artifacts** — file paths, endpoints, CLI commands, URLs.
-10. **Tasks within each phase are truly independent.** Mentally shuffle each task array — if any ordering would confuse a developer, rewrite to eliminate the implicit dependency.
-11. **Example I/O format matches phase type.** Database phases show schemas/queries. API phases show curl + JSON. UI phases describe browser rendering. CLI phases show terminal output. Documentation phases show build commands and generated artifacts.
+9. **Deliverables name specific artifacts** — file paths, endpoints, CLI commands, URLs. No deliverable is a general description of a feature.
+10. **Tasks within each phase are truly independent.** Mentally shuffle each task array — if any ordering would confuse a developer, rewrite to eliminate the implicit dependency. If two tasks have a producer-consumer relationship on the same file, merge them or split across phases.
+11. **Example I/O format matches phase type.** Database phases show schemas/queries. API phases show curl + JSON. UI phases describe browser rendering. CLI phases show terminal output. Documentation phases show build commands and generated artifacts. Every phase — including CLI and library projects — has concrete example data, not abstract descriptions.
+12. **Technical spelling and formatting.** All framework names, database names, and tool names match their official spelling and capitalization. Versions use "Name X.Y" format with a space.
 
 ## JSON Output Only
 
