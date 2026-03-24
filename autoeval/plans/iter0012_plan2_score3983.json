@@ -1,0 +1,165 @@
+```json
+{
+  "project": {
+    "name": "StudyBattles",
+    "language": "Python 3.11",
+    "runtime": "web (FastAPI backend + React 18 frontend)",
+    "package_manager": "pip (backend), npm (frontend)",
+    "framework": "FastAPI 0.111 (backend), React 18.2 (frontend)",
+    "database": "MongoDB 7.0",
+    "deployment": "Docker + AWS EC2",
+    "external_services": [
+      "OpenAI GPT-4 API (tree generation, question generation, answer evaluation)",
+      "AWS S3 (document storage)",
+      "python-pptx (PPTX parsing)",
+      "python-docx (DOCX parsing)"
+    ]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Project Setup and Core Backend Infrastructure",
+      "deliverable": "`GET /health` returns {\"status\": \"ok\", \"database\": \"connected\"} and confirms FastAPI, MongoDB, and S3 client initialization",
+      "tasks": [
+        "Create Python 3.11 virtual environment and install FastAPI 0.111, uvicorn 0.29, pydantic 2.5, pymongo 4.6, boto3 1.34, python-docx 1.0, python-pptx 0.6, openai 1.3, python-multipart 0.0.6 into requirements.txt",
+        "Initialize Git repository and create monorepo structure with folders: `backend/`, `frontend/`, `docs/`, `.gitignore`, `docker-compose.yml`",
+        "Create `backend/main.py` with FastAPI app instance, CORS middleware configured for localhost:3000, and uvicorn configuration",
+        "Configure environment variables in `backend/.env` for OPENAI_API_KEY, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_S3_BUCKET, MONGODB_URI with placeholder values",
+        "Create `backend/config.py` to load and validate environment variables using Pydantic BaseSettings",
+        "Connect MongoDB 7.0 locally via docker-compose and test connection in `backend/database.py` with MongoClient initialization",
+        "Implement S3 client initialization in `backend/aws_service.py` using boto3 with configured credentials",
+        "Create `backend/routes/health.py` with GET /health endpoint that verifies MongoDB and S3 connectivity, returning connection status",
+        "Write pytest tests in `tests/test_health.py` for the health endpoint with mocked MongoDB and S3 calls"
+      ],
+      "commit_condition": "Run `pytest tests/test_health.py -v` — all tests pass; then run `python backend/main.py` and curl `http://localhost:8000/health` — returns {\"status\": \"ok\", \"database\": \"connected\"}",
+      "example_input": "Empty project directory with no code",
+      "example_output": "Run `curl http://localhost:8000/health | jq` — returns {\"status\": \"ok\", \"database\": \"connected\", \"s3_bucket\": \"study-battles-dev\"}"
+    },
+    {
+      "id": 2,
+      "title": "Document Upload and Text Extraction Pipeline",
+      "deliverable": "`POST /api/documents/upload` accepts multipart PPTX or DOCX file, stores in AWS S3, extracts text, stores metadata in MongoDB, returns document ID and extracted text",
+      "tasks": [
+        "Create MongoDB schema in `backend/models/document.py` with Document model: {_id, filename, s3_key, file_type, extracted_text, created_at, updated_at}",
+        "Implement DOCX text extraction in `backend/extractors/docx_extractor.py` using python-docx to parse paragraphs and return concatenated text",
+        "Implement PPTX text extraction in `backend/extractors/pptx_extractor.py` using python-pptx to parse slide shapes and return concatenated slide text",
+        "Create `backend/routes/documents.py` with POST /api/documents/upload endpoint that accepts multipart files, validates file type (PPTX or DOCX), delegates to appropriate extractor",
+        "Implement `backend/aws_service.py` upload_to_s3() function that generates unique S3 key and uploads file with public-read ACL",
+        "Add document metadata storage to the upload endpoint: save Document record in MongoDB with extracted text, S3 key, filename, and timestamp",
+        "Create `backend/routes/documents.py` GET /api/documents/{document_id} endpoint that returns document metadata and extracted text from MongoDB",
+        "Write tests in `tests/test_documents.py` for DOCX extraction, PPTX extraction, and S3 upload with mocked boto3 and PyMongo"
+      ],
+      "commit_condition": "Run `pytest tests/test_documents.py -v` — all 8 tests pass; then upload a sample PPTX via `curl -F 'file=@sample.pptx' http://localhost:8000/api/documents/upload` — returns {\"document_id\": \"...\", \"filename\": \"sample.pptx\", \"extracted_text\": \"...\"}",
+      "example_input": "Health endpoint confirmed working; sample.pptx file with 3 slides containing text like 'Python Basics', 'Variables and Types'",
+      "example_output": "POST /api/documents/upload returns HTTP 201: {\"document_id\": \"67a1b2c3d4e5\", \"filename\": \"sample.pptx\", \"file_type\": \"pptx\", \"s3_key\": \"uploads/67a1b2c3d4e5/sample.pptx\", \"extracted_text\": \"Python Basics Variables and Types Functions and Scope\", \"created_at\": \"2024-01-15T10:00:00Z\"}"
+    },
+    {
+      "id": 3,
+      "title": "Topic Hierarchy Generation via OpenAI",
+      "deliverable": "`POST /api/topics/generate` accepts document_id, calls OpenAI GPT-4 API to generate topic tree from extracted text, stores hierarchy in MongoDB with max 3 levels, returns tree structure",
+      "tasks": [
+        "Create MongoDB schema in `backend/models/topic.py` with Topic model: {_id, document_id, parent_id, title, description, level (0-2), children_ids, is_leaf, created_at}",
+        "Implement `backend/services/openai_service.py` generate_topic_tree() function that calls OpenAI GPT-4 API with system prompt to generate hierarchical topic structure from extracted text",
+        "Design OpenAI prompt to generate max 3-level tree with format: root topic at level 0, up to 5 subtopics at level 1, up to 5 sub-subtopics per level-1 topic at level 2, all leaf nodes at level 2",
+        "Create recursive tree insertion logic in `backend/services/topic_service.py` to parse OpenAI response and store topics in MongoDB, linking parent_id to child documents",
+        "Implement `backend/routes/topics.py` POST /api/topics/generate endpoint that accepts document_id, calls generate_topic_tree(), stores all topics, returns complete tree structure as nested JSON",
+        "Add GET /api/topics/{document_id} endpoint to retrieve entire topic tree by document_id, returning root and all descendants in nested format",
+        "Write tests in `tests/test_topics.py` for OpenAI API mocking, tree generation logic, and recursive MongoDB storage validation"
+      ],
+      "commit_condition": "Run `pytest tests/test_topics.py -v` — all 7 tests pass; then call `curl -X POST http://localhost:8000/api/topics/generate -H 'Content-Type: application/json' -d '{\"document_id\": \"67a1b2c3d4e5\"}' | jq` — returns {\"root_id\": \"...\", \"tree\": {\"id\": \"...\", \"title\": \"Python Basics\", \"children\": [{\"id\": \"...\", \"title\": \"Variables\", \"children\": [...]}]}}",
+      "example_input": "Document with extracted_text: 'Python Basics. Variables and Types: integers, strings, lists. Functions: definition, parameters, return values. Scope: local and global variables.'",
+      "example_output": "POST /api/topics/generate returns HTTP 201: {\"root_id\": \"67a1c3d4e5f6\", \"tree\": {\"id\": \"67a1c3d4e5f6\", \"title\": \"Python Basics\", \"level\": 0, \"children\": [{\"id\": \"67a1c3d4e5f7\", \"title\": \"Variables and Types\", \"level\": 1, \"children\": [{\"id\": \"67a1c3d4e5f8\", \"title\": \"Integers\", \"level\": 2, \"is_leaf\": true}, {\"id\": \"67a1c3d4e5f9\", \"title\": \"Strings\", \"level\": 2, \"is_leaf\": true}]}, {\"id\": \"67a1c3d4e5fa\", \"title\": \"Functions\", \"level\": 1, \"children\": [{\"id\": \"67a1c3d4e5fb\", \"title\": \"Definition and Parameters\", \"level\": 2, \"is_leaf\": true}]}]}}"
+    },
+    {
+      "id": 4,
+      "title": "Question Generation and Mark Scheme Creation",
+      "deliverable": "`POST /api/questions/generate-for-topic` accepts topic_id, generates 3–5 predetermined question types (Define, Solve, Compare, ELI5, Finish the Answer) via OpenAI, stores questions and mark schemes in MongoDB, returns question list",
+      "tasks": [
+        "Create MongoDB schema in `backend/models/question.py` with Question model: {_id, topic_id, question_type, question_text, expected_answer_format, created_at}",
+        "Create MongoDB schema in `backend/models/mark_scheme.py` with MarkScheme model: {_id, question_id, key_points (list of strings), evaluation_criteria, created_at}",
+        "Implement `backend/services/question_service.py` generate_questions_for_topic() function that calls OpenAI GPT-4 API with topic title and description to generate questions of each type",
+        "Design OpenAI prompts for each question type: Define (explain concept in own words), Solve (solve a problem using concept), Compare (compare two related concepts), ELI5 (explain like I'm 5), Finish the Answer (complete a partially answered question)",
+        "Implement `backend/services/question_service.py` generate_mark_scheme() function that calls OpenAI GPT-4 to generate key points and evaluation criteria for each generated question",
+        "Create `backend/routes/questions.py` POST /api/questions/generate-for-topic endpoint that accepts topic_id, generates 3–5 questions and mark schemes, stores both in MongoDB, returns question list with IDs",
+        "Add GET /api/questions/topic/{topic_id} endpoint to retrieve all questions for a topic with question type, text, and expected format",
+        "Write tests in `tests/test_questions.py` for question generation, mark scheme creation, and OpenAI API mocking with varied topic contexts"
+      ],
+      "commit_condition": "Run `pytest tests/test_questions.py -v` — all 8 tests pass; then call `curl -X POST http://localhost:8000/api/questions/generate-for-topic -H 'Content-Type: application/json' -d '{\"topic_id\": \"67a1c3d4e5f8\"}' | jq` — returns {\"questions\": [{\"id\": \"...\", \"type\": \"Define\", \"text\": \"...\"}]} with 3+ questions",
+      "example_input": "Topic with title: 'Integers', description: 'Whole numbers, both positive and negative, used in Python programming'",
+      "example_output": "POST /api/questions/generate-for-topic returns HTTP 201: {\"questions\": [{\"id\": \"67a1c3d4e5fc\", \"type\": \"Define\", \"text\": \"What is an integer in Python?\", \"expected_answer_format\": \"free_text\"}, {\"id\": \"67a1c3d4e5fd\", \"type\": \"Solve\", \"text\": \"Write Python code to add two integers and print the result.\", \"expected_answer_format\": \"code\"}, {\"id\": \"67a1c3d4e5fe\", \"type\": \"ELI5\", \"text\": \"Explain what an integer is in a way a 5-year-old would understand.\", \"expected_answer_format\": \"free_text\"}]}"
+    },
+    {
+      "id": 5,
+      "title": "Answer Submission and LLM-Based Marking",
+      "deliverable": "`POST /api/answers/submit` accepts question_id and student answer, evaluates against LLM-generated mark scheme via OpenAI, returns score (0–100%) and feedback with identified key points",
+      "tasks": [
+        "Create MongoDB schema in `backend/models/answer.py` with Answer model: {_id, question_id, student_answer, score (0-100), key_points_identified (list), feedback_text, evaluated_at}",
+        "Implement `backend/services/evaluation_service.py` evaluate_answer() function that retrieves question and mark scheme from MongoDB, calls OpenAI GPT-4 API with student answer and key points",
+        "Design OpenAI prompt for evaluation: receive student answer and mark scheme key points; return JSON with {score: int(0-100), key_points_identified: list of strings matched, feedback: string explaining evaluation}",
+        "Create `backend/routes/answers.py` POST /api/answers/submit endpoint that accepts {question_id, student_answer}, calls evaluate_answer(), stores Answer record in MongoDB, returns evaluation result",
+        "Implement `backend/routes/answers.py` GET /api/answers/question/{question_id} endpoint to retrieve all submissions and evaluations for a single question",
+        "Add validation in the submit endpoint to ensure question_id exists and question type is valid before evaluation",
+        "Write tests in `tests/test_answers.py` for answer submission, OpenAI evaluation mocking, score calculation, and feedback generation with varied student answer quality"
+      ],
+      "commit_condition": "Run `pytest tests/test_answers.py -v` — all 7 tests pass; then call `curl -X POST http://localhost:8000/api/answers/submit -H 'Content-Type: application/json' -d '{\"question_id\": \"67a1c3d4e5fc\", \"student_answer\": \"An integer is a whole number like 5 or -3\"}' | jq` — returns {\"score\": 85, \"key_points_identified\": [\"whole number\", \"negative values\"], \"feedback\": \"...\"} with score between 0 and 100",
+      "example_input": "Question: 'What is an integer in Python?', Mark scheme key points: ['whole number', 'positive or negative', 'no decimal point'], Student answer: 'An integer is a whole number that can be positive or negative'",
+      "example_output": "POST /api/answers/submit returns HTTP 201: {\"id\": \"67a1c3d4e5ff\", \"question_id\": \"67a1c3d4e5fc\", \"student_answer\": \"An integer is a whole number that can be positive or negative\", \"score\": 90, \"key_points_identified\": [\"whole number\", \"positive or negative\"], \"feedback\": \"Good answer! You identified that integers are whole numbers and can be positive or negative. Consider also mentioning that they have no decimal point.\", \"evaluated_at\": \"2024-01-15T10:15:00Z\"}"
+    },
+    {
+      "id": 6,
+      "title": "Node Unlock Mechanics and Session State Management",
+      "deliverable": "`POST /api/sessions/unlock-node` accepts session_id and topic_id, verifies all leaf children have score ≥80, unlocks parent node, returns updated topic with unlock status, and persists state to localStorage",
+      "tasks": [
+        "Create MongoDB schema in `backend/models/session.py` with Session model: {_id, session_token (uuid), document_id, unlocked_topic_ids (list), created_at, updated_at}",
+        "Implement `backend/services/session_service.py` create_session() function that generates unique session_token, stores in MongoDB, returns token for client storage",
+        "Implement `backend/services/unlock_service.py` check_node_unlock_eligibility() function that queries all child topics of a given topic_id, retrieves all answers for questions under those children, calculates average score, returns eligibility boolean",
+        "Implement unlock logic: a node unlocks only when ALL leaf-level children have at least one answer with score ≥80; parent becomes available for unlock once all direct children are unlocked",
+        "Create `backend/routes/sessions.py` POST /api/sessions/create endpoint that returns session_token for client to store in localStorage",
+        "Create `backend/routes/topics.py` POST /api/topics/unlock-node endpoint that accepts {session_id, topic_id}, verifies unlock eligibility, updates session unlocked_topic_ids in MongoDB, returns updated topic tree with is_unlocked flag",
+        "Add GET /api/sessions/{session_id} endpoint to retrieve current session state including unlocked_topic_ids",
+        "Write tests in `tests/test_unlock.py` for unlock eligibility logic, ancestor unlock cascading, and session state updates with varied answer scores"
+      ],
+      "commit_condition": "Run `pytest tests/test_unlock.py -v` — all 8 tests pass; then create session via `curl -X POST http://localhost:8000/api/sessions/create | jq .session_token` and unlock node via `curl -X POST http://localhost:8000/api/topics/unlock-node -H 'Content-Type: application/json' -d '{\"session_id\": \"...\", \"topic_id\": \"67a1c3d4e5f8\"}' | jq .is_unlocked` — returns true when all leaf children have score ≥80",
+      "example_input": "Topic 'Integers' (level 2, leaf) has 3 answers with scores 95, 88, 92; Parent topic 'Variables and Types' (level 1) has 2 leaf children: 'Integers' and 'Strings'; 'Strings' has answers with scores 85, 90",
+      "example_output": "POST /api/topics/unlock-node returns HTTP 200: {\"topic_id\": \"67a1c3d4e5f7\", \"is_unlocked\": true, \"unlocked_at\": \"2024-01-15T10:20:00Z\", \"unlockable_parent_ids\": [\"67a1c3d4e5f6\"], \"message\": \"Parent topic 'Python Basics' is now unlockable!\"}"
+    },
+    {
+      "id": 7,
+      "title": "React Frontend Setup and Core UI Scaffold",
+      "deliverable": "React 18 app at localhost:3000 displays document upload form, topic tree visualization (expandable), question list view, and answer submission form — all wireframed with mock data",
+      "tasks": [
+        "Initialize React 18 frontend using Create React App or Vite in `frontend/` directory with TypeScript 5.3 support",
+        "Install dependencies: axios 1.6, zustand 4.4 (state management), react-router-dom 6.20, tailwindcss 3.3, react-icons 4.12 into package.json",
+        "Create directory structure: `frontend/src/{components, pages, services, store, hooks}` and set up Tailwind CSS configuration",
+        "Implement `frontend/src/services/api.ts` axios client with baseURL configured to http://localhost:8000/api and interceptors for session_token in headers",
+        "Create `frontend/src/store/sessionStore.ts` with Zustand store to persist session_token, document_id, and current topic_id to localStorage",
+        "Create `frontend/src/pages/Dashboard.tsx` displaying a grid layout with upload section, topic tree panel, and question panel (initially empty)",
+        "Implement `frontend/src/components/DocumentUpload.tsx` form component with file input accepting PPTX/DOCX, displays loading state, and calls POST /api/documents/upload",
+        "Create `frontend/src/components/TopicTree.tsx` component that displays topic hierarchy as expandable tree visualization using mock data structure"
+      ],
+      "commit_condition": "Run `npm run start` in `frontend/` directory — app loads at http://localhost:3000; browser displays Dashboard page with upload form and topic tree panel with no errors in console",
+      "example_input": "Empty React project scaffold",
+      "example_output": "Browser at http://localhost:3000/dashboard displays: header nav bar with app title 'StudyBattles', left sidebar with topic tree (unexpanded root node), center panel showing upload form with 'Choose file' button and 'Upload' button, right panel empty waiting for topic selection; all styled with Tailwind CSS; console shows no errors"
+    },
+    {
+      "id": 8,
+      "title": "Topic Tree Rendering and Question Display Integration",
+      "deliverable": "Topic tree fully interactive in frontend with clickable nodes; clicking leaf node displays associated questions and answer form; unlocked status shown visually",
+      "tasks": [
+        "Implement `frontend/src/hooks/useFetchTopics.ts` custom hook that calls GET /api/topics/{document_id} and returns nested tree structure and loading state",
+        "Create `frontend/src/components/TopicNode.tsx` recursive component that renders single topic with children, expandable state, unlock status badge, and click handler to select topic",
+        "Implement topic selection logic in Zustand store: `setCurrentTopicId()` and derive currently selected topic object from tree",
+        "Create `frontend/src/hooks/useFetchQuestions.ts` custom hook that calls GET /api/questions/topic/{topic_id} and caches results per topic",
+        "Build `frontend/src/components/QuestionList.tsx` component that displays all questions for selected topic with question type badge, text, and 'Answer' button for each",
+        "Create `frontend/src/components/AnswerForm.tsx` component with textarea for free text answers and code input for code answers; submit button calls POST /api/answers/submit with question_id and answer",
+        "Implement loading states and error messages for API calls using React hooks and conditional rendering",
+        "Write unit tests in `frontend/src/__tests__/TopicNode.test.tsx` and `__tests__/AnswerForm.test.tsx` for component rendering with mock API responses"
+      ],
+      "commit_condition": "Run `npm run start` in `frontend/` directory and navigate to Dashboard; click a topic node in tree — right panel displays list of 3+ questions; click 'Answer' button for a question — form appears; type answer and submit — no console errors",
+      "example_input": "Browser at http://localhost:3000/dashboard with mock topic tree loaded showing 'Integers' (leaf node) under 'Variables and Types'",
+      "example_output": "Browser displays: clicking 'Integers' node expands/selects it (highlighted); right panel renders: 'Questions for: Integers' header, then list of 3 questions with [Define] 'What is an integer...?', [Solve] 'Write code...', [ELI5] 'Explain...'; clicking 'Answer' on Define question shows textarea input with placeholder 'Enter your answer' and blue 'Submit' button"
+    },
+    {
+      "id": 9,
+      "title": "Answer Evaluation Display and Mark Feedback Rendering",
+      "deliverable": "
