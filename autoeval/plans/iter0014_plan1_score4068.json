@@ -1,0 +1,186 @@
+```json
+{
+  "project": {
+    "name": "StudyBattles",
+    "language": "Python 3.11",
+    "runtime": "web (REST API backend + React frontend)",
+    "package_manager": "pip (backend), npm (frontend)",
+    "framework": "FastAPI 0.111 (backend), React 18 (frontend)",
+    "database": "MongoDB 7.0",
+    "deployment": "Docker + AWS EC2",
+    "external_services": [
+      "OpenAI GPT-4 API (tree generation, question generation, answer evaluation)",
+      "AWS S3 (document storage)",
+      "python-pptx 0.6.21 (PPTX parsing)",
+      "python-docx 0.8.11 (DOCX parsing)",
+      "yt-dlp 2024.01.01 (YouTube video metadata extraction)"
+    ]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Backend environment setup and FastAPI scaffold",
+      "deliverable": "`GET /health` endpoint returns {\"status\": \"ok\", \"version\": \"1.0.0\"} from running FastAPI server on http://127.0.0.1:8000",
+      "tasks": [
+        "Initialize Python 3.11 virtual environment in project root with pip package manager",
+        "Install FastAPI 0.111, uvicorn 0.29, pydantic 2.5, python-multipart 0.0.6 into requirements.txt",
+        "Install MongoDB driver pymongo 4.6 and motor 3.3 (async MongoDB) into requirements.txt",
+        "Install boto3 1.28 (AWS S3 SDK) and python-dotenv 1.0 into requirements.txt",
+        "Install openai 1.3 (OpenAI API SDK) into requirements.txt",
+        "Create `backend/main.py` with FastAPI app instance, CORS middleware, and `/health` GET endpoint",
+        "Create `.env.example` documenting required variables: OPENAI_API_KEY, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_S3_BUCKET, MONGODB_URI"
+      ],
+      "commit_condition": "Run `python backend/main.py` — uvicorn prints 'Uvicorn running on http://127.0.0.1:8000'. In another terminal, run `curl -s http://localhost:8000/health | python -m json.tool` — returns {\"status\": \"ok\", \"version\": \"1.0.0\"}",
+      "example_input": "Empty project directory with Python 3.11 installed and pip available",
+      "example_output": "Terminal shows 'Uvicorn running on http://127.0.0.1:8000'; curl returns {\"status\": \"ok\", \"version\": \"1.0.0\"}"
+    },
+    {
+      "id": 2,
+      "title": "MongoDB document schemas and database connection",
+      "deliverable": "MongoDB collections `sessions`, `documents`, `trees`, `questions`, `answers` created with validated schema; `GET /db/status` returns {\"sessions\": 0, \"documents\": 0, \"trees\": 0, \"questions\": 0, \"answers\": 0}",
+      "tasks": [
+        "Create `backend/config.py` with MongoClient initialization using MONGODB_URI from .env; define async connection pool",
+        "Create `backend/models/session.py` with Pydantic SessionSchema: {\"_id\": ObjectId, \"created_at\": datetime, \"tree_id\": str, \"current_node_id\": str, \"unlocked_node_ids\": list[str], \"answers\": list[{\"node_id\": str, \"question_type\": str, \"answer_text\": str, \"score\": float, \"timestamp\": datetime}]}",
+        "Create `backend/models/document.py` with Pydantic DocumentSchema: {\"_id\": ObjectId, \"filename\": str, \"file_type\": str (pptx|docx|youtube), \"s3_key\": str, \"raw_text\": str, \"uploaded_at\": datetime}",
+        "Create `backend/models/tree.py` with Pydantic NodeSchema and TreeSchema: Node {\"_id\": str, \"label\": str, \"depth\": int (0–2), \"parent_id\": str|null, \"children_ids\": list[str], \"is_boss\": bool, \"description\": str}; Tree {\"_id\": str, \"document_id\": str, \"root_node\": NodeSchema, \"all_nodes\": dict[str, NodeSchema], \"created_at\": datetime}",
+        "Create `backend/models/question.py` with Pydantic QuestionSchema: {\"_id\": ObjectId, \"node_id\": str, \"question_type\": str (Define|Solve|Compare|ELI5|Finish), \"question_text\": str, \"mark_scheme\": list[{\"key_point\": str, \"weight\": float}], \"generated_at\": datetime}",
+        "Create `backend/models/answer.py` with Pydantic AnswerSchema: {\"_id\": ObjectId, \"session_id\": str, \"node_id\": str, \"question_id\": str, \"question_type\": str, \"answer_text\": str, \"score\": float, \"feedback\": list[{\"key_point\": str, \"present\": bool, \"reason\": str}], \"answered_at\": datetime}",
+        "Create `backend/db.py` with async functions: `init_db()` creating indexes on collections; `get_session_db()` as async context manager; verify all 5 collections exist with `db.list_collection_names()`"
+      ],
+      "commit_condition": "Run `python -c \"import asyncio; from backend.db import init_db; asyncio.run(init_db()); print('DB initialized')\"` — prints 'DB initialized'; then run `curl -s http://localhost:8000/db/status | python -m json.tool` — returns {\"sessions\": 0, \"documents\": 0, \"trees\": 0, \"questions\": 0, \"answers\": 0}",
+      "example_input": "MongoDB 7.0 running on mongodb://localhost:27017; fastapi server running on http://127.0.0.1:8000",
+      "example_output": "db.sessions.find_one() returns None (collection empty); db.list_collection_names() includes ['sessions', 'documents', 'trees', 'questions', 'answers']; curl to /db/status returns {\"sessions\": 0, \"documents\": 0, \"trees\": 0, \"questions\": 0, \"answers\": 0}"
+    },
+    {
+      "id": 3,
+      "title": "Document upload and extraction pipeline",
+      "deliverable": "`POST /api/documents/upload` accepts multipart file (PPTX, DOCX, YouTube URL), stores in AWS S3, extracts text to `raw_text` field, returns {\"document_id\": \"64a1b...\", \"filename\": \"...\", \"file_type\": \"...\", \"raw_text_preview\": \"...\" (first 200 chars)}",
+      "tasks": [
+        "Create `backend/services/s3_service.py` with S3Client wrapper: upload_file(file_bytes, filename) → s3_key str; download_file(s3_key) → bytes",
+        "Create `backend/services/document_parser.py` with functions: parse_pptx(file_bytes) → str (all slide text concatenated); parse_docx(file_bytes) → str (all paragraph text); extract_youtube_text(url) → str (title + description from yt-dlp metadata)",
+        "Create `backend/routes/documents.py` with POST /api/documents/upload endpoint: accept multipart file + optional youtube_url; determine file_type; parse to raw_text; upload file to S3; insert into MongoDB documents collection; return {\"document_id\": str, \"filename\": str, \"file_type\": str, \"raw_text_preview\": str}",
+        "Install python-pptx 0.6.21, python-docx 0.8.11, yt-dlp 2024.01.01 into requirements.txt",
+        "Create `backend/routes/documents.py` GET /api/documents endpoint: return paginated list of all uploaded documents with pagination (limit 20, offset 0), showing document_id, filename, file_type, uploaded_at",
+        "Write pytest test file `tests/test_documents.py` with tests for PPTX upload, DOCX upload, YouTube URL extraction, and S3 upload success"
+      ],
+      "commit_condition": "Run `pytest tests/test_documents.py -v` — all tests pass (minimum 4 tests); then run `curl -X POST -F 'file=@sample.docx' http://localhost:8000/api/documents/upload` — returns HTTP 201 with {\"document_id\": \"...\", \"filename\": \"sample.docx\", \"file_type\": \"docx\", \"raw_text_preview\": \"...\"}",
+      "example_input": "AWS S3 bucket configured in .env; MongoDB documents collection exists; sample.docx file containing 'Python is a programming language. Data science uses Python.'",
+      "example_output": "curl -X POST -F 'file=@sample.docx' http://localhost:8000/api/documents/upload returns HTTP 201: {\"document_id\": \"64a1b2c3d4e5f6g7h8i9\", \"filename\": \"sample.docx\", \"file_type\": \"docx\", \"raw_text_preview\": \"Python is a programming language. Data science uses...\"}; db.documents.findOne({\"filename\": \"sample.docx\"}) returns document with raw_text containing 'Python is a programming language'"
+    },
+    {
+      "id": 4,
+      "title": "Topic tree generation via OpenAI API",
+      "deliverable": "`POST /api/trees/generate` accepts document_id, calls OpenAI GPT-4 to generate hierarchical tree, returns {\"tree_id\": \"...\", \"root_node\": {...}, \"all_nodes\": {...}, \"depth\": 3, \"total_nodes\": 15}",
+      "tasks": [
+        "Create `backend/services/openai_service.py` with OpenAIClient wrapper: call_gpt4(prompt, temperature, max_tokens) → str response",
+        "Create `backend/services/tree_generator.py` with function generate_tree_from_text(raw_text: str, doc_title: str) → TreeSchema: prompt GPT-4 to output JSON tree with max depth 3, each node has {\"label\": str, \"description\": str, \"children\": list}; parse JSON; assign node IDs; mark leaf nodes as boss nodes (is_boss: true)",
+        "Create `backend/routes/trees.py` POST /api/trees/generate endpoint: accept {\"document_id\": str}; fetch document raw_text from MongoDB; call tree_generator.generate_tree_from_text(); store TreeSchema in MongoDB trees collection; return {\"tree_id\": str, \"root_node\": NodeSchema, \"all_nodes\": dict[str, NodeSchema], \"depth\": int, \"total_nodes\": int}",
+        "Design tree structure prompt for GPT-4: 'Given the following study material, create a hierarchical tree of topics with max 3 levels. Leaf nodes (level 2) are boss encounters. Return valid JSON with structure: {\"label\": \"\", \"description\": \"\", \"children\": []}'",
+        "Create validation function in tree_generator.py: verify tree depth ≤ 3, verify all leaf nodes have is_boss: true, verify parent–child links are consistent",
+        "Write pytest test file `tests/test_tree_generation.py` with tests for GPT-4 JSON parsing, max depth validation, and boss node assignment"
+      ],
+      "commit_condition": "Run `pytest tests/test_tree_generation.py -v` — all tests pass (minimum 3 tests); then run `curl -X POST -H 'Content-Type: application/json' -d '{\"document_id\": \"64a1b...\"}' http://localhost:8000/api/trees/generate` — returns HTTP 201 with {\"tree_id\": \"...\", \"root_node\": {...}, \"all_nodes\": {...}, \"depth\": 3, \"total_nodes\": ≥5}",
+      "example_input": "MongoDB documents collection contains document with _id '64a1b2c3' and raw_text 'Python basics: variables, data types, control flow. Variables can be strings, integers, floats. Control flow includes if-else, loops.'",
+      "example_output": "curl -X POST -H 'Content-Type: application/json' -d '{\"document_id\": \"64a1b2c3\"}' http://localhost:8000/api/trees/generate returns HTTP 201: {\"tree_id\": \"tree_1\", \"root_node\": {\"_id\": \"node_0\", \"label\": \"Python Basics\", \"depth\": 0, \"parent_id\": null, \"children_ids\": [\"node_1\"], \"is_boss\": false, \"description\": \"...\"}; db.trees.findOne({\"_id\": \"tree_1\"}) returns complete tree with 7 nodes, leaf nodes having is_boss: true"
+    },
+    {
+      "id": 5,
+      "title": "Question generation and mark scheme creation",
+      "deliverable": "`POST /api/questions/generate-for-node` accepts node_id and tree_id, calls OpenAI to generate 5 questions (one per type: Define, Solve, Compare, ELI5, Finish), stores in MongoDB, returns {\"questions\": [{\"question_id\": \"...\", \"question_type\": \"...\", \"question_text\": \"...\", \"mark_scheme\": [...]}]}",
+      "tasks": [
+        "Create `backend/services/question_generator.py` with function generate_questions_for_node(node_label: str, node_description: str, context_text: str) → list[QuestionSchema]: call GPT-4 with prompt requesting 5 questions (one per type); each question includes question_text and mark_scheme (list of key_point objects with key_point str and weight float)",
+        "Design question generation prompt for GPT-4: 'For the topic [node_label], generate 5 questions in these formats: Define (explain concept), Solve (work through problem), Compare (contrast ideas), ELI5 (explain simply), Finish (complete statement). For each, include a mark scheme with 3–5 key points weighted 0.25–1.0. Return valid JSON: {\"questions\": [{\"question_type\": \"\", \"question_text\": \"\", \"mark_scheme\": [{\"key_point\": \"\", \"weight\": \"}]}]}'",
+        "Create `backend/routes/questions.py` POST /api/questions/generate-for-node endpoint: accept {\"node_id\": str, \"tree_id\": str}; fetch node from MongoDB trees collection; fetch original document text from documents collection; call question_generator.generate_questions_for_node(); store all 5 QuestionSchema objects in MongoDB questions collection; return {\"questions\": list[QuestionSchema]}",
+        "Add validation in question_generator.py: verify 5 questions generated, verify question types are exact match (Define, Solve, Compare, ELI5, Finish), verify mark_scheme has ≥3 key points, verify weight sum ≤ 1.0",
+        "Write pytest test file `tests/test_question_generation.py` with tests for 5-question generation, question type validation, and mark scheme parsing"
+      ],
+      "commit_condition": "Run `pytest tests/test_question_generation.py -v` — all tests pass (minimum 3 tests); then run `curl -X POST -H 'Content-Type: application/json' -d '{\"node_id\": \"node_2\", \"tree_id\": \"tree_1\"}' http://localhost:8000/api/questions/generate-for-node` — returns HTTP 201 with questions array of length 5, all question types present (Define, Solve, Compare, ELI5, Finish)",
+      "example_input": "MongoDB trees collection contains tree with node {\"_id\": \"node_2\", \"label\": \"Variables\", \"description\": \"Names for storing data\"}; documents collection contains document with raw_text covering variables",
+      "example_output": "curl -X POST -H 'Content-Type: application/json' -d '{\"node_id\": \"node_2\", \"tree_id\": \"tree_1\"}' http://localhost:8000/api/questions/generate-for-node returns HTTP 201: {\"questions\": [{\"question_id\": \"q_1\", \"question_type\": \"Define\", \"question_text\": \"What is a variable in Python?\", \"mark_scheme\": [{\"key_point\": \"Container for data\", \"weight\": 0.5}, {\"key_point\": \"Has a name\", \"weight\": 0.5}]}, {...4 more questions with other types...}]}; db.questions.find({\"node_id\": \"node_2\"}) returns 5 documents"
+    },
+    {
+      "id": 6,
+      "title": "Answer submission and LLM-based marking pipeline",
+      "deliverable": "`POST /api/answers/submit` accepts session_id, node_id, question_id, question_type, answer_text; calls OpenAI to evaluate against mark scheme; stores AnswerSchema in MongoDB; returns {\"answer_id\": \"...\", \"score\": 0.75, \"feedback\": [{\"key_point\": \"...\", \"present\": true|false, \"reason\": \"...\"}], \"marked_at\": datetime}",
+      "tasks": [
+        "Create `backend/services/marking_service.py` with function mark_answer(answer_text: str, mark_scheme: list, question_type: str) → tuple[float, list[dict]]: call GPT-4 with prompt including answer_text, mark_scheme key_points, and question_type; parse response as {\"score\": float (0–1), \"feedback\": [{\"key_point\": str, \"present\": bool, \"reason\": str}]}",
+        "Design marking prompt for GPT-4: 'Evaluate the student answer against the mark scheme for a [question_type] question. Mark scheme: [key_points]. Student answer: [answer_text]. Return JSON: {\"score\": float (0.0–1.0), \"feedback\": [{\"key_point\": \"\", \"present\": true|false, \"reason\": \"...\"}]}'",
+        "Create `backend/routes/answers.py` POST /api/answers/submit endpoint: accept {\"session_id\": str, \"node_id\": str, \"question_id\": str, \"answer_text\": str}; fetch question from MongoDB questions collection; call marking_service.mark_answer(); store AnswerSchema in MongoDB answers collection; update session_id's answers list in sessions collection; return {\"answer_id\": str, \"score\": float, \"feedback\": list[dict], \"marked_at\": datetime}",
+        "Add validation: verify session_id exists in sessions collection; verify question_id matches node_id; verify answer_text length > 5 chars",
+        "Create `backend/routes/answers.py` GET /api/answers/{session_id} endpoint: return list of all answers for session_id, paginated, sorted by timestamp descending",
+        "Write pytest test file `tests/test_marking.py` with tests for mark_answer() with Define/Solve/Compare/ELI5/Finish questions, score boundary conditions (0.0, 1.0, 0.5)"
+      ],
+      "commit_condition": "Run `pytest tests/test_marking.py -v` — all tests pass (minimum 5 tests, one per question type); then run `curl -X POST -H 'Content-Type: application/json' -d '{\"session_id\": \"sess_1\", \"node_id\": \"node_2\", \"question_id\": \"q_1\", \"answer_text\": \"A variable is a container that holds a value in memory.\"}' http://localhost:8000/api/answers/submit` — returns HTTP 201 with score (0.0–1.0), feedback array with ≥2 items",
+      "example_input": "session_id 'sess_1' exists in MongoDB sessions; question_id 'q_1' exists in questions collection with mark_scheme [{\"key_point\": \"Container for data\", \"weight\": 0.5}, {\"key_point\": \"Has a name\", \"weight\": 0.5}]",
+      "example_output": "curl -X POST -H 'Content-Type: application/json' -d '{\"session_id\": \"sess_1\", \"node_id\": \"node_2\", \"question_id\": \"q_1\", \"answer_text\": \"A variable stores a value.\"}' http://localhost:8000/api/answers/submit returns HTTP 201: {\"answer_id\": \"ans_1\", \"score\": 0.5, \"feedback\": [{\"key_point\": \"Container for data\", \"present\": true, \"reason\": \"Implied by 'stores a value'\"}, {\"key_point\": \"Has a name\", \"present\": false, \"reason\": \"Not mentioned\"}], \"marked_at\": \"2024-01-15T10:00:00Z\"}; db.answers.findOne({\"_id\": ObjectId(\"ans_1\")}) returns the answer document"
+    },
+    {
+      "id": 7,
+      "title": "Node unlock mechanics and session management",
+      "deliverable": "`POST /api/sessions/{session_id}/check-unlock` accepts node_id, verifies all children of node have ≥0.6 score average, unlocks parent_id, returns {\"node_id\": \"...\", \"unlocked\": true|false, \"unlocked_parent_id\": str|null, \"all_unlocked_nodes\": list[str]}",
+      "tasks": [
+        "Create `backend/routes/sessions.py` POST /api/sessions endpoint: accept {\"tree_id\": str}; create new SessionSchema with tree_id, created_at, unlocked_node_ids=[root_node_id], current_node_id=root_node_id, answers=[]; insert into MongoDB sessions collection; return {\"session_id\": str, \"tree_id\": str, \"created_at\": datetime}",
+        "Create `backend/routes/sessions.py` GET /api/sessions/{session_id} endpoint: fetch session from MongoDB; return {\"session_id\": str, \"tree_id\": str, \"current_node_id\": str, \"unlocked_node_ids\": list[str], \"answers_count\": int, \"created_at\": datetime}",
+        "Create unlock logic function in `backend/services/unlock_service.py` with check_unlock(session_id: str, node_id: str, tree: TreeSchema) → tuple[bool, str|None]: fetch all answers for node_id from MongoDB answers collection; if is_boss (leaf node), calculate average score of all answers; if average ≥0.6, unlock parent; if not boss, check all children_ids have average ≥0.6; if yes, unlock parent; return (unlocked: bool, parent_id: str|None)",
+        "Create `backend/routes/sessions.py` POST /api/sessions/{session_id}/check-unlock endpoint: accept {\"node_id\": str}; fetch tree from MongoDB; call unlock_service.check_unlock(); if unlock successful, add parent_id to unlocked_node_ids in sessions collection; return {\"node_id\": str, \"unlocked\": bool, \"unlocked_parent_id\": str|null, \"all_unlocked_nodes\": list[str]}",
+        "Create `backend/routes/sessions.py` POST /api/sessions/{session_id}/set-current-node endpoint: accept {\"node_id\": str}; verify node_id in unlocked_node_ids; update current_node_id in sessions collection; return {\"session_id\": str, \"current_node_id\": str}",
+        "Write pytest test file `tests/test_unlock.py` with tests for boss node unlock (score ≥0.6), parent unlock when all children ≥0.6, unlock failure (score <0.6)"
+      ],
+      "commit_condition": "Run `pytest tests/test_unlock.py -v` — all tests pass (minimum 3 tests); then run `curl -X POST -H 'Content-Type: application/json' -d '{\"tree_id\": \"tree_1\"}' http://localhost:8000/api/sessions` — returns HTTP 201 with session_id; then run `curl -X GET http://localhost:8000/api/sessions/{session_id}` — returns session with unlocked_node_ids containing at least root_node_id",
+      "example_input": "tree_id 'tree_1' with structure: root → [child_1, child_2], child_1 → [boss_1, boss_2], child_2 → [boss_3]; answers exist for boss_1 (score 0.7), boss_2 (score 0.8), boss_3 (score 0.5)",
+      "example_output": "curl -X POST -H 'Content-Type: application/json' -d '{\"tree_id\": \"tree_1\"}' http://localhost:8000/api/sessions returns HTTP 201: {\"session_id\": \"sess_1\", \"tree_id\": \"tree_1\", \"created_at\": \"2024-01-15T10:00:00Z\"}; db.sessions.findOne({\"_id\": \"sess_1\"}) returns {\"unlocked_node_ids\": [\"node_0\"], \"current_node_id\": \"node_0\"}; after submitting answers with scores ≥0.6 for boss_1 and boss_2, curl -X POST -d '{\"node_id\": \"child_1\"}' returns {\"unlocked\": true, \"unlocked_parent_id\": \"node_1\", \"all_unlocked_nodes\": [\"node_0\", \"node_1\"]}"
+    },
+    {
+      "id": 8,
+      "title": "React frontend initialization and navigation scaffold",
+      "deliverable": "React app on http://localhost:3000 with /landing page (Upload/Start buttons), /study/{sessionId} route (tree visualization sidebar, current node content area, answer submission form), responsive layout, localStorage session persistence",
+      "tasks": [
+        "Create React 18 project with `npm create vite@latest studybattles-frontend -- --template react`; install React Router 6, axios 1.6, TailwindCSS 3.4",
+        "Create `frontend/src/pages/Landing.tsx` with two buttons: 'Upload Document' (→ /upload) and 'Continue Session' (→ session from localStorage if exists)",
+        "Create `frontend/src/pages/Upload.tsx` with file upload form: accept PPTX/DOCX files or YouTube URL; on submit, POST to /api/documents/upload; on success, call POST /api/trees/generate; navigate to /study/{tree_id} (auto-create session)",
+        "Create `frontend/src/pages/Study.tsx` with layout: left sidebar (tree visualization as nested list), center area (current node title + description + question display), right area (answer input + submit button)",
+        "Create `frontend/src/services/api.ts` with axios instance: baseURL from env VITE_API_URL; functions for: uploadDocument(), generateTree(), getSession(), submitAnswer(), checkUnlock(), setCurrentNode()",
+        "Create `frontend/src/hooks/useSession.ts` custom hook: read session_id from localStorage; fetch session from GET /api/sessions/{session_id}; return {sessionId, treeId, currentNodeId, unlockedNodeIds, setCurrentNode, refetch}",
+        "Setup React Router in `frontend/src/App.tsx` with routes: /, /upload, /study/{sessionId}; add Layout component with header"
+      ],
+      "commit_condition": "Run `npm run dev` from frontend directory — Vite server starts on http://localhost:3000. Open browser to http://localhost:3000 — Landing page displays with 'Upload Document' and 'Continue Session' buttons; click 'Upload Document' → Upload page loads with file input and submit button",
+      "example_input": "Node.js 18+ installed; npm available; Vite configured for React 18; backend API running on http://127.0.0.1:8000",
+      "example_output": "Browser at http://localhost:3000 shows Landing page with two buttons; browser at http://localhost:3000/upload shows file input form; browser at http://localhost:3000/study/tree_1 shows layout with sidebar (empty tree structure) and center area (placeholder)"
+    },
+    {
+      "id": 9,
+      "title": "Tree visualization, question rendering, and answer submission UI",
+      "deliverable": "React /study/{sessionId} page displays tree sidebar (clickable nodes, locked/unlocked states), current node title, question text (based on question_type), answer text input, submit button; submit returns score + feedback displayed inline",
+      "tasks": [
+        "Create `frontend/src/components/TreeSidebar.tsx`: fetch tree structure from session; render nested node list with clickable items; show lock icon for locked nodes, checkmark for nodes with ≥1 answer; highlight current_node_id; on click, call setCurrentNode(node_id)",
+        "Create `frontend/src/components/QuestionDisplay.tsx`: accept question_id; fetch question from GET /api/questions/{question_id} (new endpoint); display question_text; show question_type badge (Define|Solve|Compare|ELI5|Finish); show placeholder text based on question_type ('e.g., Define in 2–3 sentences')",
+        "Create `frontend/src/components/AnswerForm.tsx`: textarea input for answer_text; on submit, call POST /api/answers/submit; show loading spinner during marking; on success, display score (large text, color-coded: red <0.5, yellow 0.5–0.75, green ≥0.75); display feedback list (key_point + present indicator + reason)",
+        "Add `frontend/src/pages/Study.tsx`: integrate TreeSidebar (left), QuestionDisplay (center), AnswerForm (center bottom), and ResultDisplay (on answer submission)",
+        "Create GET /api/questions/{question_id} endpoint in backend `backend/routes/questions.py`; return QuestionSchema with all fields",
+        "Create `frontend/src/components/UnlockNotification.tsx`: after answer submit, poll GET /api/sessions/{session_id}/check-unlock for 5 seconds; if unlock occurs, show toast 'Parent node unlocked!'; automatically update tree sidebar and offer 'Continue to [parent_label]' button"
+      ],
+      "commit_condition": "Run `npm run dev` from frontend; start backend with `python backend/main.py`. Navigate to http://localhost:3000/study/{sessionId}. Tree sidebar renders with ≥3 nodes. Click a leaf node. QuestionDisplay shows question text + type badge. Enter answer text, click Submit. Within 5 seconds, score + feedback displays inline (score in large green/yellow/red text, ≥2 feedback items shown). Query GET /api/sessions/{sessionId} — unlocked_node_ids list updated if unlock occurred",
+      "example_input": "Session exists with tree_id 'tree_1', current_node_id 'node_2' (leaf node with 5 questions); MongoDB questions collection has 5 QuestionSchemas for node_2",
+      "example_output": "Browser at http://localhost:3000/study/sess_1 shows: left sidebar with tree (node_0 expanded showing node_1, node_2 highlighted); center shows 'Variables' title + 'What is a variable?' question (badge 'Define'); textarea with placeholder 'Explain what a variable is in 2–3 sentences'; after submitting 'A variable is a named container for storing data values', displays score '0.75' in yellow box, feedback list: [{'Container for data: ✓ Present', 'Reason: Clear mention of storage'}, {'Has a name: ✓ Present', 'Reason: Implied by \"named\"'}]"
+    },
+    {
+      "id": 10,
+      "title": "Session persistence, result history, and UI polish",
+      "deliverable": "React localStorage persists session_id across page reloads; /study/{sessionId} fully restores state; GET /api/sessions/{session_id}/answers returns paginated answer history with score, question_type, feedback; Landing page shows 'Continue Previous Session' if localStorage session exists; UI has loading spinners, error handling, responsive TailwindCSS layout",
+      "tasks": [
+        "Modify `frontend/src/hooks/useSession.ts`: on mount, read session_id from localStorage; if exists and valid (call GET /api/sessions/{session_id}), restore session; else redirect to /landing",
+        "Modify `frontend/src/pages/Study.tsx`: on session update, save to localStorage with key 'studybattles_session'; on page reload, restore from localStorage before rendering",
+        "Create GET /api/sessions/{session_id}/answers endpoint in backend: return paginated answer history with fields {answer_id, node_id, question_type, answer_text, score, feedback, answered_at}; default limit 10, offset 0",
+        "Create `frontend/src/components/AnswerHistory.tsx`: display paginated list of previous answers (toggleable tab in Study page); show question_type, score (color-coded), timestamp; on click, expand to show full answer_text + feedback",
+        "Add loading skeleton components using `react-loading-skeleton` for tree, questions, form submissions",
+        "Add error boundary in `frontend/src/components/ErrorBoundary.tsx` to catch component errors; display user-friendly error messages",
+        "Polish TailwindCSS layout: responsive sidebar (collapse on mobile), centered form, dark mode toggle button in header, consistent color scheme (teal buttons, red error text, green success text), padding/spacing on all components"
+      ],
+      "commit_condition": "Open http://localhost:3000/study/{sessionId} in browser; refresh page (Ctrl+R) — page reloads and displays same session state (same tree, current node, unlocked nodes). Check browser DevTools localStorage — key 'studybattles_session' contains {\"session_id\": \"...\", \"tree_id\": \"...\"}. Click 'Answer History' tab — displays ≥1 previous answer with score and feedback. Resize browser to mobile (375px) — sidebar collapses into hamburger menu, form stays readable",
+      "example_input": "Session 'sess_1' with 3 submitted answers in MongoDB; localStorage empty on first load",
+      "example_output": "Browser at http://localhost:3000/study/sess_1 loads; immediately shows tree + current node (from API call). Refresh page. Page reloads with same state (from localStorage). Click 'Answer History' — shows list of 3 previous answers with scores and question types. Resize to 375px width — sidebar hidden, hamburger menu appears, form still visible and scrollable"
+    },
+    {
+      "id": 11,
+      "title": "End-to-end testing, Docker containerization, and production deployment",
+      "deliverable": "Docker Compose orchestrates FastAPI backend, MongoDB, React frontend in separate containers; `docker-compose up -d` starts all services; `curl https://api.studybattles.com/health` returns {\"status\": \"ok\"}; full user flow (
