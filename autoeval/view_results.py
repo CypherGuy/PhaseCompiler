@@ -6,6 +6,8 @@ Reads results.tsv and scores/*.json, writes dashboard.html, opens in browser.
 Run anytime: python autoeval/view_results.py
 """
 
+from __future__ import annotations
+
 import csv
 import glob
 import json
