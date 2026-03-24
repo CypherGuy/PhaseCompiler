@@ -2,8 +2,7 @@ name: Phase-Compiler Autoeval
 
 on:
   schedule:
-    - cron: "0  0,3,6,9,12,15,18,21 * * *"   # every 90 min (UTC, part 1)
-    - cron: "30 1,4,7,10,13,16,19,22 * * *"   # every 90 min (UTC, part 2)
+    - cron: "0 * * * *"   # every 60 min (UTC)
   workflow_dispatch:        # manual trigger from Actions tab
 
 permissions:
