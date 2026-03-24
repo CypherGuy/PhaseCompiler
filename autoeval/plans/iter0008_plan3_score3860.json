@@ -1,0 +1,156 @@
+```json
+{
+  "project": {
+    "name": "StudyBattles",
+    "language": "Python 3.11",
+    "runtime": "web (FastAPI backend + React 18 frontend)",
+    "package_manager": "pip (backend), npm (frontend)",
+    "framework": "FastAPI 0.111 (backend), React 18 (frontend)",
+    "database": "MongoDB 7.0",
+    "deployment": "Docker Compose (local/development), AWS EC2 (production)",
+    "external_services": [
+      "OpenAI GPT-4 API (tree generation, question generation, answer evaluation)",
+      "AWS S3 (document storage)",
+      "pdf2image (local PPTX/DOCX parsing)"
+    ]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Environment Setup and Backend Scaffolding",
+      "deliverable": "`python backend/main.py` launches FastAPI server on http://127.0.0.1:8000 with `GET /health` returning {\"status\": \"ok\"}",
+      "tasks": [
+        "Initialize Python 3.11 virtual environment with pip in project root directory",
+        "Create requirements.txt with FastAPI 0.111, uvicorn 0.29, pydantic 2.5, pymongo 4.6, python-multipart 0.0.6, requests 2.31, and python-dotenv 1.0",
+        "Set up backend/main.py with FastAPI app instance, CORS middleware enabling localhost:3000, and environment variable loader for OpenAI API key and MongoDB connection string",
+        "Create backend/config.py containing OpenAI client initialization with API key from environment, MongoDB connection configuration, and AWS S3 client setup with credentials",
+        "Write backend/routes/health.py with GET /health endpoint returning {\"status\": \"ok\"}",
+        "Initialize MongoDB 7.0 with collections: topics, nodes, questions, sessions, and answers (do not populate; just ensure they exist)",
+        "Create .env.example file documenting OPENAI_API_KEY, MONGODB_URI, AWS_ACCESS_KEY_ID, and AWS_SECRET_ACCESS_KEY",
+        "Write backend/utils/logger.py with structured logging for all API operations and LLM calls"
+      ],
+      "commit_condition": "Run `cd backend && pip install -r requirements.txt && python main.py` — terminal prints 'Uvicorn running on http://127.0.0.1:8000'; in another terminal, run `curl -s http://localhost:8000/health | jq .status` — returns `\"ok\"`",
+      "example_input": "Empty project directory with no code",
+      "example_output": "Run `curl http://localhost:8000/health` — returns {\"status\": \"ok\"}; MongoDB connection test: `python -c \"from backend.config import mongo_client; print(mongo_client.server_info())\"` returns server metadata; .env.example exists in project root with four keys"
+    },
+    {
+      "id": 2,
+      "title": "Document Upload and File Storage Pipeline",
+      "deliverable": "`POST /api/documents/upload` accepts multipart/form-data (file + session_id), stores file in AWS S3, and returns {\"document_id\": \"...\", \"filename\": \"...\", \"s3_url\": \"...\"}",
+      "tasks": [
+        "Install pdf2image 1.16, python-pptx 0.6, python-docx 0.8.11, and boto3 1.34 to requirements.txt",
+        "Create backend/services/storage.py with upload_to_s3(file, bucket, session_id) function that generates unique S3 key, uploads file with Content-Type header, and returns public S3 URL",
+        "Create backend/services/document_parser.py with extract_text_from_pptx, extract_text_from_docx, and extract_text_from_video functions returning raw text content",
+        "Create backend/models/document.py with Pydantic Document schema: id, session_id, filename, original_text, s3_url, created_at, status (pending/processing/ready)",
+        "Create backend/routes/documents.py with POST /api/documents/upload endpoint accepting file, session_id; call storage.upload_to_s3, extract text via document_parser, store Document in MongoDB documents collection, return {\"document_id\", \"filename\", \"s3_url\"}",
+        "Write backend/routes/documents.py GET /api/documents/{document_id} endpoint returning full Document object with original_text field",
+        "Create tests/test_upload.py with pytest test for POST /api/documents/upload using a mock 5KB DOCX file, verify HTTP 201 response and S3 URL in response body"
+      ],
+      "commit_condition": "Run `pytest tests/test_upload.py -v` — test passes; run `curl -X POST -F 'file=@sample.docx' -F 'session_id=test_session' http://localhost:8000/api/documents/upload | jq .document_id` — returns a non-empty UUID string",
+      "example_input": "Backend running on localhost:8000; user selects sample.docx (5 KB) from disk and provides session_id 'test_session'",
+      "example_output": "HTTP 201 response: {\"document_id\": \"64a1b2c3d4e5f6g7h8i9\", \"filename\": \"sample.docx\", \"s3_url\": \"https://studybattles-bucket.s3.amazonaws.com/test_session/sample.docx\"}; MongoDB documents collection contains new record with extracted text"
+    },
+    {
+      "id": 3,
+      "title": "Topic Hierarchy Generation via OpenAI",
+      "deliverable": "`POST /api/topics/generate` accepts document_id and session_id, calls OpenAI GPT-4, stores 3-level node tree in MongoDB, and returns {\"topic_id\": \"...\", \"root_node\": {...full tree structure...}}",
+      "tasks": [
+        "Create backend/models/node.py with Node schema: id, parent_id, topic_id, title, description, level (0/1/2), question_count, is_unlocked (default false), children (array of child Node IDs), created_at",
+        "Create backend/models/topic.py with Topic schema: id, session_id, document_id, root_node_id, title, depth, created_at, status (processing/ready)",
+        "Create backend/services/llm_tree_generator.py with generate_topic_tree(document_text, max_depth=3) function that calls OpenAI GPT-4 with structured prompt requesting JSON tree output, parses response into nested Node objects with max 3 levels, validates no more than 5 children per node",
+        "Create backend/routes/topics.py with POST /api/topics/generate endpoint accepting {\"document_id\", \"session_id\"}, retrieve Document text from MongoDB, call generate_topic_tree, store all nodes in MongoDB nodes collection, create Topic entry, return full tree structure as {\"topic_id\", \"root_node\"}",
+        "Write backend/routes/topics.py GET /api/topics/{topic_id} endpoint returning Topic object with full tree (fetch root_node_id, recursively fetch children)",
+        "Create tests/test_tree_generation.py with pytest test mocking OpenAI API to return a sample 3-level tree JSON, verify POST /api/topics/generate parses it correctly and stores all 9 nodes in MongoDB"
+      ],
+      "commit_condition": "Run `pytest tests/test_tree_generation.py -v` — test passes; run `curl -X POST -H 'Content-Type: application/json' -d '{\"document_id\": \"64a1...\", \"session_id\": \"test\"}' http://localhost:8000/api/topics/generate | jq '.root_node.children | length'` — returns a number ≥ 1",
+      "example_input": "Document 64a1b2c3 in MongoDB with original_text containing '# Biology\\n## Cells\\n### Mitochondria\\n...'; session_id 'test'",
+      "example_output": "HTTP 201: {\"topic_id\": \"topic_789\", \"root_node\": {\"id\": \"node_1\", \"title\": \"Biology\", \"level\": 0, \"children\": [{\"id\": \"node_2\", \"title\": \"Cells\", \"level\": 1, \"children\": [{\"id\": \"node_3\", \"title\": \"Mitochondria\", \"level\": 2, \"children\": []}]}]}}; MongoDB nodes collection contains 3 documents with is_unlocked: false (except root with is_unlocked: true)"
+    },
+    {
+      "id": 4,
+      "title": "Question Generation and Storage",
+      "deliverable": "`POST /api/questions/generate` accepts node_id and generates 5 questions (Define, Solve, Compare, ELI5, Finish) via OpenAI GPT-4, stores them in MongoDB, and returns array of question objects",
+      "tasks": [
+        "Create backend/models/question.py with Question schema: id, node_id, question_type (enum: Define/Solve/Compare/ELI5/FinishTheAnswer), question_text, expected_key_points (array of strings), mark_scheme (LLM-generated), created_at",
+        "Create backend/services/llm_question_generator.py with generate_questions_for_node(node_title, node_description, question_types=[\"Define\", \"Solve\", \"Compare\", \"ELI5\", \"FinishTheAnswer\"]) function calling OpenAI GPT-4 with prompt asking for 5 questions in JSON format with key_points array for each",
+        "Create backend/routes/questions.py with POST /api/questions/generate endpoint accepting {\"node_id\"}, fetch Node from MongoDB, call generate_questions_for_node with node.title and node.description, store all 5 Question documents in MongoDB, return array of {\"id\", \"question_type\", \"question_text\"}",
+        "Create backend/routes/questions.py GET /api/questions/{node_id} endpoint returning all questions for that node (do not include expected_key_points or mark_scheme in response)",
+        "Write backend/routes/questions.py GET /api/questions/{question_id} endpoint returning full Question object including expected_key_points and mark_scheme (for admin/debug only; will not be exposed in frontend)",
+        "Create tests/test_question_generation.py with pytest test mocking OpenAI to return 5 sample questions, verify POST /api/questions/generate stores all 5 in MongoDB and returns correct structure"
+      ],
+      "commit_condition": "Run `pytest tests/test_question_generation.py -v` — test passes; run `curl -X POST -H 'Content-Type: application/json' -d '{\"node_id\": \"node_3\"}' http://localhost:8000/api/questions/generate | jq 'length'` — returns 5",
+      "example_input": "Node 'Mitochondria' (level 2) in MongoDB; no questions yet for this node",
+      "example_output": "HTTP 201: [{\"id\": \"q1\", \"question_type\": \"Define\", \"question_text\": \"Define the structure and function of mitochondria\"}, {\"id\": \"q2\", \"question_type\": \"Solve\", \"question_text\": \"A cell produces 30 ATP molecules per glucose. What percentage increase occurs in mitochondria?\"}... (5 total)]; MongoDB questions collection contains 5 new documents with expected_key_points arrays populated"
+    },
+    {
+      "id": 5,
+      "title": "Answer Submission and LLM-Based Marking",
+      "deliverable": "`POST /api/answers/submit` accepts question_id, answer_text, session_id; calls OpenAI GPT-4 to evaluate against mark scheme; stores Answer document in MongoDB; and returns {\"question_id\": \"...\", \"score\": 0–100, \"feedback\": \"...\", \"key_points_matched\": [...]}",
+      "tasks": [
+        "Create backend/models/answer.py with Answer schema: id, question_id, session_id, student_answer_text, score (0–100 integer), feedback, key_points_matched (array of matched strings), key_points_missed (array of missed strings), created_at",
+        "Create backend/services/llm_answer_evaluator.py with evaluate_answer(question_obj, student_answer_text) function calling OpenAI GPT-4 with prompt including question_text, expected_key_points, mark_scheme, and student answer; parse response as JSON with {\"score\": int, \"feedback\": str, \"matched_points\": [], \"missed_points\": []}",
+        "Create backend/routes/answers.py with POST /api/answers/submit endpoint accepting {\"question_id\", \"answer_text\", \"session_id\"}, fetch Question including mark_scheme, call evaluate_answer, store Answer in MongoDB answers collection, return {\"question_id\", \"score\", \"feedback\", \"key_points_matched\", \"key_points_missed\"}",
+        "Create backend/routes/answers.py GET /api/answers/{question_id}/{session_id} endpoint returning the latest Answer for that question+session combination (or null if none exists)",
+        "Write backend/utils/grading_logic.py with is_question_passed(score) function returning true if score ≥ 70 (configurable threshold)",
+        "Create tests/test_marking.py with pytest test mocking OpenAI to return a sample score and feedback, verify POST /api/answers/submit stores answer and returns score between 0–100"
+      ],
+      "commit_condition": "Run `pytest tests/test_marking.py -v` — test passes; run `curl -X POST -H 'Content-Type: application/json' -d '{\"question_id\": \"q1\", \"answer_text\": \"The mitochondrion is the powerhouse of the cell...\", \"session_id\": \"test\"}' http://localhost:8000/api/answers/submit | jq '.score'` — returns an integer between 0 and 100",
+      "example_input": "Question q1 (Define) with expected_key_points: [\"powerhouse of cell\", \"ATP production\", \"double membrane\"] and mark_scheme: \"Award 25 marks per key point\"; student answer: \"mitochondria make energy for the cell\"",
+      "example_output": "HTTP 201: {\"question_id\": \"q1\", \"score\": 50, \"feedback\": \"Good start—you identified ATP/energy production, but missed the structural details (double membrane). Re-read the source material.\", \"key_points_matched\": [\"powerhouse of cell\"], \"key_points_missed\": [\"ATP production\", \"double membrane\"]}; MongoDB answers collection contains new Answer document"
+    },
+    {
+      "id": 6,
+      "title": "Node Unlock Mechanics and Parent-Child Relationships",
+      "deliverable": "`POST /api/nodes/{node_id}/check-unlock` checks if all children have score ≥ 70 on all questions; if true, unlocks parent and returns {\"parent_id\": \"...\", \"is_unlocked\": true}; if false, returns {\"is_unlocked\": false, \"progress\": \"2/3 children defeated\"}",
+      "tasks": [
+        "Create backend/utils/unlock_logic.py with can_unlock_parent(node_id, session_id) function fetching all children of node_id, for each child fetching all questions, for each question fetching latest answer for session_id, returning true only if ALL children have ALL questions with score ≥ 70",
+        "Create backend/routes/nodes.py with POST /api/nodes/{node_id}/check-unlock endpoint accepting session_id in body, call can_unlock_parent(node_id, session_id), if true update parent node.is_unlocked = true in MongoDB and return {\"parent_id\", \"is_unlocked\": true}, if false return {\"is_unlocked\": false, \"progress\": \"X/Y children defeated\"}",
+        "Create backend/routes/nodes.py GET /api/nodes/{node_id} endpoint accepting session_id query param, return Node object with is_unlocked boolean based on session_id",
+        "Create backend/routes/nodes.py GET /api/nodes/{node_id}/progress endpoint returning {\"node_id\", \"is_unlocked\", \"children_defeated\": int, \"total_children\": int, \"questions_answered\": int, \"questions_passed\": int}",
+        "Write backend/services/unlock_service.py with unlock_parent_recursive(node_id, session_id) function that checks and unlocks node, then recursively checks parent, continuing up the tree until root or first locked node is reached",
+        "Create tests/test_unlock.py with pytest test creating a 2-level tree (parent with 2 children, each with 2 questions), submitting 4 answers with scores ≥ 70, verifying POST /api/nodes/{parent_id}/check-unlock returns is_unlocked: true"
+      ],
+      "commit_condition": "Run `pytest tests/test_unlock.py -v` — test passes; manually create 3-node chain in MongoDB, submit 4 answers with score 75 each, run `curl -X POST -H 'Content-Type: application/json' -d '{\"session_id\": \"test\"}' http://localhost:8000/api/nodes/parent_node/check-unlock | jq '.is_unlocked'` — returns true",
+      "example_input": "Session 'test_session'; node tree with root → cells (2 children: mitochondria, nucleus). Mitochondria and nucleus each have 2 questions. All 4 answers scored 75+ submitted for 'test_session'.",
+      "example_output": "HTTP 200: {\"node_id\": \"cells\", \"is_unlocked\": true, \"parent_id\": \"root\"}; MongoDB nodes collection: node 'cells' now has is_unlocked: true; can now call check-unlock on root node"
+    },
+    {
+      "id": 7,
+      "title": "React Frontend Initialization and Core UI Scaffold",
+      "deliverable": "React app on http://localhost:3000 displays upload form, topic tree visualization, question answering interface, and answer feedback — all in localStorage-persisted session state",
+      "tasks": [
+        "Initialize React 18 project with Create React App and install axios 1.6, react-router-dom 6, zustand 4.4 (state management), and react-markdown 8.0",
+        "Create frontend/src/stores/sessionStore.js with Zustand store managing session_id (from localStorage), current_topic_id, current_node_id, uploaded_document, tree_data, and question_history",
+        "Create frontend/src/pages/UploadPage.jsx with file input accepting PPTX/DOCX, button triggering POST /api/documents/upload, displaying upload progress spinner, storing document_id in sessionStore, navigating to /tree/:topic_id on success",
+        "Create frontend/src/components/TopicTree.jsx rendering Topic tree as interactive nested list (use react-router Link for navigation), highlight unlocked nodes in green, locked nodes in gray, current node in blue",
+        "Create frontend/src/pages/QuestionPage.jsx with GET /api/questions/{node_id} on mount, displaying question_text, input textarea for answer, submit button calling POST /api/answers/submit",
+        "Create frontend/src/components/AnswerFeedback.jsx displaying score as large percentage, feedback text in markdown, key_points_matched and key_points_missed as bullet lists",
+        "Create frontend/src/App.jsx with React Router: /upload (UploadPage), /tree/:topic_id (TopicTree), /questions/:node_id (QuestionPage), /feedback/:question_id (AnswerFeedback); localStorage sync for sessionStore on mount"
+      ],
+      "commit_condition": "Run `npm start` in frontend/ — React dev server starts on http://localhost:3000; navigate to http://localhost:3000/upload — form displays; open browser DevTools → Application → localStorage — verify session_id key exists",
+      "example_input": "Empty React app with npm dependencies installed",
+      "example_output": "Browser at http://localhost:3000/upload — displays file input field (accept='.docx,.pptx'), label 'Upload Study Material', and 'Generate Topic Tree' button; localStorage has key 'session_id' with UUID value; clicking upload navigates to /tree/:topic_id route"
+    },
+    {
+      "id": 8,
+      "title": "Frontend-Backend Integration and End-to-End Data Flow",
+      "deliverable": "Full user journey works: upload document → generate tree → click node → answer question → submit → see feedback → unlock parent → tree updates",
+      "tasks": [
+        "Update frontend/src/pages/UploadPage.jsx to call POST /api/documents/upload, then POST /api/topics/generate with response document_id, store topic tree in sessionStore.tree_data, navigate to /tree/{topic_id}",
+        "Update frontend/src/components/TopicTree.jsx to fetch tree via GET /api/topics/{topic_id} on mount, passing session_id from sessionStore, render tree recursively, show unlock status (is_unlocked color coding), disable click on locked nodes (opacity: 0.5, cursor: not-allowed)",
+        "Update frontend/src/pages/QuestionPage.jsx to fetch questions via GET /api/questions/{node_id} on mount, display first unanswered question, submit answer via POST /api/answers/submit with session_id, navigate to /feedback/{question_id} on success",
+        "Update frontend/src/components/AnswerFeedback.jsx to fetch latest answer via GET /api/answers/{question_id}/{session_id}, display score, feedback, key points, show 'Next Question' button (if more questions exist for node) or 'Check for Unlock' button (if all questions done)",
+        "Create frontend/src/hooks/useNodeProgress.js custom hook fetching GET /api/nodes/{node_id}/progress, returning {is_unlocked, children_defeated, questions_answered, questions_passed}",
+        "Add to TopicTree.jsx a 'Check Unlock' button (visible only after all questions answered) calling POST /api/nodes/{parent_id}/check-unlock, refetching tree data on success, showing 'Parent Unlocked!' toast notification",
+        "Implement frontend/src/utils/api.js with axios interceptor adding session_id to all requests via Authorization header or query param"
+      ],
+      "commit_condition": "Run backend on localhost:8000, frontend on localhost:3000; perform full flow: upload test DOCX → see tree render → click leaf node → answer all 5 questions with text → verify score displays → verify parent node color changes from gray to green → refresh page → verify tree state persists in localStorage and matches server state",
+      "example_input": "Both servers running; user at http://localhost:3000/upload; test DOCX file on disk; OpenAI API credentials configured",
+      "example_output": "Upload page: file selected, clicks 'Generate', waits 10 seconds, redirected to /tree/topic_789. Tree renders: root 'Biology' (green/unlocked), Cells node (green/unlocked, clickable), Mitochondria leaf (gray/locked if sibling unanswered). Click Mitochondria → see 5 questions. Answer all 5, submit last answer → feedback page shows 85% score, 4 key points matched. Click 'Check Unlock' → Cells turns green, Mitochondria turns green. Refresh page → tree state identical, no refetch flashing"
+    },
+    {
+      "id": 9,
+      "title": "Session Persistence and State Synchronization",
+      "deliverable": "User can reload page mid-session and resume exactly where they left off; sessionStore syncs with localStorage on every mutation and refetches minimal backend state on mount",
+      "tasks": [
+        "Create
