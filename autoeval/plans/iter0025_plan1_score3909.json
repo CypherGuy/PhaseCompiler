@@ -1,0 +1,190 @@
+```json
+{
+  "project": {
+    "name": "StudyBattles",
+    "language": "Python 3.11",
+    "runtime": "web (FastAPI backend + React 18 frontend)",
+    "package_manager": "pip (backend), npm (frontend)",
+    "framework": "FastAPI 0.111 (backend), React 18 (frontend)",
+    "database": "MongoDB 7.0",
+    "deployment": "Docker Compose (local), AWS EC2 + S3 (production)",
+    "external_services": ["OpenAI GPT-4 API", "AWS S3", "MongoDB Atlas"]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Backend setup and MongoDB schema definition",
+      "deliverable": "`python backend/main.py` starts FastAPI on port 8000; `curl http://localhost:8000/health` returns `{\"status\": \"ok\", \"version\": \"1.0.0\"}`; `http://localhost:8000/docs` renders Swagger UI with no endpoints yet",
+      "tasks": [
+        "Create backend directory structure with main.py, routes/, models/, services/, and config/ folders",
+        "Install FastAPI 0.111, uvicorn 0.29, pydantic 2.6, pymongo 4.6, and python-dotenv 1.0 into requirements.txt",
+        "Configure MongoDB 7.0 connection string in .env file (local: mongodb://localhost:27017/studybattles)",
+        "Create FastAPI app instance in backend/main.py with CORS middleware enabling localhost:3000",
+        "Add GET /health endpoint returning {\"status\": \"ok\", \"version\": \"1.0.0\"}",
+        "Define MongoDB collection schemas in models/tree_node.py, models/study_session.py, and models/answer_log.py using pydantic"
+      ],
+      "commit_condition": "Run `python backend/main.py` — terminal prints 'Uvicorn running on http://127.0.0.1:8000'; run `curl http://localhost:8000/health` — returns {\"status\": \"ok\", \"version\": \"1.0.0\"}",
+      "example_input": "Empty backend directory with Python 3.11 available and MongoDB running locally",
+      "example_output": "Run `python backend/main.py` — terminal prints 'INFO:     Uvicorn running on http://127.0.0.1:8000'; `curl http://localhost:8000/health` returns {\"status\": \"ok\", \"version\": \"1.0.0\"}; `curl http://localhost:8000/docs` returns Swagger UI HTML with only /health endpoint visible"
+    },
+    {
+      "id": 2,
+      "title": "AWS S3 integration and document upload endpoint",
+      "deliverable": "`POST /api/upload` accepts multipart/form-data with file key, stores file in AWS S3 bucket 'studybattles-uploads', and returns `{\"file_id\": \"uuid\", \"filename\": \"doc.pptx\", \"s3_url\": \"https://s3.amazonaws.com/studybattles-uploads/...\"}`",
+      "tasks": [
+        "Install boto3 1.34 and python-multipart 0.0.6 into requirements.txt for AWS S3 file uploads",
+        "Create AWS S3 bucket 'studybattles-uploads' and configure AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in .env",
+        "Write S3 upload service in services/s3_service.py with upload_document(file_path, filename) method returning s3_url",
+        "Create POST /api/upload endpoint in routes/upload.py accepting file parameter, calling S3 service, returning file_id and s3_url",
+        "Write pytest test in tests/test_upload.py verifying POST /api/upload returns HTTP 200 and s3_url contains bucket name",
+        "Create File model in models/file_metadata.py storing file_id, filename, s3_url, and upload_timestamp in MongoDB"
+      ],
+      "commit_condition": "Run `pytest tests/test_upload.py -v` — returns 'PASSED' for all tests; run `curl -F 'file=@sample.pptx' http://localhost:8000/api/upload` — returns HTTP 200 with s3_url field containing 'studybattles-uploads'",
+      "example_input": "AWS S3 bucket 'studybattles-uploads' created; AWS credentials in .env; FastAPI running with /health endpoint working",
+      "example_output": "curl -F 'file=@sample.pptx' http://localhost:8000/api/upload — HTTP 200: {\"file_id\": \"64a1b2c3d4e5f6g7h8i9\", \"filename\": \"sample.pptx\", \"s3_url\": \"https://s3.amazonaws.com/studybattles-uploads/64a1b2c3d4e5f6g7h8i9_sample.pptx\"}"
+    },
+    {
+      "id": 3,
+      "title": "OpenAI integration for topic tree generation",
+      "deliverable": "`POST /api/generate-tree` accepts file_id, calls OpenAI GPT-4 to extract text from document, generates 3-level hierarchical topic tree, stores in MongoDB, returns `{\"tree_id\": \"uuid\", \"root_node\": {...}, \"total_nodes\": 12}`",
+      "tasks": [
+        "Install openai 1.3 and pptx 0.6 and python-docx 0.8 into requirements.txt for document parsing and LLM integration",
+        "Create document parsing service in services/document_parser.py with extract_text_from_pptx(s3_url) and extract_text_from_docx(s3_url) methods",
+        "Configure OpenAI API key in .env and create services/openai_service.py with method generate_topic_tree(text) calling GPT-4 with prompt: 'Create a 3-level hierarchical tree of topics from this text. Max 3 levels, 3-5 nodes per level. Return JSON with root, children, and leaf nodes.'",
+        "Define TreeNode model in models/tree_node.py with fields: node_id, parent_id, title, level, children_ids, is_defeated, question_count",
+        "Create POST /api/generate-tree endpoint accepting file_id, parsing document, calling OpenAI service, storing tree in MongoDB collection 'trees', returning tree_id and root_node structure",
+        "Write pytest test in tests/test_tree_generation.py verifying OpenAI returns valid JSON tree with 3 levels and max 5 nodes per level"
+      ],
+      "commit_condition": "Run `pytest tests/test_tree_generation.py -v` — 'PASSED'; curl -X POST http://localhost:8000/api/generate-tree -d '{\"file_id\": \"64a1b2c3\"}' — HTTP 200 returns tree_id and root_node with title, level 0, and children_ids array",
+      "example_input": "File uploaded and stored in S3 with file_id '64a1b2c3'; FastAPI running with /api/upload working",
+      "example_output": "curl -X POST http://localhost:8000/api/generate-tree -H 'Content-Type: application/json' -d '{\"file_id\": \"64a1b2c3\"}' — HTTP 200: {\"tree_id\": \"64a1c5d6\", \"root_node\": {\"node_id\": \"root_001\", \"title\": \"Biology\", \"level\": 0, \"children_ids\": [\"node_001\", \"node_002\"], \"is_defeated\": false}, \"total_nodes\": 12}"
+    },
+    {
+      "id": 4,
+      "title": "Question generation and mark scheme creation via OpenAI",
+      "deliverable": "`POST /api/generate-questions` accepts tree_id and node_id, calls OpenAI GPT-4 to generate 5 questions in 5 types (Define, Solve, Compare, ELI5, FinishTheAnswer) with mark schemes, stores in MongoDB, returns `{\"node_id\": \"node_xyz\", \"questions\": [{\"type\": \"Define\", \"question\": \"...\", \"mark_scheme\": \"...\"}, ...]}`",
+      "tasks": [
+        "Create Question and MarkScheme models in models/question.py with fields: question_id, node_id, question_type (enum: Define, Solve, Compare, ELI5, FinishTheAnswer), question_text, mark_scheme_text, total_marks",
+        "Write OpenAI service method in services/openai_service.py called generate_questions_for_node(node_title, node_content, question_types) that calls GPT-4 with prompt: 'Generate 5 exam-style questions of these types: Define, Solve, Compare, ELI5, FinishTheAnswer. For each, return question text and a detailed mark scheme with point allocation.'",
+        "Create POST /api/generate-questions endpoint accepting tree_id and node_id, calling OpenAI service, storing questions in MongoDB collection 'questions', returning question list with types and mark schemes",
+        "Write pytest test in tests/test_question_generation.py verifying all 5 question types are returned with mark scheme containing point breakdowns",
+        "Add caching in services/openai_service.py to avoid regenerating questions if node_id already has questions in MongoDB"
+      ],
+      "commit_condition": "Run `pytest tests/test_question_generation.py -v` — 'PASSED'; curl -X POST http://localhost:8000/api/generate-questions -d '{\"tree_id\": \"64a1c5d6\", \"node_id\": \"node_001\"}' — HTTP 200 returns 5 questions with types [\"Define\", \"Solve\", \"Compare\", \"ELI5\", \"FinishTheAnswer\"] and mark_scheme field",
+      "example_input": "Tree with node_id 'node_001' exists in MongoDB; node title is 'Photosynthesis'; OpenAI service configured",
+      "example_output": "curl -X POST http://localhost:8000/api/generate-questions -H 'Content-Type: application/json' -d '{\"tree_id\": \"64a1c5d6\", \"node_id\": \"node_001\"}' — HTTP 200: {\"node_id\": \"node_001\", \"questions\": [{\"question_id\": \"q_001\", \"type\": \"Define\", \"question_text\": \"Define photosynthesis in 2 sentences.\", \"mark_scheme\": \"1 mark: mention light + water; 1 mark: mention glucose/energy production\", \"total_marks\": 2}, {\"question_id\": \"q_002\", \"type\": \"Solve\", \"question_text\": \"If a plant receives 10 joules of light energy, calculate the theoretical maximum glucose output.\", \"mark_scheme\": \"1 mark: identify correct formula; 1 mark: correct calculation; 1 mark: include units\", \"total_marks\": 3}, ...]}"
+    },
+    {
+      "id": 5,
+      "title": "Answer submission and LLM-based marking endpoint",
+      "deliverable": "`POST /api/answer` accepts session_id, node_id, question_id, question_type, and student_answer, calls OpenAI GPT-4 to grade against mark scheme, returns `{\"marks_awarded\": 5, \"total_marks\": 7, \"feedback\": \"Key points: [...]\", \"key_points_hit\": [\"point1\", \"point2\"]}`",
+      "tasks": [
+        "Create StudentAnswer and AnswerGrade models in models/answer_log.py with fields: answer_id, session_id, question_id, student_answer_text, marks_awarded, total_marks, feedback_text, key_points_hit, timestamp",
+        "Write OpenAI service method in services/openai_service.py called grade_answer(student_answer, mark_scheme, question_type) that calls GPT-4 with prompt: 'Grade this student answer against the mark scheme. Award marks fairly. Return JSON with marks_awarded (integer), feedback (string with key points mentioned), and key_points_hit (list of mark scheme points student covered).'",
+        "Create POST /api/answer endpoint accepting session_id, node_id, question_id, question_type, student_answer, retrieving mark scheme from MongoDB, calling OpenAI grading service, storing grade in answer_log collection, returning marks_awarded and feedback",
+        "Write pytest test in tests/test_marking.py verifying POST /api/answer returns marks_awarded <= total_marks and feedback contains key_points_hit",
+        "Implement answer validation in routes/answer.py ensuring student_answer is non-empty string and question_type is one of the 5 allowed types"
+      ],
+      "commit_condition": "Run `pytest tests/test_marking.py -v` — 'PASSED'; curl -X POST http://localhost:8000/api/answer -d '{\"session_id\": \"sess_123\", \"node_id\": \"node_001\", \"question_id\": \"q_001\", \"question_type\": \"Define\", \"student_answer\": \"Photosynthesis is when plants convert light energy into chemical energy\"}' — HTTP 200 returns marks_awarded, total_marks, and feedback",
+      "example_input": "Question 'q_001' with mark_scheme 'Mention light (1 mark), mention water (1 mark), mention glucose (1 mark)' exists; student answers 'Plants use light and water to make glucose.'",
+      "example_output": "curl -X POST http://localhost:8000/api/answer -H 'Content-Type: application/json' -d '{\"session_id\": \"sess_123\", \"node_id\": \"node_001\", \"question_id\": \"q_001\", \"question_type\": \"Define\", \"student_answer\": \"Plants use light and water to make glucose\"}' — HTTP 200: {\"answer_id\": \"ans_001\", \"marks_awarded\": 3, \"total_marks\": 3, \"feedback\": \"Excellent! You covered all key points: light, water, and glucose production.\", \"key_points_hit\": [\"mention light\", \"mention water\", \"mention glucose\"]}"
+    },
+    {
+      "id": 6,
+      "title": "Node defeat and unlock mechanics",
+      "deliverable": "`POST /api/check-node-defeat` accepts session_id, node_id, calculates average mark on all node questions, if ≥70%, marks node as defeated, unlocks parent node by updating is_defeated flag, returns `{\"node_defeated\": true, \"average_mark\": 72, \"parent_unlocked\": true, \"parent_id\": \"node_parent_xyz\"}`",
+      "tasks": [
+        "Create endpoint POST /api/check-node-defeat accepting session_id and node_id, querying answer_log collection for all answers to questions in that node",
+        "Implement calculation: average_mark = sum(marks_awarded) / sum(total_marks) * 100, comparing against 70% threshold",
+        "When node_defeated=true, retrieve parent_id from tree_node document, update parent_node.is_defeated=true in MongoDB if all siblings are also defeated",
+        "Return response with node_defeated boolean, average_mark percentage, parent_unlocked boolean, and parent_id",
+        "Write pytest test in tests/test_unlock_mechanics.py verifying node marks as defeated only when average ≥70% and parent unlocks only when all children defeated",
+        "Implement sibling check logic: parent unlocks only if all children nodes have is_defeated=true"
+      ],
+      "commit_condition": "Run `pytest tests/test_unlock_mechanics.py -v` — 'PASSED'; curl -X POST http://localhost:8000/api/check-node-defeat -d '{\"session_id\": \"sess_123\", \"node_id\": \"node_001\"}' — HTTP 200 returns node_defeated and parent_unlocked booleans with correct average_mark percentage",
+      "example_input": "Student answered 4 questions in node_001; answers scored 2/3, 2/2, 3/3, 2/3 (total 9/11 = 81.8%); node_001 has parent_id 'node_parent' with 3 children (node_001, node_002, node_003), where node_002 and node_003 are already defeated",
+      "example_output": "curl -X POST http://localhost:8000/api/check-node-defeat -H 'Content-Type: application/json' -d '{\"session_id\": \"sess_123\", \"node_id\": \"node_001\"}' — HTTP 200: {\"node_defeated\": true, \"average_mark\": 81.8, \"parent_unlocked\": false, \"parent_id\": \"node_parent\", \"reason\": \"1 of 3 children defeated; parent unlocks when all children are defeated\"}"
+    },
+    {
+      "id": 7,
+      "title": "React frontend initialization and document upload UI",
+      "deliverable": "`npm run dev` starts Vite dev server on port 3000; `http://localhost:3000` renders StudyBattles landing page with heading 'StudyBattles', file upload input accepting .pptx and .docx, upload button, and loading spinner on submit",
+      "tasks": [
+        "Create React 18 frontend in frontend/ directory using Vite 5.0 with npm; install axios 1.6, react-router-dom 6.20, and tailwindcss 3.4",
+        "Create frontend/src/main.jsx entry point and frontend/src/App.jsx root component with routing setup",
+        "Create frontend/src/pages/LandingPage.jsx with file input (accept .pptx .docx), upload button, and error/success message display",
+        "Write frontend/src/services/api.js with uploadDocument(file) function calling POST /api/upload and returning {file_id, s3_url}",
+        "Create frontend/src/components/FileUploadForm.jsx component handling file selection, validation (type and size < 50MB), and submission to API",
+        "Configure frontend/.env.local with VITE_API_URL=http://localhost:8000; set up Vite proxy in vite.config.js to forward /api requests to backend"
+      ],
+      "commit_condition": "Run `npm run dev` in frontend/ — terminal prints 'Local: http://localhost:3000'; open http://localhost:3000 in browser — renders landing page with file input and upload button; upload sample.pptx — shows loading spinner and success message with file_id",
+      "example_input": "React 18 and Vite 5.0 installed; FastAPI backend running on http://localhost:8000 with /api/upload endpoint",
+      "example_output": "Open http://localhost:3000 — renders page with heading 'StudyBattles' in blue, below it a centered card with text 'Upload Your Study Material', file input with label 'Choose PPTX or DOCX file', blue 'Upload' button, and placeholder error message area; select sample.pptx and click Upload — spinner appears, then page shows green success message 'File uploaded! Generating topic tree...' with file_id displayed"
+    },
+    {
+      "id": 8,
+      "title": "Topic tree visualization and node selection UI",
+      "deliverable": "`http://localhost:3000/study/{tree_id}` renders hierarchical tree visualization with root node centered at top, level-1 nodes below as cards, level-2 nodes below those, each card shows title, defeats_required counter ('0/3 children defeated'), clickable only if is_defeated=true for parent, clicking leaf node navigates to study page",
+      "tasks": [
+        "Create frontend/src/pages/StudyPage.jsx fetching tree_id from URL params, calling GET /api/tree/{tree_id} to retrieve full tree structure from backend",
+        "Create GET /api/tree/{tree_id} endpoint in routes/tree.py querying MongoDB for tree_id, returning root node with all descendants populated",
+        "Create frontend/src/components/TreeNode.jsx component rendering single node with title, level indicator, defeat status, and conditional disable state based on parent is_defeated",
+        "Create frontend/src/components/TreeVisualization.jsx component rendering 3-level tree with CSS Grid or Flexbox, positioning nodes by level, drawing connection lines between parent and children using SVG",
+        "Implement click handler in TreeNode navigating to `/study/{tree_id}/node/{node_id}` when is_defeated=true and level < 2; prevent navigation and show tooltip 'Defeat all siblings to unlock' if parent not defeated",
+        "Add GET /api/tree/{tree_id} backend endpoint returning complete tree structure with all node defeat states"
+      ],
+      "commit_condition": "Run `npm run dev` on frontend; curl http://localhost:8000/api/tree/64a1c5d6 — HTTP 200 returns tree JSON; navigate to http://localhost:3000/study/64a1c5d6 — renders 3-level tree with root centered, cards clickable only when parent defeated",
+      "example_input": "Tree with tree_id '64a1c5d6' exists in MongoDB with root node 'Biology' at level 0, 2 children at level 1 (only 'Photosynthesis' has is_defeated=true), each with 2-3 children at level 2 with is_defeated=false",
+      "example_output": "Open http://localhost:3000/study/64a1c5d6 — page renders title 'Biology' at top center, below it two white cards labeled 'Photosynthesis' (with green 'Defeated' badge and blue border) and 'Cellular Respiration' (grayed out with red lock icon); clicking 'Photosynthesis' card shows 3 child nodes below it: 'Light Reactions', 'Calvin Cycle', 'Chlorophyll', all clickable with blue 'Start Quiz' buttons; clicking 'Cellular Respiration' shows tooltip 'Defeat all siblings to unlock'; clicking 'Light Reactions' navigates to /study/64a1c5d6/node/node_ph_lr"
+    },
+    {
+      "id": 9,
+      "title": "Quiz UI and answer submission form",
+      "deliverable": "`http://localhost:3000/study/{tree_id}/node/{node_id}` renders question display with type-specific input form (textarea for Define/Compare/ELI5, number input for Solve, text input for FinishTheAnswer), progress bar showing (current_question / total_questions), submit button, and submitted answers marked with score badges",
+      "tasks": [
+        "Create frontend/src/pages/QuizPage.jsx fetching tree_id and node_id from URL params, calling GET /api/questions/{node_id} to load all questions for node",
+        "Create GET /api/questions/{node_id} backend endpoint returning all 5 questions with type, question_text, and total_marks (not mark_scheme)",
+        "Create frontend/src/components/QuestionDisplay.jsx rendering question_text, question_type label, and progress counter 'Question 2 of 5'",
+        "Create frontend/src/components/AnswerForm.jsx with conditional form fields: textarea for Define/Compare/ELI5, number input for Solve, text input for FinishTheAnswer, with placeholder text and character limit validation (max 1000 chars)",
+        "Implement form submission calling POST /api/answer, storing response (marks_awarded, total_marks, feedback) in React state, displaying score badge showing '{marks_awarded}/{total_marks}' and feedback text below submitted answer",
+        "Add question navigation: Previous/Next buttons cycling through questions, disabling Previous on first question, Next only clickable after current question answered"
+      ],
+      "commit_condition": "Run `npm run dev` on frontend; navigate to http://localhost:3000/study/64a1c5d6/node/node_001 — page renders 'Question 1 of 5' with question text and form; submit answer — shows loading spinner, then renders score badge '3/3' with feedback; click Next — advances to question 2",
+      "example_input": "Questions exist for node_001 with 5 types; tree_id and node_id in URL; backend answering POST /api/answer with marks and feedback",
+      "example_output": "Open http://localhost:3000/study/64a1c5d6/node/node_001 — header shows 'Photosynthesis: Light Reactions' with progress 'Question 1 of 5'; below displays question text 'Define photosynthesis in 2 sentences.', label '[Define]', and textarea input with placeholder 'Enter your answer here...'; user types 'Plants use light and water to make glucose', clicks 'Submit Answer'; spinner appears 300ms, then score badge appears showing '3/3 ✓' in green, with feedback text 'Excellent! You covered all key points: light, water, and glucose.' below; Previous button stays disabled, Next button becomes blue and clickable"
+    },
+    {
+      "id": 10,
+      "title": "Session persistence and unlock flow UI",
+      "deliverable": "`localStorage` key 'studybattles_session' stores {session_id, tree_id, completed_answers: [{node_id, question_id, marks}]}, page refresh preserves quiz state, POST /api/check-node-defeat returns parent_unlocked=true, frontend navigates to parent node with unlock animation",
+      "tasks": [
+        "Create frontend/src/hooks/useSessionStorage.js custom hook wrapping localStorage with JSON serialization, storing {session_id, tree_id, node_id, answers: [{question_id, marks_awarded, total_marks}]}",
+        "Update QuizPage.jsx to save answer to localStorage after each POST /api/answer response, implementing localStorage.setItem('studybattles_session', JSON.stringify(sessionState))",
+        "Add useEffect in QuizPage to load session from localStorage on page load, restoring quiz state and showing answered questions with score badges",
+        "Create frontend/src/components/UnlockAnimation.jsx showing confetti animation and modal 'Node Defeated! Parent Node Unlocked: [Parent Title]' with auto-dismiss after 2 seconds",
+        "Implement node defeat check after all 5 questions answered: call POST /api/check-node-defeat, if parent_unlocked=true show UnlockAnimation, then navigate back to tree view showing parent node now highlighted",
+        "Add sessionStorage recovery UI: if user returns to tree with incomplete node answers, show 'Resume Quiz?' modal with option to continue or restart"
+      ],
+      "commit_condition": "Navigate to quiz page, answer 3 questions, refresh page — quiz state restored with answered questions showing scores; answer remaining 2 questions averaging ≥70%, click 'Finish Quiz' — calls POST /api/check-node-defeat, returns parent_unlocked=true, confetti animation plays, modal shows 'Parent Unlocked', page navigates to parent node view showing updated tree",
+      "example_input": "Quiz page at /study/64a1c5d6/node/node_001 with 5 questions; user answers 3, average 75% so far; page refreshed",
+      "example_output": "Page reloads — quiz state restored showing 3 answered questions with score badges (2/3 ✓, 3/3 ✓, 2/2 ✓) and questions 4-5 unanswered; user answers questions 4-5 (both perfect scores), clicks 'Finish Quiz'; modal appears with centered confetti animation, heading 'Photosynthesis Node Defeated!', subheading 'Parent Node Unlocked: Photosynthesis', button 'Back to Tree'; 2 seconds later modal auto-closes, page navigates to http://localhost:3000/study/64a1c5d6 showing tree with parent node 'Photosynthesis' now highlighted in green with green border, indicating unlock"
+    },
+    {
+      "id": 11,
+      "title": "End-to-end testing and deployment",
+      "deliverable": "Cypress E2E test file `frontend/cypress/e2e/full_flow.cy.js` runs complete workflow: upload document → generate tree → click node → answer all 5 questions → defeat node → unlock parent → page refresh restores state; `npm run test:e2e` executes all tests passing 100%; Docker Compose file deploys backend and frontend to http://localhost with both services healthy",
+      "tasks": [
+        "Install Cypress 13.0 and cypress-file-upload 5.0.8 into frontend development dependencies",
+        "Create frontend/cypress/e2e/full_flow.cy.js E2E test: upload sample PPTX, wait for tree generation, click leaf node, answer 5 questions with passing marks (avg ≥70%), verify node defeated and parent unlocked, refresh page, verify localStorage state restored",
+        "Create Docker Compose file in project root (docker-compose.yml) defining services: backend (FastAPI image), frontend (Node image with npm run build && npm run preview), MongoDB (mongo:7.0), exposing backend on port 8000, frontend on port 3000",
+        "Create backend/Dockerfile with Python 3.11 base, installing requirements.txt, exposing port 8000, running uvicorn",
+        "Create frontend/Dockerfile with Node 20 base, installing npm dependencies, running npm run build, serving dist/ with preview server on port 3000",
+        "Create .env.example with template for AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, OPENAI_API_KEY, MONGODB_URL, and document in README.md all setup and usage instructions"
+      ],
+      "commit_condition": "Run `docker-compose up -d` — containers start; run `npm run test:e2e` — all tests in full_flow.cy.js pass; open http://localhost:3000 — landing page renders; complete full workflow (upload → tree → quiz → defeat → unlock) end-to-end without errors; run `docker-compose down` — all containers stop cleanly",
+      "example_input": "All backend and frontend code complete and tested; Docker and Docker Compose installed; .env configured with credentials",
+      "example_output": "Run `docker-compose up -d` — terminal outputs 'Creating studybattles_backend_1', 'Creating studybattles_frontend_1', 'Creating studybattles_mongodb_1'; `docker ps` shows 3 containers running; open http://localhost:3000 — renders landing page; upload biology_notes.pptx — backend generates tree in 5 seconds; tree visualization loads showing 'Biology' root with children; click leaf node 'Light Reactions' — quiz loads; answer 5 questions with scores 3/3, 2/2, 3/3, 2/3, 3/3 (avg 86%); click 'Finish Quiz' — confetti animates, modal shows 'Parent Unlocked: Photosynthesis', page navigates to tree view with parent node highlighted green; refresh page — quiz state restored with all scores visible; Cypress test output shows 'All 7 tests passed' with timeline showing upload → tree load → quiz start → 5 question answers → node defeat → parent unlock → session restore"
+    }
+  ]
+}
+```
