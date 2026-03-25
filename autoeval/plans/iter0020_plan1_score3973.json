@@ -1,0 +1,180 @@
+```json
+{
+  "project": {
+    "name": "StudyBattles",
+    "language": "Python 3.11",
+    "runtime": "web (monorepo: FastAPI backend + React frontend)",
+    "package_manager": "pip (backend), npm (frontend)",
+    "framework": "FastAPI 0.111 (backend), React 18 (frontend)",
+    "database": "MongoDB 7.0",
+    "deployment": "Docker + AWS EC2",
+    "external_services": [
+      "AWS S3 (document storage)",
+      "OpenAI GPT-4 (tree generation, question generation, answer evaluation)",
+      "python-pptx (PPTX parsing)",
+      "python-docx (DOCX parsing)"
+    ]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Environment Setup and Project Initialization",
+      "deliverable": "`python backend/main.py` runs on http://127.0.0.1:8000 with Swagger docs accessible; npm run dev runs React frontend on http://localhost:3000 with no build errors",
+      "tasks": [
+        "Create monorepo directory structure: `backend/`, `frontend/`, `.gitignore`, `docker-compose.yml` placeholder",
+        "Initialize Python 3.11 virtual environment and install FastAPI 0.111, uvicorn 0.29, pydantic 2.5, python-dotenv 1.0",
+        "Create `backend/main.py` with FastAPI app instance, CORS middleware for http://localhost:3000, and `GET /health` endpoint",
+        "Initialize React 18 project in `frontend/` using create-react-app; install axios 1.6, react-router-dom 6.20",
+        "Create `backend/.env` template with placeholders for OPENAI_API_KEY, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_S3_BUCKET, MONGODB_URI",
+        "Set up `backend/config.py` to load environment variables using python-dotenv; validate that all required keys are present"
+      ],
+      "commit_condition": "Run `cd backend && python main.py` in one terminal — output contains 'Uvicorn running on http://127.0.0.1:8000'; in another terminal run `curl -s http://localhost:8000/health | jq .status` — returns `\"ok\"`; run `cd frontend && npm run start` — React dev server starts on port 3000 with no compilation errors",
+      "example_input": "Empty project directory; Python 3.11 installed; Node.js 18.x installed; git initialized",
+      "example_output": "Run `python backend/main.py` — terminal prints 'Uvicorn running on http://127.0.0.1:8000'; `curl http://localhost:8000/health` returns `{\"status\": \"ok\"}`; run `npm run start` from `frontend/` — browser opens to http://localhost:3000 with React welcome page"
+    },
+    {
+      "id": 2,
+      "title": "MongoDB Schema and Core Data Models",
+      "deliverable": "MongoDB collections `users_sessions`, `topics`, `questions`, and `student_progress` exist with validated Pydantic models in `backend/models.py`; `POST /api/sessions` creates session and stores in MongoDB",
+      "tasks": [
+        "Install pymongo 4.6 and mongoengine 0.27 into backend requirements.txt",
+        "Create `backend/models.py` with Pydantic schemas: UserSession (session_id, created_at), Topic (id, name, description, parent_id, children_ids, depth_level, is_defeated), Question (id, topic_id, question_type, prompt, mark_scheme, created_at), StudentProgress (session_id, topic_id, answer_text, score, marked_at)",
+        "Create `backend/database.py` with MongoDB connection logic using mongoengine; validate connection to MongoDB 7.0 instance with test query",
+        "Create `POST /api/sessions` endpoint that generates unique session_id, stores UserSession doc in MongoDB, returns `{\"session_id\": \"...\", \"created_at\": \"2024-01-15T10:00:00Z\"}`",
+        "Define MongoDB index on `sessions.session_id`, `topics.parent_id`, `questions.topic_id`, `student_progress.session_id` for query performance"
+      ],
+      "commit_condition": "Run `python -m pytest backend/tests/test_models.py -v` — all 5 model validation tests pass; run `curl -X POST http://localhost:8000/api/sessions` — returns HTTP 201 with session_id and created_at in JSON response; run `mongo --eval 'db.users_sessions.countDocuments()'` — returns 1 or greater",
+      "example_input": "MongoDB 7.0 running locally; empty `backend/models.py` file",
+      "example_output": "db.users_sessions.findOne() returns `{\"_id\": ObjectId(...), \"session_id\": \"sess_abc123\", \"created_at\": ISODate(\"2024-01-15T10:00:00Z\")}`; db.topics.findOne() returns `{\"_id\": ObjectId(...), \"id\": \"topic_root_math\", \"name\": \"Algebra\", \"parent_id\": null, \"children_ids\": [\"topic_123\", \"topic_456\"], \"depth_level\": 0, \"is_defeated\": false}`"
+    },
+    {
+      "id": 3,
+      "title": "Document Upload and Content Extraction",
+      "deliverable": "`POST /api/documents/upload` accepts PPTX or DOCX files, stores in AWS S3, extracts plain text, and returns extracted content with file metadata",
+      "tasks": [
+        "Install python-pptx 0.6, python-docx 0.8, boto3 1.28, and requests 2.31 into backend requirements.txt",
+        "Create `backend/services/aws_s3.py` with S3Client class: methods upload_file(file_bytes, filename) and generate_presigned_url(key) using boto3; configure with AWS credentials from environment variables",
+        "Create `backend/services/document_parser.py` with DocumentParser class: methods parse_pptx(file_bytes) and parse_docx(file_bytes) that extract all text content and return as `{\"content\": \"...\", \"page_count\": int, \"word_count\": int}`",
+        "Create `POST /api/documents/upload` endpoint that accepts multipart file (PPTX or DOCX), validates file type, calls DocumentParser to extract text, uploads file to AWS S3 using S3Client, stores metadata in MongoDB (file_key, original_filename, content, word_count, uploaded_at), returns `{\"file_id\": \"...\", \"filename\": \"...\", \"content\": \"...\", \"word_count\": 1500}`",
+        "Add error handling for invalid file types, S3 upload failures, and oversized files (max 50 MB)"
+      ],
+      "commit_condition": "Run `pytest backend/tests/test_document_upload.py -v` — all 8 tests pass (valid PPTX upload, valid DOCX upload, invalid file type rejected, S3 upload verified, content extraction verified, metadata stored in MongoDB); run `curl -X POST http://localhost:8000/api/documents/upload -F 'file=@test.pptx'` — returns HTTP 201 with file_id and extracted content; verify file exists in AWS S3 bucket",
+      "example_input": "curl -X POST http://localhost:8000/api/documents/upload -F 'file=@sample.docx' where sample.docx contains 'Introduction to Photosynthesis' title and 5 paragraphs of text",
+      "example_output": "HTTP 201: `{\"file_id\": \"file_64a1b2c3\", \"filename\": \"sample.docx\", \"content\": \"Introduction to Photosynthesis\\n\\nPhotosynthesis is a process...\", \"word_count\": 1247}`; AWS S3 bucket contains object `file_64a1b2c3_sample.docx`"
+    },
+    {
+      "id": 4,
+      "title": "Topic Tree Generation via OpenAI",
+      "deliverable": "`POST /api/topics/generate` accepts file_id, calls OpenAI GPT-4 to create hierarchical topic tree (max depth 3), stores Topics in MongoDB, returns tree structure with all node IDs and relationships",
+      "tasks": [
+        "Install openai 1.3 into backend requirements.txt",
+        "Create `backend/services/openai_client.py` with OpenAIClient class: method generate_topic_tree(document_content: str) that sends prompt to GPT-4 requesting JSON tree with max 3 levels, root node, and leaf nodes; returns parsed JSON: `{\"root\": {\"id\": \"...\", \"name\": \"...\", \"children\": [{...}]}}`",
+        "Create `backend/services/tree_builder.py` with TreeBuilder class: method build_tree_from_json(tree_json, file_id, session_id) that flattens hierarchical JSON into flat list of Topic documents with parent_id, children_ids, depth_level; stores all Topics in MongoDB; returns root topic ID",
+        "Create `POST /api/topics/generate` endpoint that accepts `{\"file_id\": \"...\"}`, retrieves file content from MongoDB, calls OpenAIClient.generate_topic_tree(), calls TreeBuilder.build_tree_from_json(), stores all topics, returns `{\"root_topic_id\": \"...\", \"total_nodes\": int, \"max_depth\": 3, \"tree_structure\": {...}}`",
+        "Add validation to reject prompts generating trees deeper than 3 levels; limit tree to max 15 nodes total"
+      ],
+      "commit_condition": "Run `pytest backend/tests/test_topic_generation.py -v` — all 6 tests pass (tree generation from sample document, max depth enforced, parent-child relationships stored correctly, all topics queryable from MongoDB); run `curl -X POST http://localhost:8000/api/topics/generate -H 'Content-Type: application/json' -d '{\"file_id\": \"file_64a1b2c3\"}'` — returns HTTP 201 with root_topic_id and tree_structure; query MongoDB: `db.topics.find({parent_id: null})` — returns exactly 1 root node",
+      "example_input": "File content: 'Photosynthesis is the process by which plants use light energy to produce glucose. It occurs in two stages: light-dependent reactions in the thylakoid membrane, and light-independent reactions (Calvin cycle) in the stroma. Key products are ATP, NADPH, and glucose.'",
+      "example_output": "HTTP 201: `{\"root_topic_id\": \"topic_root_photo\", \"total_nodes\": 8, \"max_depth\": 3, \"tree_structure\": {\"id\": \"topic_root_photo\", \"name\": \"Photosynthesis\", \"children\": [{\"id\": \"topic_light_dep\", \"name\": \"Light-Dependent Reactions\", \"children\": [{\"id\": \"topic_thylakoid\", \"name\": \"Thylakoid Membrane Processes\"}]}, {\"id\": \"topic_calvin\", \"name\": \"Calvin Cycle\"}]}}`; db.topics.findOne({_id: ObjectId(...)}) returns `{\"id\": \"topic_light_dep\", \"name\": \"Light-Dependent Reactions\", \"parent_id\": \"topic_root_photo\", \"children_ids\": [\"topic_thylakoid\"], \"depth_level\": 1, \"is_defeated\": false}`"
+    },
+    {
+      "id": 5,
+      "title": "Question Generation and Mark Scheme Creation",
+      "deliverable": "`POST /api/questions/generate` accepts topic_id, generates 5 questions (one per type: Define, Solve, Compare, ELI5, Finish the Answer) via OpenAI, stores questions and mark schemes in MongoDB, returns question list with metadata",
+      "tasks": [
+        "Create `backend/services/question_generator.py` with QuestionGenerator class: method generate_questions_for_topic(topic_name: str, topic_context: str, question_types: list) that calls GPT-4 with detailed prompts for each question type, returns list of dicts `{\"type\": \"Define\", \"prompt\": \"...\", \"mark_scheme\": {\"key_points\": [...], \"max_score\": 5}}`",
+        "Create `backend/services/mark_scheme_generator.py` with MarkSchemeGenerator class: method create_mark_scheme(question_type: str, prompt: str) that generates 5 key points and score rubric (0-5 points) for answer evaluation; returns `{\"key_points\": [...], \"rubric\": \"...\"}`",
+        "Create `POST /api/questions/generate` endpoint that accepts `{\"topic_id\": \"...\"}`, retrieves topic name and content from MongoDB, calls QuestionGenerator.generate_questions_for_topic() for all 5 types, stores Question documents (topic_id, question_type, prompt, mark_scheme), returns `{\"topic_id\": \"...\", \"questions_generated\": 5, \"questions\": [{\"id\": \"...\", \"type\": \"...\", \"prompt\": \"...\"}, ...]}`",
+        "Ensure question generation calls OpenAI GPT-4; include topic context (parent and sibling topic names) in prompt to ensure relevance"
+      ],
+      "commit_condition": "Run `pytest backend/tests/test_question_generation.py -v` — all 7 tests pass (question generation for all 5 types, mark scheme creation, questions stored in MongoDB, retrieval by topic_id); run `curl -X POST http://localhost:8000/api/questions/generate -H 'Content-Type: application/json' -d '{\"topic_id\": \"topic_light_dep\"}'` — returns HTTP 201 with 5 questions; run `mongo --eval 'db.questions.find({topic_id: \"topic_light_dep\"}).count()'` — returns 5",
+      "example_input": "topic_id: 'topic_light_dep'; topic_name: 'Light-Dependent Reactions'; topic_context: 'Part of photosynthesis; occurs in thylakoid membrane'",
+      "example_output": "HTTP 201: `{\"topic_id\": \"topic_light_dep\", \"questions_generated\": 5, \"questions\": [{\"id\": \"q_light_1\", \"type\": \"Define\", \"prompt\": \"Define photolysis in the context of light-dependent reactions\"}, {\"id\": \"q_light_2\", \"type\": \"Solve\", \"prompt\": \"If photosystem II absorbs a photon with wavelength 680nm, calculate the energy in joules\"}, {\"id\": \"q_light_3\", \"type\": \"Compare\", \"prompt\": \"Compare the roles of photosystem I and photosystem II\"}, {\"id\": \"q_light_4\", \"type\": \"ELI5\", \"prompt\": \"Explain light-dependent reactions like you're 5 years old\"}, {\"id\": \"q_light_5\", \"type\": \"Finish the Answer\", \"prompt\": \"The electron transport chain transfers electrons from... to...\"}]}; db.questions.findOne({_id: ObjectId(...)}) returns `{\"id\": \"q_light_1\", \"topic_id\": \"topic_light_dep\", \"question_type\": \"Define\", \"prompt\": \"Define photolysis...\", \"mark_scheme\": {\"key_points\": [\"process of water splitting\", \"occurs in thylakoid lumen\", \"releases O2\", \"produces electrons\", \"contributes to proton gradient\"], \"max_score\": 5, \"rubric\": \"1 point per key point mentioned\"}}`"
+    },
+    {
+      "id": 6,
+      "title": "Answer Submission and LLM-Based Marking",
+      "deliverable": "`POST /api/answers/submit` accepts question_id, session_id, and answer text, calls OpenAI GPT-4 to mark against key points, stores StudentProgress doc, returns score (0-5) with feedback",
+      "tasks": [
+        "Create `backend/services/answer_evaluator.py` with AnswerEvaluator class: method evaluate_answer(answer_text: str, mark_scheme: dict, question_type: str) that calls GPT-4 with mark scheme, returns `{\"score\": 0-5, \"feedback\": \"...\", \"key_points_hit\": [...]}`",
+        "Create `POST /api/answers/submit` endpoint that accepts `{\"question_id\": \"...\", \"session_id\": \"...\", \"answer_text\": \"...\"}`, retrieves Question doc including mark_scheme, calls AnswerEvaluator.evaluate_answer(), creates StudentProgress doc (session_id, question_id, topic_id, answer_text, score, feedback, marked_at), returns `{\"question_id\": \"...\", \"score\": 3, \"feedback\": \"Good attempt...\"}`",
+        "Implement score caching to avoid re-evaluating the same answer multiple times within same session"
+      ],
+      "commit_condition": "Run `pytest backend/tests/test_answer_marking.py -v` — all 5 tests pass (answer evaluation for each question type, score in range 0-5, feedback text returned, StudentProgress stored); run `curl -X POST http://localhost:8000/api/answers/submit -H 'Content-Type: application/json' -d '{\"question_id\": \"q_light_1\", \"session_id\": \"sess_abc123\", \"answer_text\": \"Photolysis is the splitting of water molecules\"}'` — returns HTTP 201 with score and feedback; run `mongo --eval 'db.student_progress.findOne({session_id: \"sess_abc123\"})'` — returns document with score field",
+      "example_input": "curl -X POST http://localhost:8000/api/answers/submit -H 'Content-Type: application/json' -d '{\"question_id\": \"q_light_1\", \"session_id\": \"sess_abc123\", \"answer_text\": \"Photolysis is the splitting of water molecules into hydrogen ions, electrons, and oxygen gas. It occurs in the thylakoid lumen during light-dependent reactions.\"}'",
+      "example_output": "HTTP 201: `{\"question_id\": \"q_light_1\", \"score\": 4, \"feedback\": \"Excellent answer. You correctly identified photolysis as water splitting and mentioned the products (H+, electrons, O2) and location (thylakoid lumen). To reach 5 points, also mention the role in the proton gradient.\", \"key_points_hit\": [\"water splitting\", \"occurs in thylakoid lumen\", \"releases O2\", \"produces electrons\"]}`; db.student_progress.findOne({session_id: \"sess_abc123\"}) returns `{\"_id\": ObjectId(...), \"session_id\": \"sess_abc123\", \"question_id\": \"q_light_1\", \"topic_id\": \"topic_light_dep\", \"answer_text\": \"Photolysis is...\", \"score\": 4, \"feedback\": \"Excellent answer...\", \"marked_at\": ISODate(\"2024-01-15T10:05:00Z\")}`"
+    },
+    {
+      "id": 7,
+      "title": "Node Unlock Mechanics and Victory Conditions",
+      "deliverable": "`GET /api/topics/{topic_id}/status` returns whether topic is unlocked and defeated; `POST /api/topics/{topic_id}/unlock` checks all child questions scored ≥3, marks topic defeated, unlocks parent, updates MongoDB, returns new unlock state",
+      "tasks": [
+        "Create `backend/services/unlock_calculator.py` with UnlockCalculator class: method check_topic_defeat(topic_id, session_id) that queries all child topics and their questions, checks StudentProgress docs for this session, returns `{\"all_children_defeated\": bool, \"min_score_in_children\": int, \"ready_to_unlock_parent\": bool}`",
+        "Create `POST /api/topics/{topic_id}/unlock` endpoint that accepts `{\"session_id\": \"...\"}`, calls UnlockCalculator.check_topic_defeat() with score threshold 3, if all children defeated updates Topic doc (is_defeated = true, defeated_at timestamp), retrieves parent_id and marks parent as unlocked if all of its children are now defeated, returns `{\"topic_id\": \"...\", \"is_defeated\": true, \"parent_unlocked\": bool}`",
+        "Create `GET /api/topics/{topic_id}/status` endpoint that returns `{\"topic_id\": \"...\", \"is_defeated\": bool, \"is_unlocked\": bool, \"children_status\": [{\"id\": \"...\", \"is_defeated\": bool}, ...], \"parent_id\": \"...\"}`"
+      ],
+      "commit_condition": "Run `pytest backend/tests/test_unlock_mechanics.py -v` — all 8 tests pass (child defeat detection, parent unlock triggering, leaf node unlock, root node victory, score threshold 3 enforced, unlock state persisted); run `curl -X GET http://localhost:8000/api/topics/topic_leaf/status -H 'session_id: sess_abc123'` — returns is_defeated false initially; submit answers to all questions in topic with score ≥3, run `curl -X POST http://localhost:8000/api/topics/topic_leaf/unlock -H 'Content-Type: application/json' -d '{\"session_id\": \"sess_abc123\"}'` — returns HTTP 200 with is_defeated true and parent_unlocked true",
+      "example_input": "Leaf topic_id: 'topic_thylakoid'; parent topic_id: 'topic_light_dep'; 5 questions in topic_thylakoid; student has answered all 5 with scores [4, 3, 5, 3, 4]",
+      "example_output": "curl -X POST http://localhost:8000/api/topics/topic_thylakoid/unlock -H 'Content-Type: application/json' -d '{\"session_id\": \"sess_abc123\"}' returns HTTP 200: `{\"topic_id\": \"topic_thylakoid\", \"is_defeated\": true, \"parent_unlocked\": true, \"parent_id\": \"topic_light_dep\", \"defeated_at\": \"2024-01-15T10:15:00Z\"}`; db.topics.findOne({id: \"topic_light_dep\"}) now shows topic is unlocked (or becomes unlocked once all its children are defeated)"
+    },
+    {
+      "id": 8,
+      "title": "Session Persistence and LocalStorage Integration",
+      "deliverable": "`GET /api/sessions/{session_id}/state` retrieves and returns full session state (all answered questions, scores, unlocked topics); React app loads session state on mount, syncs to localStorage on every action, reloads from localStorage on page refresh",
+      "tasks": [
+        "Create `backend/services/session_state_manager.py` with SessionStateManager class: method get_full_session_state(session_id) that queries MongoDB for all StudentProgress docs, all Topic docs, reconstructs `{\"session_id\": \"...\", \"topics\": [...], \"answered_questions\": [...], \"unlocked_topics\": [...]}` and returns it",
+        "Create `GET /api/sessions/{session_id}/state` endpoint that calls SessionStateManager.get_full_session_state(), returns `{\"session_id\": \"...\", \"topics\": [{\"id\": \"...\", \"name\": \"...\", \"is_defeated\": bool, ...}, ...], \"student_progress\": [{\"question_id\": \"...\", \"score\": int, \"answer_text\": \"...\"}, ...]}`",
+        "Create `backend/middleware/session_middleware.py` that validates session_id on all requests (optional auth; assumes session_id passed in header or query param)",
+        "Update React frontend: create `frontend/src/hooks/useSessionState.js` that on app mount calls `GET /api/sessions/{session_id}/state`, stores full state in React context and localStorage; add `useEffect` to sync all state changes (answers submitted, topics unlocked) to localStorage; on page refresh, restore session state from localStorage before fetching fresh state from server",
+        "Create `frontend/src/context/SessionContext.js` that provides session_id, topics, student_progress, and dispatch functions to all components"
+      ],
+      "commit_condition": "Run `pytest backend/tests/test_session_state.py -v` — all 5 tests pass (full session state retrieved, topics with correct defeat status, answered questions included); run `curl -X GET http://localhost:8000/api/sessions/sess_abc123/state` — returns HTTP 200 with complete session state JSON; open React app in browser at http://localhost:3000, create new session, answer some questions, check browser DevTools > Application > LocalStorage — session state stored; reload page — session state persists without API call; answer another question — new state synced to localStorage",
+      "example_input": "Session sess_abc123 exists with 3 topics: root (depth 0), 2 children (depth 1, both with 2 leaf children each). Student has defeated 1 leaf topic (topic_leaf_1) with scores [4, 5, 3, 4, 4]. Page reload occurs.",
+      "example_output": "curl -X GET http://localhost:8000/api/sessions/sess_abc123/state returns HTTP 200: `{\"session_id\": \"sess_abc123\", \"topics\": [{\"id\": \"topic_root\", \"name\": \"Photosynthesis\", \"is_defeated\": false, \"is_unlocked\": true, \"depth_level\": 0, \"children_ids\": [...]}, {...}], \"student_progress\": [{\"question_id\": \"q_leaf_1_1\", \"topic_id\": \"topic_leaf_1\", \"score\": 4, \"answer_text\": \"...\"}, ...]}`; localStorage['sessionState'] contains same JSON; after page reload, React loads state from localStorage, displays previously answered questions and unlocked topics without API delay"
+    },
+    {
+      "id": 9,
+      "title": "Frontend UI Components and Student Interaction Flow",
+      "deliverable": "React app renders topic tree as interactive node graph; clicking leaf node opens question interface with question_type-specific input (text area, multiple choice, equation); submitting answer displays score and feedback; clicking defeated node shows 'Defeated' badge and unlock button",
+      "tasks": [
+        "Create `frontend/src/components/TopicTree.jsx` that renders hierarchical topic tree; uses sessionContext to read topics; renders nodes with colors (locked gray, unlocked white, defeated green); clicking node either opens QuestionModal or shows defeat status",
+        "Create `frontend/src/components/QuestionModal.jsx` that displays current question (prompt, type); renders input based on question_type (Define/Compare/ELI5 = textarea, Solve = number input, Finish the Answer = fill-in-the-blank text input); includes submit button; on submit calls `POST /api/answers/submit`, displays returned score and feedback",
+        "Create `frontend/src/components/FeedbackDisplay.jsx` that shows score (0-5 stars), feedback text, key_points_hit list, and option to retake question or move to next question",
+        "Create `frontend/src/pages/DashboardPage.jsx` that shows: document upload input, topic tree visualization, stats (topics unlocked, total nodes, questions answered), currently selected topic info",
+        "Create `frontend/src/pages/QuestionPage.jsx` that shows: current topic breadcrumb navigation, question number X/5, question prompt, input field based on type, submit button, skip button",
+        "Install react-flow-renderer 11.11 or react-dagre for tree visualization; style components with CSS-in-JS or Tailwind (install tailwindcss 3.3 if using Tailwind)",
+        "Add loading states (spinners, disabled buttons during API calls) and error messages (toast notifications) throughout UI"
+      ],
+      "commit_condition": "Run `npm run build` from `frontend/` — no build errors; run `npm run start` — app loads at http://localhost:3000; navigate to dashboard, verify topic tree renders with correct node hierarchy and colors; click a leaf node — QuestionModal appears with question text and input field matching question type; type answer and click Submit — feedback displays within 3 seconds with score and key points",
+      "example_input": "Browser at http://localhost:3000/dashboard with active session and generated topic tree (5 nodes, 2 levels); leaf node 'topic_leaf_1' unlocked and ready",
+      "example_output": "Browser renders: tree visualization with root node (center), 2 children nodes (depth 1), 4 leaf nodes (depth 2); clicking leaf node 'topic_leaf_1' opens modal showing 'Define: Explain photolysis' with textarea input; typing 'Photolysis is...' and clicking Submit displays 'Score: 4/5' with feedback text and list of key points hit; root node displays green 'Defeated' badge if all children defeated"
+    },
+    {
+      "id": 10,
+      "title": "End-to-End Testing and Integration",
+      "deliverable": "Pytest integration tests verify full workflow: upload document → generate topics → answer all questions in leaf nodes → receive marks → unlock parents → query final session state; Selenium tests verify React UI responds correctly at each step",
+      "tasks": [
+        "Create `backend/tests/test_integration_full_flow.py` with pytest test: upload sample PPTX → generate topics → retrieve questions → submit 5 answers per leaf node with scores ≥3 → unlock all children → verify parent is unlocked → query session state → verify all topics marked defeated/unlocked",
+        "Create `backend/tests/test_edge_cases.py` with pytest tests: answer below threshold (score <3) does not unlock node; answering same question twice updates score in MongoDB; cannot unlock parent until all children defeated; resubmitting answer changes StudentProgress doc",
+        "Create `frontend/tests/integration.test.js` with Selenium/Cypress tests: load dashboard → verify empty state; upload document → verify loading spinner and tree appears; click leaf node → QuestionModal opens; submit answer → FeedbackDisplay shows; submit 5 answers in leaf → unlock button enabled; click unlock → parent node changes to unlocked state",
+        "Install pytest-asyncio 0.21, pytest-mongodb, and httpx 0.25 for integration testing (or use test fixtures with in-memory MongoDB mock)"
+      ],
+      "commit_condition": "Run `pytest backend/tests/test_integration_full_flow.py -v` — test passes in <30 seconds (uploads sample file, generates tree, answers all questions, unlocks nodes, verifies final state); run `pytest backend/tests/test_edge_cases.py -v` — all 5 edge case tests pass; run `npm test -- integration.test.js` in `frontend/` — Cypress/Selenium tests execute and verify tree interaction, question answering, unlock flow",
+      "example_input": "Sample PPTX file ('photosynthesis.pptx') with 5 pages; MongoDB empty; session_id generated",
+      "example_output": "pytest output: 'test_full_integration_flow PASSED (23s)' with log showing: file uploaded to S3, 7 topics generated, 35 questions generated, 5 answers submitted per leaf topic, all leaf topics marked defeated, parent topics unlocked, final session state retrieved with all topics and scores; Cypress output: 5 test cases passed (upload visible, tree renders, modal opens, answer submits, feedback displays, unlock works)"
+    },
+    {
+      "id": 11,
+      "title": "Production Deployment and Documentation",
+      "deliverable": "Docker compose file builds and runs full stack (API, React, MongoDB); deployed to AWS EC2; https://api.studybattles.example.com/health returns `{\"status\": \"ok\", \"version\": \"1.0.0\"}`; README.md documents architecture, setup, and API; OpenAPI Swagger docs available at `/docs`",
+      "tasks": [
+        "Create `Dockerfile` for backend: Python 3.11 base image, install dependencies from requirements.txt, expose port 8000, run uvicorn; create `Dockerfile` for frontend: Node.js 18 base image, npm build, serve via nginx on port 3000",
+        "Create `docker-compose.yml` that orchestrates: MongoDB 7.0 service (port 27017), backend service (FastAPI on port 8000), frontend service (React/nginx on port 3000); use environment file `.env.docker` for credentials",
+        "Update `backend/main.py` to serve FastAPI Swagger docs at `/docs` and ReDoc at `/redoc`; add version info endpoint `GET /version` returning version string",
+        "Create `README.md` documenting: project overview, architecture diagram (ASCII or Mermaid), tech stack, setup instructions (local dev with pip/npm, Docker), environment variables required, API endpoint summary, deployment instructions (AWS EC2), and known limitations",
+        "Create `backend/requirements.txt` with all dependencies pinned to exact versions; create `frontend/package.json` with all dependencies pinned",
+        "Deploy to AWS EC2: SSH into instance, clone repo, build Docker images, run docker-compose up -d, verify all containers running, test endpoints with curl, update DNS/load balancer"
+      ],
+      "commit_condition": "Run `docker-compose up -d` from project root — all 3 containers start successfully; run `docker ps` — shows 3 containers (studybattles-api, studybattles-frontend, studybattles-mongodb) with status 'Up'; run `curl -s http://localhost:8000/health | jq .status` — returns `\"ok\"`; run `curl -s http://localhost:8000/version` — returns version string; open http://localhost:3000 in browser — React app loads; open http://localhost:8000/docs — Swagger UI displays all API endpoints; on AWS EC2, run `curl -s https://api.studybattles.example.com/health` — returns `{\"status\": \"ok\"}`; verify `README.md` exists with setup and deployment sections; run `grep -E '^[A-Za-z].*==|\"[A-Za-z].*\":' requirements.txt package.json` — all dependencies pinned to exact versions",
+      "example_input": "Git repo with all code committed; Docker installed; AWS EC2 instance provisioned with security groups allowing ports 80, 443, 3000, 8000; domain name registered",
+      "example_output": "docker-compose.yml executes without errors; `docker ps` shows: studybattles-api (port 8000), studybattles-frontend (port 3000), studybattles-mongodb (port 27017); `curl http://localhost:8000/health` returns `{\"status\": \"ok\", \"timestamp\": \"2024-01-15T10:30:00Z\"}`; open http://localhost:3000 — React welcome page renders; open http://localhost:8000/docs — Swagger lists 10+ endpoints (GET /health, POST /sessions, POST /documents/upload, POST /topics/generate, POST /questions/generate, POST /answers/submit, GET /sessions/{session_id}/state, etc.); deployed to AWS EC2 at https://api.studybattles.example.com with HTTPS certificate; README.md includes: 'StudyBattles: revision tool for students combining document upload, AI topic generation, and adaptive questioning'; deployment section lists docker-compose and EC2 setup steps"
