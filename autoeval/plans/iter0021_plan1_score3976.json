@@ -1,0 +1,186 @@
+```json
+{
+  "project": {
+    "name": "StudyBattles",
+    "language": "Python 3.11",
+    "runtime": "web (REST API + React SPA)",
+    "package_manager": "pip (backend), npm (frontend)",
+    "framework": "FastAPI 0.111 (backend), React 18 (frontend)",
+    "database": "MongoDB 7.0",
+    "deployment": "Docker + AWS EC2",
+    "external_services": [
+      "AWS S3 (document storage)",
+      "OpenAI GPT-4 API (tree generation, question generation, answer evaluation)",
+      "YouTube Data API v3 (metadata extraction for video links)"
+    ]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Environment Setup and FastAPI Bootstrap",
+      "deliverable": "`python backend/main.py` starts FastAPI server on `http://localhost:8000`; `GET /health` returns `{\"status\": \"ok\"}` with HTTP 200",
+      "tasks": [
+        "Install Python 3.11, pip, and initialize virtual environment in `backend/` with venv",
+        "Create `backend/requirements.txt` with FastAPI 0.111, uvicorn 0.29, python-multipart 0.0.6, pydantic 2.5, pymongo 4.6, boto3 1.34, openai 1.3, and pytest 7.4",
+        "Create `backend/main.py` with FastAPI app instance, CORS middleware allowing localhost:3000, and root GET `/health` endpoint",
+        "Create `backend/.env` template with placeholders for OPENAI_API_KEY, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, MONGODB_URI, and AWS_S3_BUCKET",
+        "Initialize React 18 project in `frontend/` using `npx create-react-app frontend` and install axios 1.6, react-router-dom 6.20",
+        "Create `frontend/.env` template with REACT_APP_API_URL=http://localhost:8000",
+        "Write pytest test in `tests/test_health.py` verifying `GET /health` returns status code 200 and body contains `\"status\": \"ok\"`"
+      ],
+      "commit_condition": "Run `cd backend && python main.py` in one terminal and `curl -s http://localhost:8000/health | jq .status` in another — returns `\"ok\"` with HTTP 200",
+      "example_input": "Empty project directory with no code, no dependencies, no Python environment",
+      "example_output": "Run `python backend/main.py` — terminal prints `INFO: Uvicorn running on http://127.0.0.1:8000`; `curl http://localhost:8000/health` returns `{\"status\": \"ok\"}`; `npm start` in frontend/ opens React app on http://localhost:3000 showing default template"
+    },
+    {
+      "id": 2,
+      "title": "MongoDB Connection and Core Data Models",
+      "deliverable": "`POST /api/sessions` creates a MongoDB document in `sessions` collection returning `{\"session_id\": \"...\", \"created_at\": \"2024-01-15T10:00:00Z\", \"documents\": [], \"trees\": []}`; database is queryable via `mongodb://localhost:27017/studybattles`",
+      "tasks": [
+        "Create `backend/config.py` with MongoDB connection string from .env and MongoClient initialization",
+        "Create `backend/models/session.py` with Pydantic Session model containing fields: session_id (UUID), created_at (datetime), documents (list of doc_ids), trees (list of tree_ids), last_accessed (datetime)",
+        "Create `backend/models/document.py` with Pydantic Document model containing fields: doc_id (UUID), session_id (UUID), filename (str), file_type (str: pptx|docx|youtube_url), s3_key (str), uploaded_at (datetime), content_text (str, extracted from file or video metadata)",
+        "Create `backend/models/tree.py` with Pydantic TreeNode model containing fields: node_id (UUID), session_id (UUID), parent_node_id (UUID or null), label (str), depth (int 0–2), is_boss (bool), defeated (bool), children_node_ids (list), created_at (datetime)",
+        "Create `backend/models/question.py` with Pydantic Question model containing fields: question_id (UUID), node_id (UUID), question_text (str), question_type (enum: Define|Solve|Compare|ELI5|FinishTheAnswer), created_at (datetime)",
+        "Create `backend/models/response.py` with Pydantic Response model containing fields: response_id (UUID), question_id (UUID), session_id (UUID), student_answer (str), marks_awarded (float 0.0–1.0), feedback (str, LLM-generated), answered_at (datetime)",
+        "Write `tests/test_models.py` validating Session, Document, TreeNode, Question, and Response Pydantic models with sample data"
+      ],
+      "commit_condition": "Run `pytest tests/test_models.py -v` — all 8 tests pass; run `python -c \"from backend.config import db; print(db.sessions.count_documents({}))\"` — returns 0 (empty collection exists and is queryable)",
+      "example_input": "FastAPI server running on localhost:8000, MongoDB 7.0 running on localhost:27017, no collections created",
+      "example_output": "Run `mongo mongodb://localhost:27017/studybattles --eval \"db.sessions.findOne()\"` — returns null (collection exists, no documents yet); `from backend.models.session import Session; s = Session(...); print(s.model_dump())` — returns dict with all required fields"
+    },
+    {
+      "id": 3,
+      "title": "Document Upload and Text Extraction Pipeline",
+      "deliverable": "`POST /api/documents/upload` accepts multipart form-data with file (PPTX|DOCX) or youtube_url (string), stores file in AWS S3 at `s3://bucket/documents/{session_id}/{doc_id}.{ext}`, returns JSON with `{\"doc_id\": \"...\", \"filename\": \"...\", \"content_text\": \"...first 5000 chars...\", \"file_type\": \"...\", \"s3_key\": \"...\"}`",
+      "tasks": [
+        "Create `backend/services/s3_service.py` with functions: upload_file_to_s3(file_bytes, bucket, s3_key) → s3_key (str), download_file_from_s3(bucket, s3_key) → file_bytes",
+        "Create `backend/services/text_extraction.py` with functions: extract_from_pptx(file_path) → str (concatenated slide text), extract_from_docx(file_path) → str (full document text), extract_from_youtube_metadata(url) → str (title + description, no video download required)",
+        "Create `backend/routes/documents.py` with POST `/api/documents/upload` endpoint: accepts session_id (query param), file (multipart), or youtube_url (form field); saves to MongoDB documents collection; returns document JSON with first 5000 chars of content_text",
+        "Create `tests/test_upload.py` mocking AWS S3 and testing PPTX/DOCX extraction with sample files; mock text extraction to verify database insert",
+        "Add boto3 S3 client initialization in `backend/config.py` using AWS credentials from .env",
+        "Create `backend/utils/validators.py` with function validate_file_type(filename) → bool (returns True only for .pptx, .docx)"
+      ],
+      "commit_condition": "Run `pytest tests/test_upload.py -v` — all 6 tests pass with mocked S3 and text extraction; run `curl -X POST http://localhost:8000/api/documents/upload -F 'session_id=test-uuid' -F 'file=@tests/sample.pptx'` — returns HTTP 200 with doc_id and content_text keys",
+      "example_input": "MongoDB with sessions collection populated with one session doc; S3 bucket created and credentials configured in .env; sample PPTX and DOCX files in tests/",
+      "example_output": "Run `curl -X POST http://localhost:8000/api/documents/upload -F 'session_id=550e8400-e29b-41d4-a716-446655440000' -F 'file=@tests/algebra_notes.pptx'` — returns HTTP 201: `{\"doc_id\": \"64a1b2c3\", \"filename\": \"algebra_notes.pptx\", \"file_type\": \"pptx\", \"s3_key\": \"documents/550e8400-e29b-41d4-a716-446655440000/64a1b2c3.pptx\", \"content_text\": \"Chapter 1: Linear Equations...\"}`"
+    },
+    {
+      "id": 4,
+      "title": "OpenAI Tree Generation and Node Creation",
+      "deliverable": "`POST /api/trees/generate` accepts `{\"session_id\": \"...\", \"doc_id\": \"...\"}`, calls OpenAI GPT-4 API with document content, returns JSON tree with root node containing 2–4 children, each child containing 2–3 children (max depth 3), structure: `{\"tree_id\": \"...\", \"root_node_id\": \"...\", \"all_nodes\": [{\"node_id\": \"...\", \"label\": \"...\", \"depth\": 0, \"parent_node_id\": null, \"children_node_ids\": [...], \"is_boss\": true}, ...]}`",
+      "tasks": [
+        "Create `backend/services/openai_service.py` with function generate_topic_tree(document_content: str) → dict (tree structure as JSON); uses OpenAI GPT-4 with system prompt: 'Generate a learning hierarchy with max depth 3. Root node is the main topic. Children are subtopics. Leaf nodes are skills to master. Return JSON with structure: {\"root_label\": \"...\", \"children\": [{\"label\": \"...\", \"children\": [...]}]}'",
+        "Create `backend/routes/trees.py` with POST `/api/trees/generate` endpoint: accepts session_id and doc_id (JSON body), retrieves document content from MongoDB, calls OpenAI service, recursively creates TreeNode documents in MongoDB, returns tree JSON with all node_ids",
+        "Implement recursive tree insertion in `backend/services/tree_service.py`: function insert_tree_recursively(parent_node_id, children_data, session_id, depth) → list of node_ids; validates max depth is 3 and each non-leaf has 2–3 children",
+        "Create `tests/test_tree_generation.py` mocking OpenAI API responses with sample tree JSON; verify MongoDB insertion matches returned tree structure",
+        "Add error handling in tree generation for OpenAI API timeouts and malformed responses (return HTTP 400 with error message)",
+        "Create `backend/services/openai_service.py` function validate_tree_structure(tree_dict) → bool ensuring depth ≤ 3 and all nodes have required fields"
+      ],
+      "commit_condition": "Run `pytest tests/test_tree_generation.py -v` — all 5 tests pass with mocked OpenAI; run `curl -X POST http://localhost:8000/api/trees/generate -H 'Content-Type: application/json' -d '{\"session_id\": \"test-uuid\", \"doc_id\": \"test-doc-id\"}' -v` — returns HTTP 201 with tree_id and all_nodes array containing ≥3 nodes with varying depths",
+      "example_input": "MongoDB documents collection contains one document with doc_id and content_text set to 'Algebra Chapter 1: Linear Equations and Systems'; OpenAI API key configured",
+      "example_output": "Run `curl -X POST http://localhost:8000/api/trees/generate -H 'Content-Type: application/json' -d '{\"session_id\": \"550e8400-e29b-41d4-a716-446655440000\", \"doc_id\": \"64a1b2c3\"}'` — returns HTTP 201: `{\"tree_id\": \"tree-uuid-1\", \"root_node_id\": \"node-0\", \"all_nodes\": [{\"node_id\": \"node-0\", \"label\": \"Algebra\", \"depth\": 0, \"parent_node_id\": null, \"children_node_ids\": [\"node-1\", \"node-2\"], \"is_boss\": true, \"defeated\": false}, {\"node_id\": \"node-1\", \"label\": \"Linear Equations\", \"depth\": 1, \"parent_node_id\": \"node-0\", \"children_node_ids\": [\"node-3\", \"node-4\"], \"is_boss\": true, \"defeated\": false}, ...]}`"
+    },
+    {
+      "id": 5,
+      "title": "Question Generation and Boss Encounter Setup",
+      "deliverable": "`POST /api/questions/generate-for-node` accepts `{\"session_id\": \"...\", \"node_id\": \"...\"}`, calls OpenAI GPT-4 to generate 3–5 questions in predetermined formats (Define, Solve, Compare, ELI5, FinishTheAnswer), returns JSON array: `[{\"question_id\": \"...\", \"node_id\": \"...\", \"question_text\": \"...\", \"question_type\": \"Define\", \"created_at\": \"...\"}, ...]`",
+      "tasks": [
+        "Create `backend/services/question_generation_service.py` with function generate_questions_for_node(node_label: str, parent_labels: list[str], depth: int) → list[dict]; uses OpenAI GPT-4 with prompt: 'Given topic label and question types [Define, Solve, Compare, ELI5, FinishTheAnswer], generate 3–5 questions. Return JSON array of questions with fields: question_text, question_type, difficulty (int 1–5)'",
+        "Create `backend/routes/questions.py` with POST `/api/questions/generate-for-node` endpoint: accepts session_id and node_id (JSON body), retrieves node details from MongoDB, calls question generation service, inserts questions into MongoDB questions collection, returns question array",
+        "Implement question type validation in `backend/utils/validators.py`: function validate_question_type(q_type: str) → bool (returns True only for Define|Solve|Compare|ELI5|FinishTheAnswer)",
+        "Create `tests/test_question_generation.py` mocking OpenAI API with sample question JSON arrays; verify MongoDB insertion and question type validation",
+        "Add constraint in POST `/api/questions/generate-for-node` to skip generation if questions already exist for node (return existing questions instead)",
+        "Create error handling for OpenAI API failures in question generation (return HTTP 500 with 'Failed to generate questions for node')"
+      ],
+      "commit_condition": "Run `pytest tests/test_question_generation.py -v` — all 6 tests pass; run `curl -X POST http://localhost:8000/api/questions/generate-for-node -H 'Content-Type: application/json' -d '{\"session_id\": \"test-uuid\", \"node_id\": \"node-3\"}'` — returns HTTP 201 with array of 3–5 question objects, each with question_type in [Define, Solve, Compare, ELI5, FinishTheAnswer]",
+      "example_input": "MongoDB trees collection contains tree with node_id='node-3' (depth 2, label='Solving Linear Equations'); no questions exist for this node",
+      "example_output": "Run `curl -X POST http://localhost:8000/api/questions/generate-for-node -H 'Content-Type: application/json' -d '{\"session_id\": \"550e8400-e29b-41d4-a716-446655440000\", \"node_id\": \"node-3\"}'` — returns HTTP 201: `[{\"question_id\": \"q1-uuid\", \"node_id\": \"node-3\", \"question_text\": \"Define what a linear equation is\", \"question_type\": \"Define\", \"created_at\": \"2024-01-15T10:00:00Z\"}, {\"question_id\": \"q2-uuid\", \"node_id\": \"node-3\", \"question_text\": \"Solve: 2x + 3 = 7\", \"question_type\": \"Solve\", \"created_at\": \"2024-01-15T10:00:01Z\"}, ...]`"
+    },
+    {
+      "id": 6,
+      "title": "Answer Submission and LLM-Based Mark Scheme Evaluation",
+      "deliverable": "`POST /api/responses/submit` accepts `{\"session_id\": \"...\", \"question_id\": \"...\", \"student_answer\": \"...\"}`, calls OpenAI GPT-4 to generate mark scheme from expected answer + student answer, returns `{\"response_id\": \"...\", \"marks_awarded\": 0.85, \"feedback\": \"Good attempt...\", \"answered_at\": \"...\"}`; marks range 0.0–1.0 representing percentage correct",
+      "tasks": [
+        "Create `backend/services/mark_scheme_service.py` with function evaluate_answer(question_text: str, question_type: str, student_answer: str, node_label: str) → tuple[float, str]; uses OpenAI GPT-4 with prompt: 'Question type: [question_type]. Node topic: [node_label]. Question: [question_text]. Student answer: [student_answer]. Generate expected answer key points and score student answer 0.0–1.0. Return JSON: {\"marks\": 0.85, \"feedback\": \"...\", \"key_points\": [\"...\"]}'",
+        "Create `backend/routes/responses.py` with POST `/api/responses/submit` endpoint: accepts session_id, question_id, student_answer (JSON body), retrieves question details from MongoDB, calls mark scheme service, inserts response into responses collection, returns response JSON with marks_awarded and feedback",
+        "Implement response caching in `backend/services/mark_scheme_service.py`: store mark scheme results in MongoDB mark_schemes collection keyed by question_id to avoid re-querying OpenAI for identical questions",
+        "Add validation in `/api/responses/submit` to prevent duplicate submissions for same question (return HTTP 409 if response already exists for question_id + session_id combination)",
+        "Create `tests/test_evaluation.py` mocking OpenAI API with sample mark scheme responses; verify marks are floats between 0.0–1.0 and feedback is non-empty string",
+        "Add error handling for OpenAI API failures (return HTTP 500 with 'Failed to evaluate answer')"
+      ],
+      "commit_condition": "Run `pytest tests/test_evaluation.py -v` — all 5 tests pass; run `curl -X POST http://localhost:8000/api/responses/submit -H 'Content-Type: application/json' -d '{\"session_id\": \"test-uuid\", \"question_id\": \"q1-uuid\", \"student_answer\": \"A linear equation is an equation with a variable to the first power\"}'` — returns HTTP 201 with marks_awarded as float between 0.0 and 1.0 and feedback as non-empty string",
+      "example_input": "MongoDB questions collection contains question_id='q1-uuid' with question_text='Define what a linear equation is' and question_type='Define'; no responses exist for this question",
+      "example_output": "Run `curl -X POST http://localhost:8000/api/responses/submit -H 'Content-Type: application/json' -d '{\"session_id\": \"550e8400\", \"question_id\": \"q1-uuid\", \"student_answer\": \"A linear equation is an algebraic equation where each term is either a constant or the product of a constant and a single variable to the first power\"}'` — returns HTTP 201: `{\"response_id\": \"r1-uuid\", \"question_id\": \"q1-uuid\", \"marks_awarded\": 0.92, \"feedback\": \"Excellent definition covering all key elements: algebraic equation, constant terms, single variable, first power. Minor: Could mention '=0 form'.\", \"answered_at\": \"2024-01-15T10:00:00Z\"}`"
+    },
+    {
+      "id": 7,
+      "title": "Node Unlock Logic and Boss Defeat Mechanics",
+      "deliverable": "`GET /api/trees/{tree_id}/status` returns tree with each node's `defeated` field updated based on rule: leaf node is defeated if all its questions are answered with marks ≥ 0.7; parent node is defeated if all children are defeated; returns `{\"tree_id\": \"...\", \"root_node_id\": \"...\", \"all_nodes\": [{\"node_id\": \"...\", \"defeated\": true|false, ...}, ...]}`; `POST /api/trees/unlock-parent` accepts defeated leaf node_id, updates parent node_id to defeated=true if all siblings defeated, cascades upward",
+      "tasks": [
+        "Create `backend/services/unlock_service.py` with function check_node_defeated(node_id: str, session_id: str) → bool: returns True if node is leaf and all its questions answered with marks ≥ 0.7, or if node is parent and all children defeated",
+        "Create `backend/services/unlock_service.py` function cascade_unlock(node_id: str, session_id: str) → list[str] (list of newly defeated node_ids): checks if parent node should be defeated; recursively cascades up tree until no more parents unlock",
+        "Create `backend/routes/trees.py` POST `/api/trees/unlock-parent` endpoint: accepts node_id (JSON), validates node exists, calls cascade_unlock service, updates all affected nodes to defeated=true in MongoDB, returns list of newly defeated node_ids",
+        "Create `backend/routes/trees.py` GET `/api/trees/{tree_id}/status` endpoint: retrieves tree from MongoDB, computes defeated status for all nodes using check_node_defeated, returns tree JSON with current defeated state",
+        "Create `tests/test_unlock.py` testing: leaf node defeated after all questions answered with ≥0.7 marks; parent node defeated after all children defeated; cascade unlocking up tree; multiple trees don't interfere",
+        "Add safeguard in cascade_unlock: if node is root and becomes defeated, set a flag in session collection (e.g., tree_completed=true)"
+      ],
+      "commit_condition": "Run `pytest tests/test_unlock.py -v` — all 7 tests pass; run `curl -X POST http://localhost:8000/api/trees/unlock-parent -H 'Content-Type: application/json' -d '{\"node_id\": \"node-4\", \"session_id\": \"test-uuid\"}'` — returns HTTP 200 with array containing node_ids of newly defeated nodes; follow with `curl -X GET http://localhost:8000/api/trees/tree-uuid-1/status` — returns tree JSON showing updated defeated=true for affected nodes",
+      "example_input": "MongoDB has tree with 5 nodes (root → 2 children → 4 leaf grandchildren). Three leaf nodes have all questions answered with marks ≥0.7 (defeated=true); one leaf still unanswered (defeated=false). No parent nodes defeated yet.",
+      "example_output": "Run `curl -X POST http://localhost:8000/api/trees/unlock-parent -H 'Content-Type: application/json' -d '{\"node_id\": \"node-4\", \"session_id\": \"550e8400\"}'` (submit last unanswered leaf) — returns HTTP 200: `{\"newly_defeated_nodes\": [\"node-4\", \"node-1\", \"node-0\"]}`; follow with `curl -X GET http://localhost:8000/api/trees/tree-uuid-1/status` — returns tree showing node-4.defeated=true, node-1.defeated=true (both children defeated), node-0.defeated=true (root, all children defeated)"
+    },
+    {
+      "id": 8,
+      "title": "React Frontend Component Structure and API Integration",
+      "deliverable": "`npm start` serves React on `http://localhost:3000` with routes: `/` (session init → redirect to upload), `/upload` (file upload form), `/trees` (tree view grid showing roots), `/tree/:treeId` (interactive tree visualization), `/node/:nodeId/questions` (question bank), `/question/:questionId/answer` (answer submission form); all components fetch from FastAPI backend on `http://localhost:8000` using axios; localStorage stores session_id",
+      "tasks": [
+        "Create `frontend/src/services/api.js` exporting axios instance configured with `baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000'` and interceptors for error handling",
+        "Create `frontend/src/pages/Upload.jsx` component with form: file input (accept .pptx, .docx) or YouTube URL input, submit button that POSTs to `/api/documents/upload`, stores session_id in localStorage, redirects to `/trees` on success, displays error toast on failure",
+        "Create `frontend/src/pages/TreeList.jsx` component: GETs `/api/sessions/{sessionId}` to list documents, displays grid of document cards each with upload date, filename, 'View Tree' button that navigates to `/tree/{treeId}`, 'New Document' button to return to upload page",
+        "Create `frontend/src/pages/TreeView.jsx` component: GETs `/api/trees/{treeId}/status`, renders tree visualization (can use react-tree-graph or custom SVG/canvas), nodes colored by defeated status (gray=locked, green=defeated), nodes clickable to navigate to `/node/{nodeId}/questions`, shows node label and 'Defeated' badge if applicable",
+        "Create `frontend/src/pages/QuestionBank.jsx` component: GETs `/api/questions/generate-for-node?node_id={nodeId}`, displays list of 3–5 questions with type badge (Define, Solve, Compare, ELI5, FinishTheAnswer), 'Answer' button per question navigates to `/question/{questionId}/answer`",
+        "Create `frontend/src/pages/AnswerForm.jsx` component: GETs `/api/questions/{questionId}`, renders question text and question_type-specific input (text field for Define/ELI5/FinishTheAnswer, math input for Solve, two text fields for Compare), submit button POSTs to `/api/responses/submit`, displays marks and feedback on success, allows return to question bank"
+      ],
+      "commit_condition": "Run `npm start` in frontend/ — React dev server starts on http://localhost:3000 without build errors; navigate to `/upload` and see file input form; upload mock PPTX file (mock with `new File(['test'], 'test.pptx', {type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation'})`) — form submits without crashing (may fail at backend, but frontend handles error gracefully)",
+      "example_input": "React 18 project initialized, axios installed, no components created, REACT_APP_API_URL not set in .env (defaults to localhost:8000)",
+      "example_output": "Open http://localhost:3000 in browser → redirects to `/upload`; upload form with file picker and URL input visible; click file input → native file dialog opens; select PPTX file and click Submit → spinner displays while uploading; on success (assuming backend ready), redirects to `/trees` showing uploaded document in grid; click 'View Tree' → navigates to `/tree/:treeId` displaying tree nodes as circles/boxes with labels, colored by defeated status; click on leaf node → navigates to `/node/:nodeId/questions` showing 3–5 question cards; click 'Answer' on first question → navigates to `/question/:questionId/answer` with question text and input field matching question type"
+    },
+    {
+      "id": 9,
+      "title": "Session Persistence and Local Storage State Management",
+      "deliverable": "localStorage stores `{\"session_id\": \"...\", \"current_tree_id\": \"...\", \"answered_questions\": {\"q1\": {\"marks\": 0.85, \"feedback\": \"...\"}, ...}, \"tree_state\": {\"node_id\": [\"defeated_status\"]}}` keyed as `studybattles_session`; `GET /api/sessions/{sessionId}/full` returns complete session state matching localStorage structure; page reload preserves user position and all answered question data",
+      "tasks": [
+        "Create `frontend/src/hooks/useSessionStorage.js` custom hook: getSession() returns parsed localStorage.studybattles_session or generates new session_id and saves; updateSession(key, value) merges value into localStorage.studybattles_session and persists",
+        "Create `frontend/src/context/SessionContext.js` React Context: wraps entire app, loads session from localStorage on mount, syncs all tree/question updates to localStorage via useSessionStorage hook, exports context consumers for pages to access session state",
+        "Modify `frontend/src/pages/Upload.jsx` to call SessionContext.updateSession('current_tree_id', treeId) after tree generated, persist to localStorage",
+        "Modify `frontend/src/pages/TreeView.jsx` to update SessionContext.updateSession('tree_state', {nodeId: defeatedStatus}) whenever tree status fetched from backend, maintain local tree state in component state as well",
+        "Modify `frontend/src/pages/AnswerForm.jsx` to call SessionContext.updateSession('answered_questions', {[questionId]: {marks, feedback}}) after response submitted, prevent re-submission of same question by checking localStorage first",
+        "Create `frontend/src/pages/SessionRestore.jsx` component (added to root Router): on app mount, checks localStorage for session_id; if exists, navigates to last accessed page (current_tree_id or `/trees` if not set); if localStorage empty, redirects to `/upload`"
+      ],
+      "commit_condition": "Run `npm start`, open http://localhost:3000, navigate to `/upload`, upload document (mock backend to auto-return tree_id), navigate to tree, click node, answer question (mock backend to auto-return marks=0.85), verify `localStorage.getItem('studybattles_session')` contains all answered questions and tree state; refresh page — should restore to same page and show answered question data without API refetch",
+      "example_input": "React app with SessionContext created but not integrated into pages; localStorage empty",
+      "example_output": "Open http://localhost:3000 → SessionContext initializes, generates session_id='550e8400...', saves to `localStorage['studybattles_session']={\"session_id\": \"550e8400...\", \"current_tree_id\": null, \"answered_questions\": {}, \"tree_state\": {}}`; upload document → session_id persisted, current_tree_id updated to 'tree-uuid-1'; navigate to `/tree/tree-uuid-1` → localStorage shows `tree_state: {\"node-0\": false, \"node-1\": true, ...}`; answer question with marks 0.85 → `answered_questions: {\"q1-uuid\": {\"marks\": 0.85, \"feedback\": \"...\"}}` added to localStorage; refresh page → SessionContext restores from localStorage, navigates to `/tree/tree-uuid-1` without API call, displays answered question with cached marks/feedback"
+    },
+    {
+      "id": 10,
+      "title": "Frontend Polish, Loading States, Error Handling, and Responsive Layout",
+      "deliverable": "All pages display loading spinners during API calls; all API errors caught and display toast notifications (e.g., 'Failed to upload document. Please try again.'); layout responsive on mobile (≥320px), tablet (≥768px), desktop (≥1024px) using CSS flexbox/grid; tree visualization adapts to screen size; disabled buttons during submission with visual feedback; 404 page for invalid routes",
+      "tasks": [
+        "Create `frontend/src/components/LoadingSpinner.jsx` component: simple rotating spinner SVG or CSS animation, centered overlay when isLoading=true, prevents interaction with page behind it",
+        "Create `frontend/src/components/Toast.jsx` and `frontend/src/context/ToastContext.js`: global toast notification system, exported methods showError(msg), showSuccess(msg), showInfo(msg); integrates with all API error handlers",
+        "Add error boundaries in `frontend/src/components/ErrorBoundary.jsx`: catches unhandled component errors, displays fallback UI with error message and 'Go Home' link",
+        "Modify `frontend/src/pages/Upload.jsx` to show LoadingSpinner during upload, disable submit button, display file size and type validation errors before submission",
+        "Modify `frontend/src/pages/TreeView.jsx` to render LoadingSpinner while fetching tree status, handle 404 if tree not found (navigate to `/trees`), display zoom/pan controls for large trees on desktop",
+        "Modify `frontend/src/pages/AnswerForm.jsx` to show LoadingSpinner while evaluating answer, disable submit after click, display submitted spinner instead of form inputs",
+        "Create `frontend/src/pages/NotFound.jsx` (404 page) and add to Router with wildcard route `*`, displays 'Page not found' message and link back to home"
+      ],
+      "commit_condition": "Run `npm start`, open http://localhost:3000, open browser DevTools → Network tab, simulate slow 3G throttling, navigate through all pages (upload, tree list, tree view, question bank, answer form) — each page displays loading spinner during API calls, no console errors, buttons disabled during submission; test mobile layout by resizing to 375px width → layout adapts, no horizontal scroll, text readable; intentionally trigger API error (e.g., set wrong API_URL) → error toast displays with message",
+      "example_input": "React app with pages created but no loading states, error handling, or responsive styling; CSS uses hardcoded pixel widths",
+      "example_output": "Open http://localhost:3000/upload on mobile (375px) → form inputs stack vertically, file input takes full width, submit button spans full width below; open on desktop (1440px) → form centered in container with max-width 600px, inputs and button side-by-side; throttle network to slow 3G, upload document → loading spinner displays for 3+ seconds while POST `/api/documents/upload` in flight, submit button grayed out and disabled; on error (e.g., 500 from backend), spinner disappears and toast notification shows 'Failed to upload document. Please try again.'; resize to 768px (tablet) → tree visualization adjusts to fit screen, no horizontal scroll; intentionally navigate to `/invalid-route` → 404 page displays with message and 'Return Home' link"
+    },
+    {
+      "id": 11,
+      "title": "End-to-End Testing, Docker Deployment, and Documentation",
+      "deliverable": "E2E test suite in `tests/e2e_test.py` (Python + Selenium) or Cypress verifies complete flow: upload document → generate tree → answer all questions → unlock all nodes → refresh page and verify state persists; Dockerfile in repo root builds and runs app; docker-compose.yml starts FastAPI, React, MongoDB, and nginx (reverse proxy); deployed to AWS EC2 instance; README.md documents setup, API endpoints, and architecture; run `pytest tests/ -v --cov=backend` → 85%+ code coverage reported",
+      "tasks": [
+        "Create `Dockerfile

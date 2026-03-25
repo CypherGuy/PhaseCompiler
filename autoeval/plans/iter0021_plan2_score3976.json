@@ -1,0 +1,171 @@
+```json
+{
+  "project": {
+    "name": "StudyBattles",
+    "language": "Python 3.11",
+    "runtime": "web (monorepo: FastAPI backend + React frontend)",
+    "package_manager": "pip (backend), npm (frontend)",
+    "framework": "FastAPI 0.111 (backend), React 18 (frontend)",
+    "database": "MongoDB 7.0",
+    "deployment": "Docker Compose + AWS EC2",
+    "external_services": ["OpenAI GPT-4 API", "AWS S3", "python-docx (DOCX parsing)", "python-pptx (PPTX parsing)", "yt-dlp (YouTube metadata extraction)"]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Environment Setup and Project Scaffolding",
+      "deliverable": "`python backend/main.py` serves FastAPI on port 8000; `npm start` serves React on port 3000; MongoDB runs on port 27017; `.env` contains OpenAI API key, AWS S3 credentials, and MongoDB URI",
+      "tasks": [
+        "Initialize Python 3.11 virtual environment and install FastAPI 0.111, uvicorn 0.29, pydantic 2.5, python-docx 0.8.11, python-pptx 0.6.21, yt-dlp 2024.01, pymongo 4.6, boto3 3.33, openai 1.10, and pytest 7.4 into requirements.txt",
+        "Create backend directory structure with subdirectories `routes/`, `models/`, `services/`, `utils/`, and `tests/` — create `backend/main.py` with FastAPI app instance and CORS middleware configured",
+        "Initialize React 18 frontend with Create React App and install axios 1.6, zustand 4.4, and react-router-dom 6.21; structure frontend directories as `src/pages/`, `src/components/`, `src/services/`, and `src/hooks/`",
+        "Create `.env` file in project root with placeholders for OPENAI_API_KEY, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_S3_BUCKET_NAME, MONGODB_URI, and MONGODB_DB_NAME",
+        "Configure MongoDB connection in `backend/services/database.py` using PyMongo; test connection by creating and reading a test document in a `test_connection` collection",
+        "Set up AWS S3 client in `backend/services/s3.py` using boto3; configure bucket name from environment variables",
+        "Initialize OpenAI client in `backend/services/openai_client.py` using openai 1.10 library with GPT-4 model reference"
+      ],
+      "commit_condition": "Run `python backend/main.py` — terminal prints 'Uvicorn running on http://127.0.0.1:8000'; in another terminal run `npm start --prefix frontend` — browser opens to http://localhost:3000 with Create React App homepage; run `python -c \"from pymongo import MongoClient; client = MongoClient('mongodb://localhost:27017'); print(client.admin.command('ping'))\"` — returns {\"ok\": 1.0}",
+      "example_input": "Cloned or initialized monorepo with no dependencies installed, no .env file, no MongoDB running",
+      "example_output": "Run `pip install -r requirements.txt` completes without errors; run `npm install --prefix frontend` completes without errors; `.env` file exists with all keys listed; run `python backend/main.py` — terminal shows 'Application startup complete'; run `curl http://localhost:8000/docs` — returns Swagger UI HTML"
+    },
+    {
+      "id": 2,
+      "title": "MongoDB Schema and Core Data Models",
+      "deliverable": "`db.collections.Sessions.findOne()` returns document with structure `{_id, session_id, user_id, tree_data, current_node_id, node_states (map of node_id → {unlocked, defeated}), created_at, updated_at}` and indices for queries",
+      "tasks": [
+        "Define `backend/models/session.py` with Pydantic models: Session (session_id, user_id, tree_data as nested JSON, current_node_id, node_states dict), Node (node_id, label, question_type, parent_id, children_ids, resource_type, resource_url, boss_status bool, unlocked bool, defeated bool)",
+        "Define `backend/models/question.py` with Pydantic model: Question (question_id, node_id, question_text, question_type from enum [Define, Solve, Compare, ELI5, FinishTheAnswer], expected_key_points list of strings)",
+        "Define `backend/models/answer.py` with Pydantic model: Answer (answer_id, question_id, session_id, student_answer_text, mark_scheme dict with key_points and reasoning, raw_score float 0–1, feedback_text, marked_at timestamp)",
+        "Create `backend/services/database.py` function `init_collections()` that creates MongoDB collections `sessions`, `questions`, `answers`, `trees` with indices: sessions on session_id (unique), questions on node_id, answers on (question_id, session_id)",
+        "Implement `backend/services/database.py` CRUD functions: `create_session()`, `get_session()`, `update_session()`, `create_question()`, `get_question()`, `create_answer()`, `get_answer()` — each function tests MongoDB connection and logs operations",
+        "Write pytest tests in `tests/test_models.py` validating all Pydantic models serialize/deserialize correctly with 5 sample documents per model"
+      ],
+      "commit_condition": "Run `pytest tests/test_models.py -v` — all 15 tests pass; run `python -c \"from backend.services.database import init_collections; init_collections()\"` — executes without error; verify MongoDB: `db.sessions.getIndexes()` returns array with session_id unique index present",
+      "example_input": "MongoDB running but no collections or indices exist",
+      "example_output": "db.sessions.findOne() returns null (empty collection); run `init_collections()`; db.sessions.getIndexes() returns [{key: {_id: 1}}, {key: {session_id: 1}, unique: true}]; db.questions.getIndexes() returns indices on node_id"
+    },
+    {
+      "id": 3,
+      "title": "Document Upload and Resource Storage Service",
+      "deliverable": "`POST /api/upload` accepts multipart/form-data with file (PPTX, DOCX, or YouTube URL), extracts text or metadata, stores file/metadata in AWS S3 under session UUID path, returns JSON with resource_id, resource_type (pptx|docx|youtube), extracted_text or url, and S3 location",
+      "tasks": [
+        "Create `backend/services/file_parser.py` with functions: `parse_docx(file_bytes)` returns extracted text as string, `parse_pptx(file_bytes)` returns concatenated text from all slides, `extract_youtube_metadata(url)` returns {title, channel, duration, url} using yt-dlp library",
+        "Create `backend/services/s3_handler.py` with functions: `upload_file_to_s3(file_bytes, session_id, file_name)` returns S3 object key and signed URL, `upload_resource_metadata(resource_type, session_id, metadata_dict)` stores metadata JSON in S3",
+        "Implement `backend/routes/upload.py` with `POST /api/upload` endpoint: accepts multipart form-data (file or youtube_url), generates session_id if missing, calls appropriate parser, uploads to S3, stores resource metadata in MongoDB `resources` collection, returns {resource_id, resource_type, extracted_text (limited to 5000 chars), s3_url}",
+        "Add request/response validation in `backend/models/upload.py` with UploadRequest (file or youtube_url) and UploadResponse (resource_id, resource_type, extracted_text, s3_url, created_at)",
+        "Create `backend/services/text_chunker.py` function `chunk_text(text, chunk_size=1000)` splits extracted text into manageable chunks for tree generation, returns list of chunk strings",
+        "Write pytest tests in `tests/test_upload.py` with mock S3 uploads: test DOCX parsing returns text, test PPTX parsing returns concatenated slides, test YouTube metadata extraction returns title/url, test POST /api/upload returns correct response schema (5 tests minimum)"
+      ],
+      "commit_condition": "Run `pytest tests/test_upload.py -v` — all 5 tests pass; run `curl -X POST http://localhost:8000/api/upload -F 'file=@sample.docx'` — returns HTTP 201 with JSON {resource_id, resource_type: \"docx\", extracted_text, s3_url, created_at}",
+      "example_input": "Backend running, MongoDB connected, AWS S3 credentials configured; no documents uploaded yet",
+      "example_output": "Create a test DOCX file with text 'Introduction to Biology. Cells are living organisms...'; run `curl -X POST http://localhost:8000/api/upload -F 'file=@test.docx'` — returns HTTP 201: {resource_id: \"res_64a1b...\", resource_type: \"docx\", extracted_text: \"Introduction to Biology. Cells are living...\", s3_url: \"https://s3.amazonaws.com/...\", created_at: \"2024-01-15T10:00:00Z\"}"
+    },
+    {
+      "id": 4,
+      "title": "Topic Tree Generation via OpenAI",
+      "deliverable": "`POST /api/generate-tree` accepts extracted_text and returns nested JSON tree structure with max 3 levels where leaf nodes have question_type field (Define|Solve|Compare|ELI5|FinishTheAnswer), all non-leaf nodes are closed, stored in MongoDB `trees` collection, tree_id returned",
+      "tasks": [
+        "Create `backend/services/tree_generator.py` function `generate_tree_structure(extracted_text, max_depth=3)` that calls OpenAI GPT-4 with prompt: 'Generate a hierarchical study tree from this text with max 3 levels. Each leaf node must have ONE question_type from [Define, Solve, Compare, ELI5, FinishTheAnswer]. Return valid JSON with structure {id, label, question_type (null for non-leaves), children: [...]}. Leaf nodes: true, non-leaves: false. Max 5 children per node.'",
+        "Implement OpenAI prompt template in `backend/services/tree_generator.py` that includes safety checks: validate response is valid JSON, validate max depth ≤ 3, validate leaf nodes have question_type, validate non-leaf nodes have children array",
+        "Create `backend/routes/tree.py` with `POST /api/generate-tree` endpoint: accepts {resource_id, extracted_text}, calls tree generator, validates schema, stores tree JSON in MongoDB `trees` collection with {tree_id, resource_id, tree_data, status: 'generated', created_at}, returns {tree_id, tree_data, node_count, leaf_node_count}",
+        "Implement `backend/services/tree_validator.py` function `validate_tree_schema(tree_json)` checking: all nodes have id/label, leaf nodes have question_type, no node has depth > 3, leaf count > 0, returns (is_valid bool, error_message string)",
+        "Create `backend/models/tree.py` with Pydantic models: TreeNode (id, label, question_type optional, children: list of TreeNode), Tree (tree_id, resource_id, tree_data: TreeNode, node_count, leaf_node_count, created_at)",
+        "Write pytest tests in `tests/test_tree_generator.py` with mock OpenAI responses: test tree generation returns valid JSON (5 tests: valid structure, max depth respected, leaf nodes typed, non-leaves have children, error handling for invalid OpenAI response)"
+      ],
+      "commit_condition": "Run `pytest tests/test_tree_generator.py -v` — all 5 tests pass; run `curl -X POST http://localhost:8000/api/generate-tree -H 'Content-Type: application/json' -d '{\"extracted_text\": \"Biology: cells, DNA, proteins...\"}'` — returns HTTP 201 with JSON {tree_id, tree_data with nested structure, node_count: N, leaf_node_count: M}",
+      "example_input": "POST request with extracted_text: 'Biology: Cells are the basic unit of life. Cell types: prokaryotic and eukaryotic. Eukaryotic cells have nucleus, mitochondria. Prokaryotic cells have nucleoid region.'",
+      "example_output": "HTTP 201: {tree_id: \"tree_64a1b...\", tree_data: {id: \"n1\", label: \"Biology\", question_type: null, children: [{id: \"n2\", label: \"Cell Types\", children: [{id: \"n3\", label: \"Prokaryotic Cells\", question_type: \"Define\", children: []}, {id: \"n4\", label: \"Eukaryotic Cells\", question_type: \"Define\", children: []}]}, ...]}, node_count: 7, leaf_node_count: 4}"
+    },
+    {
+      "id": 5,
+      "title": "Question Generation and Mark Scheme Creation",
+      "deliverable": "`POST /api/generate-questions` accepts tree_id and for each leaf node calls OpenAI to generate one question and mark scheme, stores Question documents in MongoDB per leaf node, returns {tree_id, questions_generated_count, sample_question with mark_scheme}",
+      "tasks": [
+        "Create `backend/services/question_generator.py` function `generate_question_and_mark_scheme(node_id, node_label, question_type, extracted_text_context)` that calls OpenAI GPT-4 with prompt template per question_type: 'For [node_label] in topic [context], generate a [question_type] question. Include expected key points (list of 3–5 strings). Return JSON: {question_text, key_points: [...]}'",
+        "Implement question type-specific prompts in `backend/services/question_generator.py`: Define (ask to define concept with key features), Solve (give a calculation/problem to solve step-by-step), Compare (compare two concepts), ELI5 (explain like I'm 5 — simple language), FinishTheAnswer (given stem, student completes sentence with key points)",
+        "Create `backend/routes/questions.py` with `POST /api/generate-questions` endpoint: accepts {tree_id}, retrieves tree from MongoDB, identifies all leaf nodes, calls question generator for each leaf node, stores Question documents in MongoDB with {question_id, node_id, question_text, question_type, key_points, mark_scheme_raw (from LLM), created_at}, returns {tree_id, questions_generated_count, sample_question_id, sample_question_text, sample_key_points}",
+        "Implement `backend/services/mark_scheme_builder.py` function `build_mark_scheme(question_type, llm_key_points, question_text)` that structures key points into scorable mark scheme: {key_points, max_score: 5, scoring_rubric: 'Full marks for all key points covered, partial marks for subset...'}",
+        "Add caching in `backend/services/question_generator.py` to avoid re-generating identical questions if same tree queried twice: store (node_id, question_type) → question_text mapping in MongoDB `generated_questions_cache` collection",
+        "Write pytest tests in `tests/test_question_generator.py` with mock OpenAI responses: test each question_type generates appropriate question (5 tests), test mark scheme structure is valid, test caching prevents duplicate API calls (7 tests minimum)"
+      ],
+      "commit_condition": "Run `pytest tests/test_question_generator.py -v` — all 7 tests pass; run `curl -X POST http://localhost:8000/api/generate-questions -H 'Content-Type: application/json' -d '{\"tree_id\": \"tree_64a1b...\"}'` — returns HTTP 201 with JSON {tree_id, questions_generated_count: 4, sample_question_text: \"Define prokaryotic cell...\", sample_key_points: [\"no nucleus\", \"single circular DNA\", \"ribosomes present\"]}",
+      "example_input": "Tree with 4 leaf nodes (all Define type) stored in MongoDB; no questions generated yet",
+      "example_output": "Run POST /api/generate-questions with tree_id; HTTP 201: {tree_id: \"tree_64a1b...\", questions_generated_count: 4, sample_question_id: \"q_64a1b...\", sample_question_text: \"Define what is a prokaryotic cell and list key features.\", sample_key_points: [\"lacks a membrane-bound nucleus\", \"has single circular chromosome\", \"contains ribosomes and cell wall\", \"found in bacteria\"]}; db.questions.findOne() returns {question_id, node_id, question_text, question_type: \"Define\", key_points: [...], mark_scheme_raw: {...}, created_at}"
+    },
+    {
+      "id": 6,
+      "title": "Answer Submission and LLM-Based Marking Service",
+      "deliverable": "`POST /api/submit-answer` accepts {session_id, question_id, student_answer} and calls OpenAI to evaluate against mark scheme, stores Answer document in MongoDB, returns {answer_id, mark_score (0–1), feedback_text, key_points_hit (list of strings matched), key_points_missed (list of strings not covered)}",
+      "tasks": [
+        "Create `backend/services/answer_evaluator.py` function `evaluate_answer(student_answer, question_type, key_points_list, question_text)` that calls OpenAI GPT-4 with prompt: 'Student answered: [student_answer]. Expected key points: [list]. Question type: [type]. Score how well the answer covers key points (0–1 scale). Return JSON: {score, feedback, key_points_hit: [...], key_points_missed: [...]}'",
+        "Implement type-specific evaluation logic in `backend/services/answer_evaluator.py`: for Solve questions, check for correct methodology; for Define, check coverage of key concepts; for Compare, check both sides covered; for ELI5, check simplicity and accuracy; for FinishTheAnswer, check completion aligns with key points",
+        "Create `backend/routes/answers.py` with `POST /api/submit-answer` endpoint: accepts {session_id, question_id, student_answer}, retrieves question and mark scheme from MongoDB, calls answer evaluator, creates Answer document with {answer_id, question_id, session_id, student_answer, score (0–1), feedback, key_points_hit, key_points_missed, marked_at}, returns full answer object with evaluation results",
+        "Implement `backend/services/answer_evaluator.py` function `extract_keywords(text)` to help with evaluation: tokenizes student answer and mark scheme to identify matching phrases, returns list of covered key points (used as fallback if LLM response malformed)",
+        "Add validation in `backend/routes/answers.py` to ensure: session_id exists in MongoDB, question_id exists and belongs to tree in session, student_answer is non-empty and < 5000 chars, returns 400 Bad Request if validation fails",
+        "Write pytest tests in `tests/test_answer_evaluator.py` with mock OpenAI responses: test Define answer evaluation, test Solve answer evaluation, test Compare answer evaluation, test ELI5 answer evaluation, test FinishTheAnswer evaluation, test fallback keyword extraction (6 tests minimum)"
+      ],
+      "commit_condition": "Run `pytest tests/test_answer_evaluator.py -v` — all 6 tests pass; run `curl -X POST http://localhost:8000/api/submit-answer -H 'Content-Type: application/json' -d '{\"session_id\": \"sess_...\", \"question_id\": \"q_...\", \"student_answer\": \"A prokaryotic cell has no nucleus and single DNA chromosome\"}'` — returns HTTP 201 with JSON {answer_id, score: 0.8, feedback: \"Good coverage...\", key_points_hit: [\"no nucleus\", \"single DNA\"], key_points_missed: [\"ribosomes present\"]}",
+      "example_input": "POST request: session_id exists, question for Define node 'prokaryotic cell' exists with key_points: [\"no nucleus\", \"single circular DNA\", \"ribosomes\", \"cell wall\"], student_answer: \"prokaryotic cells lack a nucleus and have circular DNA\"",
+      "example_output": "HTTP 201: {answer_id: \"ans_64a1b...\", question_id: \"q_64a1b...\", session_id: \"sess_64a1b...\", student_answer: \"prokaryotic cells lack a nucleus and have circular DNA\", score: 0.75, feedback: \"Correct on nucleus and DNA structure. Missing mention of ribosomes and cell wall for full marks.\", key_points_hit: [\"no nucleus\", \"single circular DNA\"], key_points_missed: [\"ribosomes\", \"cell wall\"], marked_at: \"2024-01-15T10:05:00Z\"}"
+    },
+    {
+      "id": 7,
+      "title": "Node Unlock Mechanics and State Management",
+      "deliverable": "`POST /api/complete-node` accepts {session_id, node_id, answer_score} and updates MongoDB session document to mark node as defeated; if all children of a parent are defeated, parent automatically unlocks and becomes answerable; endpoint returns {node_id, defeated: true, parent_id, parent_status: unlocked|still_locked}",
+      "tasks": [
+        "Create `backend/services/node_state_manager.py` function `complete_node(session_id, node_id, answer_score)` that: updates node_states in session document with {node_id: {defeated: true, score: answer_score, completed_at: timestamp}}, checks if all sibling nodes are defeated, if yes calls `unlock_parent(session_id, parent_id)` and returns parent unlock status",
+        "Implement `backend/services/node_state_manager.py` function `unlock_parent(session_id, parent_id)` that: sets parent node as unlocked in session node_states, generates a question for the parent node (call question generator if not exists), returns {parent_id, unlocked: true, new_question_available: true/false}",
+        "Implement `backend/services/node_state_manager.py` function `get_node_state(session_id, node_id)` returning: {node_id, defeated: bool, unlocked: bool, answered_at, score, is_answerable: bool (true if leaf and (unlocked or root), or all children defeated)}",
+        "Create `backend/routes/nodes.py` with `POST /api/complete-node` endpoint: accepts {session_id, node_id, answer_score}, calls node_state_manager, updates session in MongoDB, returns {node_id, defeated: true, parent_id, parent_status, message: 'Node defeated! Parent unlocked.' or 'Keep grinding — siblings still locked.'}",
+        "Implement `backend/routes/nodes.py` `GET /api/nodes/{node_id}` endpoint: retrieves node data from tree and current state from session document, returns {node_id, label, question_type, parent_id, children_ids, state: {defeated, unlocked, answerable, score}, resource_type, resource_url}",
+        "Write pytest tests in `tests/test_node_state.py`: test defeating a leaf node marks it defeated (2 tests), test defeating all children unlocks parent (2 tests), test unlocking parent generates new question (1 test), test get_node_state returns correct answerable status (2 tests: leaf node with all children defeated, isolated leaf) — 7 tests minimum"
+      ],
+      "commit_condition": "Run `pytest tests/test_node_state.py -v` — all 7 tests pass; run `curl -X POST http://localhost:8000/api/complete-node -H 'Content-Type: application/json' -d '{\"session_id\": \"sess_...\", \"node_id\": \"n3\", \"answer_score\": 0.8}'` — returns HTTP 200 with JSON {node_id: \"n3\", defeated: true, parent_id: \"n2\", parent_status: \"still_locked\" or \"unlocked\"}; verify MongoDB: `db.sessions.findOne({session_id: \"sess_...\"}).node_states[\"n3\"]` returns {defeated: true, score: 0.8, completed_at: \"...\"} ",
+      "example_input": "Session with tree: n1 (root) → [n2, n3] (parent pair); n2 → [n4, n5] (children); n4 and n5 are leaf nodes; both answered and scored 0.7 and 0.8; session node_states has n4 and n5 marked defeated but n2 not yet unlocked",
+      "example_output": "Run POST /api/complete-node with node_id: \"n5\" (second child already defeated); HTTP 200: {node_id: \"n5\", defeated: true, parent_id: \"n2\", parent_status: \"unlocked\", message: \"All siblings defeated! Parent n2 unlocked.\"}; db.sessions.findOne() shows node_states[\"n2\"] = {unlocked: true, unlocked_at: \"...\"}; db.questions collection now contains new question for node n2"
+    },
+    {
+      "id": 8,
+      "title": "Frontend Initial Setup and Navigation Structure",
+      "deliverable": "`npm start` serves React on http://localhost:3000 with routes: `/` (home), `/upload`, `/tree/{tree_id}`, `/node/{node_id}`, `/results/{tree_id}` — each route renders component with header navigation, localStorage session persistence reads and displays current session_id and tree_id in UI",
+      "tasks": [
+        "Create frontend folder structure: `src/pages/` (HomePage, UploadPage, TreePage, NodePage, ResultsPage), `src/components/` (Header, NodeCard, QuestionDisplay, AnswerForm, TreeVisualization), `src/services/` (api.js for axios calls), `src/hooks/` (useSession, useTree, useNode), `src/stores/` (sessionStore.js using zustand)",
+        "Implement `src/stores/sessionStore.js` using zustand: state {sessionId, treeId, nodeStates, currentNodeId}, actions {setSession, getSession, updateNodeState, clearSession}, persist to localStorage with key 'studybattles_session'",
+        "Create `src/services/api.js` with axios instance and functions: `uploadFile(formData)`, `generateTree(extractedText)`, `generateQuestions(treeId)`, `submitAnswer(sessionId, questionId, studentAnswer)`, `completeNode(sessionId, nodeId, score)`, `getNodeData(nodeId)`, `getSessionState(sessionId)` — all return promise with data or throw error",
+        "Build `src/pages/HomePage.jsx` rendering: heading 'StudyBattles', description, two buttons: 'New Session (Upload Document)' and 'Continue Previous Session (if localStorage has active session)', if session exists show session_id and tree_id",
+        "Build `src/pages/UploadPage.jsx` with form: file input (accept .docx, .pptx) or textarea for YouTube URL, submit button, loading spinner, displays extracted text preview (first 500 chars), on success navigates to /tree/{tree_id} and saves tree_id to sessionStore",
+        "Set up React Router in `src/App.jsx` with routes: `/` → HomePage, `/upload` → UploadPage, `/tree/:tree_id` → TreePage (not built yet), `/node/:node_id` → NodePage (not built yet), `/results/:tree_id` → ResultsPage (not built yet); wrap Router with sessionStore provider"
+      ],
+      "commit_condition": "Run `npm start --prefix frontend` — page opens at http://localhost:3000 showing home page with heading 'StudyBattles' and two buttons; click 'New Session' — navigates to /upload with file input visible; verify localStorage: run `localStorage.getItem('studybattles_session')` in console — returns null (no session yet) or JSON object if previous session exists",
+      "example_input": "Frontend `npm start` after phases 1–7 backend setup; no session in localStorage",
+      "example_output": "Browser renders home page with heading 'StudyBattles', body text 'Upload documents to create a revision tree. Defeat leaf nodes to unlock parents.', two buttons: 'New Session (Upload Document)' and 'Continue Previous Session' (disabled if no localStorage session), footer with session info (hidden if no session); click 'New Session' button — routes to /upload page showing file input with placeholder 'Select .docx or .pptx' and textarea for YouTube URL"
+    },
+    {
+      "id": 9,
+      "title": "Frontend Tree Visualization and Node Navigation",
+      "deliverable": "Browser at `/tree/{tree_id}` renders hierarchical tree visualization with clickable nodes: leaf nodes are colored green if defeated or blue if unlocked and answerable, non-leaf nodes are gray if locked or green if all children defeated; clicking a leaf node routes to `/node/{node_id}` with question display; clicking a non-leaf shows message 'Defeat all children first'",
+      "tasks": [
+        "Create `src/components/TreeVisualization.jsx` that accepts tree data (nested JSON) and sessionState, renders interactive tree using recursive component TreeNode: parent nodes at top, children indented below, each node is clickable box with label and status badge (Locked, Unlocked, Defeated)",
+        "Implement node color logic in TreeVisualization: green box for defeated nodes (score displayed), blue box for unlocked answerable nodes, gray box for locked nodes with X icon, gold highlight for current_node_id if set in session",
+        "Create `src/pages/TreePage.jsx` that: reads tree_id from URL params, fetches tree from backend on mount via `api.getSessionState(sessionId)`, retrieves full tree from response, passes tree and node_states to TreeVisualization component, displays tree title and resource info (file name or YouTube URL), has 'Back to Home' button",
+        "Implement click handler in TreeVisualization: on leaf node click, check if unlocked or all children defeated via sessionStore state, if answerable navigate to `/node/{node_id}`, if not answerable show toast 'Node locked. Defeat siblings first.'; on non-leaf click show confirmation modal or toast",
+        "Add loading state in TreePage: while tree loading display spinner with message 'Loading tree...', on error display error banner with retry button, disable tree interaction during API calls",
+        "Write React component tests in `tests/TreeVisualization.test.jsx` using React Testing Library: test tree renders with correct structure, test node colors match state (3 tests), test node click navigation (2 tests) — 5 tests minimum"
+      ],
+      "commit_condition": "Run `npm start --prefix frontend` and navigate to `/tree/tree_64a1b...` — page renders tree visualization with nodes displayed hierarchically; nodes have different colors per state; click a green (defeated) leaf node — page navigates to `/node/n...` URL; click a locked gray node — shows toast 'Node locked'; verify with `screen.getAllByTestId('tree-node')` in React Testing Library — returns array of node elements matching tree structure",
+      "example_input": "Tree with structure: n1 (Biology) → [n2 (Cell Types), n3 (DNA)]; n2 → [n4 (Prokaryotic), n5 (Eukaryotic)]; session node_states: {n4: {defeated: true, score: 0.8}, n5: {unlocked: true, score: null}} (n5 not yet answered)",
+      "example_output": "Browser at /tree/tree_64a1b... renders: top-level node 'Biology' in gray box (not yet answerable); below it two child boxes 'Cell Types' (unlocked, waiting to be answered) and 'DNA' (locked); expanded 'Cell Types' shows 'Prokaryotic' (green defeated, score 0.8) and 'Eukaryotic' (blue unlocked); clicking 'Prokaryotic' navigates to /node/n4; clicking 'DNA' shows toast 'Node locked'; page displays 'Biology' as title with file source '(from sample.docx)'"
+    },
+    {
+      "id": 10,
+      "title": "Frontend Question Display, Answer Submission, and Feedback Display",
+      "deliverable": "Browser at `/node/{node_id}` renders question text and question-type-specific input form (text for Define/Solve, two text fields for Compare, single field for ELI5, completion field for FinishTheAnswer), submit button calls `/api/submit-answer`, displays returned mark score, feedback text, key_points_hit (green highlight), key_points_missed (red highlight), 'Next Node' button routes back to tree or to next unlocked node",
+      "tasks": [
+        "Create `src/components/QuestionDisplay.jsx` accepting question object {question_text, question_type, key_points}, renders question text in readable font, conditional UI per question_type: Define/Solve/ELI5 show single textarea, Compare shows two textareas (left/right), FinishTheAnswer shows stem text + completion textarea; displays question_type badge above question",
+        "Create `src/components/AnswerForm.jsx` accepting question_type, rendering form with: input field(s) per type, character count limit (5000 total), submit button, loading state (disabled during API call, shows spinner), validation error messages (empty answer shows 'Answer cannot be empty')",
+        "Create `src/components/FeedbackDisplay.jsx` accepting answer object {score, feedback, key_points_hit, key_points_missed}, renders: score as percentage and visual gauge (0–100%), feedback text in larger font, key_points_hit as green pill badges, key_points_missed as red pill badges with strikethrough, 'Excellent!', 'Good job!', 'Keep grinding!' message based on score threshold (>0.8, >0.5, else)",
+        "Build `src/pages/NodePage.jsx` that: reads node_id from URL, fetches question via `api.getNodeData(nodeId)` on mount, displays QuestionDisplay with fetched question, renders AnswerForm, on form submit calls `api.submitAnswer(sessionId, questionId, answer)`, displays loading spinner during submission, on success displays FeedbackDisplay, calls `api.completeNode(sessionId, nodeId, score)` to update state, shows 'Next Node' button or 'Back to Tree' button",
+        "Implement navigation logic in NodePage: after answer submitted and marked, 'Next Node' button either routes to next answerable sibling node (via sessionStore.nodeStates), or back to /tree/{tree_id} if no more siblings; 'Back to Tree' button routes to /tree/{tree_id}",
+        "Write React component tests in `tests/NodePage.test.jsx`: test question displays correctly (1 test), test answer submission calls API with correct payload (1 test), test feedback displays with score and key points (1 test), test navigation after submit (1 test) — 4 tests minimum"
+      ],
+      "commit_condition": "Run `npm start --prefix frontend` and navigate to `/node/n4` (a Define-type leaf node) — page displays question 'Define prokaryotic cell...', single textarea input, submit button; type answer 'has no nucleus', click submit — page shows loading spinner, then displays feedback 'Score: 40% (1/3 key points)' with green badge 'no nucleus' and red badges 'circular DNA, ribosomes'; 'Back to Tree' button visible; click button — navigates back to /tree/
