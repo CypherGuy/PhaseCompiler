@@ -1,0 +1,180 @@
+```json
+{
+  "project": {
+    "name": "StudyBattles",
+    "language": "Python 3.11",
+    "runtime": "web (FastAPI backend + React 18 frontend)",
+    "package_manager": "pip (backend), npm (frontend)",
+    "framework": "FastAPI 0.111 (backend), React 18 (frontend)",
+    "database": "MongoDB 7.0",
+    "deployment": "Docker + AWS EC2",
+    "external_services": [
+      "OpenAI GPT-4 API",
+      "AWS S3",
+      "AWS EC2"
+    ]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Environment Setup and FastAPI Foundation",
+      "deliverable": "`GET http://localhost:8000/health` returns {\"status\": \"ok\", \"version\": \"1.0.0\"}",
+      "tasks": [
+        "Create Python 3.11 virtual environment with pip and install FastAPI 0.111, uvicorn 0.29, python-dotenv 1.0, pydantic 2.5 into requirements.txt",
+        "Configure .env file with placeholders for OPENAI_API_KEY, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_S3_BUCKET, MONGODB_URI, and JWT_SECRET",
+        "Initialize MongoDB 7.0 connection in backend/db.py with motor (async driver) and define MongoClient setup function",
+        "Create backend/main.py with FastAPI app instance, CORS middleware configured for localhost:3000, and lifespan context manager for database connection",
+        "Add GET /health endpoint in backend/routes/health.py returning status and version",
+        "Initialize backend/models/ directory with Pydantic models for Topic, Node, Question, Answer, and StudentResponse",
+        "Write pytest test in tests/test_health.py verifying /health endpoint returns 200 with expected JSON"
+      ],
+      "commit_condition": "Run `python -m pytest tests/test_health.py -v` — all tests pass with 0 failures; then run `uvicorn backend.main:app --reload` and execute `curl http://localhost:8000/health | jq .` — returns {\"status\": \"ok\", \"version\": \"1.0.0\"}",
+      "example_input": "Empty project directory with no dependencies or services running",
+      "example_output": "Run `python -m pytest tests/test_health.py::test_health_endpoint -v` — output shows 'test_health_endpoint PASSED'; run `uvicorn backend.main:app --reload` and `curl -s http://localhost:8000/health | jq .` returns {\"status\": \"ok\", \"version\": \"1.0.0\"}"
+    },
+    {
+      "id": 2,
+      "title": "Document Upload and S3 Storage Integration",
+      "deliverable": "`POST /api/documents/upload` accepts multipart/form-data file (PPTX, DOCX, or MP4), stores in AWS S3, returns document object with s3_key and signed download URL",
+      "tasks": [
+        "Install boto3 3.26, python-multipart 0.0.6 into requirements.txt for AWS S3 and FastAPI file handling",
+        "Create backend/config.py with AWS_S3_BUCKET, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY from environment variables and boto3 S3 client initialization",
+        "Define Document Pydantic model in backend/models/document.py with fields: _id (ObjectId), filename, s3_key, file_type (PPTX, DOCX, MP4), uploaded_at, content_text (for parsed documents)",
+        "Create MongoDB 'documents' collection with index on uploaded_at field in backend/db.py setup function",
+        "Implement backend/services/s3_service.py with upload_file_to_s3(file_path, bucket_name) returning s3_key, and get_signed_download_url(s3_key, expiration_seconds=3600) returning presigned URL",
+        "Create backend/routes/documents.py with POST /api/documents/upload endpoint that: accepts multipart file, validates file type (PPTX, DOCX, MP4), uploads to S3, stores metadata in MongoDB 'documents' collection, returns {\"id\": document_id, \"filename\": filename, \"s3_key\": s3_key, \"download_url\": signed_url}",
+        "Write pytest tests in tests/test_documents.py for upload endpoint: test successful PPTX upload, test successful DOCX upload, test successful MP4 upload, test invalid file type rejection, test S3 upload failure handling"
+      ],
+      "commit_condition": "Run `pytest tests/test_documents.py -v` — all 5 tests pass; then run `curl -X POST -F 'file=@sample.docx' http://localhost:8000/api/documents/upload | jq .` — returns {\"id\": \"...\", \"filename\": \"sample.docx\", \"s3_key\": \"...\", \"download_url\": \"https://...\"} with HTTP 201",
+      "example_input": "MongoDB documents collection exists and is empty; AWS S3 bucket is configured and accessible; sample.docx file exists locally",
+      "example_output": "curl -X POST -F 'file=@sample.docx' http://localhost:8000/api/documents/upload -H 'Content-Type: multipart/form-data' returns HTTP 201 with {\"id\": \"64a1b2c3d4e5f6g7h8i9j0k1\", \"filename\": \"sample.docx\", \"s3_key\": \"documents/64a1b2c3d4e5f6g7h8i9j0k1/sample.docx\", \"download_url\": \"https://s3.amazonaws.com/...?AWSAccessKeyId=...\"}; document stored in MongoDB documents collection"
+    },
+    {
+      "id": 3,
+      "title": "Document Content Extraction and Parsing",
+      "deliverable": "`POST /api/documents/{document_id}/extract-content` downloads document from S3, parses text (DOCX and PPTX via python-pptx and python-docx, MP4 via OpenAI Whisper API), stores extracted text in MongoDB documents.content_text, returns {\"document_id\": id, \"text_length\": chars, \"text_preview\": first_500_chars}",
+      "tasks": [
+        "Install python-docx 0.8.11, python-pptx 0.6.23, openai 1.3 into requirements.txt for document parsing",
+        "Create backend/services/extraction_service.py with extract_docx_text(s3_key, s3_client) parsing .docx and returning text string",
+        "Add extract_pptx_text(s3_key, s3_client) in extraction_service.py parsing .pptx slides and returning concatenated text",
+        "Add extract_mp4_transcript(s3_key, s3_client) in extraction_service.py downloading MP4 from S3, calling OpenAI Whisper API via openai library with file object, returning transcript text",
+        "Create backend/routes/extraction.py with POST /api/documents/{document_id}/extract-content endpoint that: retrieves document from MongoDB, calls appropriate extraction_service function based on file_type, updates MongoDB documents.content_text, returns {\"document_id\": id, \"text_length\": word_count, \"text_preview\": first_500_chars}",
+        "Write pytest tests in tests/test_extraction.py: test DOCX extraction returns text, test PPTX extraction concatenates slide text, test MP4 extraction calls Whisper and returns transcript, test missing document returns 404, test extraction of already-extracted document overwrites content_text"
+      ],
+      "commit_condition": "Run `pytest tests/test_extraction.py -v` — all 5 tests pass; then run `curl -X POST http://localhost:8000/api/documents/64a1b2c3/extract-content | jq .` — returns {\"document_id\": \"64a1b2c3\", \"text_length\": 2450, \"text_preview\": \"Chapter 1: Introduction...\"} with HTTP 200",
+      "example_input": "MongoDB documents collection contains document with id 64a1b2c3, filename sample.docx, s3_key documents/64a1b2c3/sample.docx, file_type DOCX; file exists in AWS S3",
+      "example_output": "curl -X POST http://localhost:8000/api/documents/64a1b2c3/extract-content returns HTTP 200 with {\"document_id\": \"64a1b2c3\", \"text_length\": 2450, \"text_preview\": \"Chapter 1: Introduction to Biology. This chapter covers cellular structures and functions.\"}; MongoDB documents collection document 64a1b2c3 now has content_text field populated with full extracted text"
+    },
+    {
+      "id": 4,
+      "title": "Topic Tree Generation via OpenAI and Hierarchical Storage",
+      "deliverable": "`POST /api/topics/generate-tree` accepts {\"document_id\": id}, calls OpenAI GPT-4 to generate topic hierarchy (max depth 3), stores Topic document with nested Node tree in MongoDB topics collection, returns {\"topic_id\": id, \"title\": name, \"tree\": nested_node_structure}",
+      "tasks": [
+        "Define Node Pydantic model in backend/models/node.py with fields: _id (ObjectId), title, description, difficulty_level (1-5), parent_id (ObjectId or null), children_ids (list of ObjectIds), defeated (boolean, default False), boss_question_ids (list of ObjectIds)",
+        "Define Topic Pydantic model in backend/models/topic.py with fields: _id (ObjectId), document_id (ObjectId), title, root_node (nested Node object), created_at, updated_at",
+        "Create MongoDB 'topics' collection and 'nodes' collection with indexes on parent_id, difficulty_level, and defeated fields in backend/db.py",
+        "Create backend/services/openai_service.py with generate_topic_tree(extracted_text, max_depth=3) that: constructs a prompt requesting a topic hierarchy from extracted_text with max 3 levels, calls OpenAI GPT-4 API with temperature 0.7, parses JSON response into nested Node structure, returns root Node object with children recursively populated",
+        "Create backend/routes/topics.py with POST /api/topics/generate-tree endpoint that: retrieves document from MongoDB by document_id, extracts content_text, calls openai_service.generate_topic_tree(), creates Topic document with nested root_node, stores Topic and all Nodes in MongoDB collections, returns {\"topic_id\": topic_id, \"title\": root_node.title, \"tree\": root_node_with_children_hierarchy}",
+        "Write pytest tests in tests/test_topics.py: test topic tree generation with sample extracted text, test tree respects max_depth of 3, test all nodes stored in MongoDB, test returned tree structure matches Pydantic model, test handling of OpenAI API timeout"
+      ],
+      "commit_condition": "Run `pytest tests/test_topics.py -v` — all 5 tests pass; then run `curl -X POST http://localhost:8000/api/topics/generate-tree -H 'Content-Type: application/json' -d '{\"document_id\": \"64a1b2c3\"}' | jq .tree.children | head -20` — returns array of at least 2 child nodes with HTTP 201",
+      "example_input": "MongoDB documents collection contains document 64a1b2c3 with content_text = \"Biology is the study of living organisms. Topics include cells, genetics, evolution, and ecology. Cells contain organelles like mitochondria, ribosomes, and nuclei.\" (or similar); OpenAI API key is configured",
+      "example_output": "curl -X POST http://localhost:8000/api/topics/generate-tree -H 'Content-Type: application/json' -d '{\"document_id\": \"64a1b2c3\"}' returns HTTP 201 with {\"topic_id\": \"64b2c3d4e5\", \"title\": \"Biology Fundamentals\", \"tree\": {\"_id\": \"...\", \"title\": \"Biology Fundamentals\", \"children\": [{\"_id\": \"...\", \"title\": \"Cells\", \"children\": [{\"_id\": \"...\", \"title\": \"Cell Structure\", \"children\": []}, {\"_id\": \"...\", \"title\": \"Organelles\", \"children\": []}]}, {\"_id\": \"...\", \"title\": \"Genetics\", \"children\": []}]}}; MongoDB topics collection now contains Topic document and nodes collection contains all generated nodes"
+    },
+    {
+      "id": 5,
+      "title": "Boss Question Generation and Mark Scheme Creation",
+      "deliverable": "`POST /api/nodes/{node_id}/generate-questions` calls OpenAI GPT-4 to create 5 questions (Define, Solve, Compare, ELI5, Finish the Answer) from node content, generates mark schemes for each, stores Question documents, stores mark_scheme in each node, returns {\"node_id\": id, \"questions\": [{\"id\": q_id, \"type\": type, \"question_text\": text, \"mark_scheme\": {\"key_points\": [...]}}]}",
+      "tasks": [
+        "Define Question Pydantic model in backend/models/question.py with fields: _id (ObjectId), node_id (ObjectId), question_type (Define, Solve, Compare, ELI5, FinishAnswer), question_text, mark_scheme ({\"key_points\": [string], \"grading_rubric\": string}), created_at",
+        "Create MongoDB 'questions' collection with index on node_id field in backend/db.py",
+        "Add generate_questions_and_mark_scheme(node_title, node_description, extracted_text) to backend/services/openai_service.py that: constructs a prompt requesting 5 questions (one per type: Define, Solve, Compare, ELI5, FinishAnswer) and a mark scheme with key_points and grading_rubric, calls OpenAI GPT-4 with temperature 0.5, parses JSON response into Question objects with embedded mark_scheme",
+        "Create backend/routes/questions.py with POST /api/nodes/{node_id}/generate-questions endpoint that: retrieves Node from MongoDB nodes collection, retrieves corresponding Topic and extracted_text, calls openai_service.generate_questions_and_mark_scheme(), creates 5 Question documents in MongoDB questions collection, updates Node document with mark_scheme field, returns {\"node_id\": node_id, \"questions\": list_of_5_question_objects_with_mark_schemes}",
+        "Write pytest tests in tests/test_questions.py: test question generation for leaf node, test all 5 question types generated, test mark_scheme contains key_points array, test mark_scheme contains grading_rubric string, test node.mark_scheme updated after generation"
+      ],
+      "commit_condition": "Run `pytest tests/test_questions.py -v` — all 5 tests pass; then run `curl -X POST http://localhost:8000/api/nodes/64c3d4e5f6g7/generate-questions | jq '.questions | length'` — returns 5 with HTTP 201",
+      "example_input": "MongoDB nodes collection contains node 64c3d4e5f6g7 with title \"Cell Organelles\", description \"The structures within cells that perform specific functions\", parent_id \"64b2c3d4e5\"; topics collection contains corresponding Topic with extracted_text containing content about cell organelles",
+      "example_output": "curl -X POST http://localhost:8000/api/nodes/64c3d4e5f6g7/generate-questions returns HTTP 201 with {\"node_id\": \"64c3d4e5f6g7\", \"questions\": [{\"id\": \"64d4e5f6g7h8\", \"question_type\": \"Define\", \"question_text\": \"Define mitochondria and explain its primary function.\", \"mark_scheme\": {\"key_points\": [\"Mitochondria is the powerhouse of the cell\", \"Produces ATP through cellular respiration\", \"Contains its own DNA\"], \"grading_rubric\": \"Award 3 points if all three key concepts mentioned, 2 points if two mentioned, 1 point if one mentioned\"}}, {...4 more questions for Solve, Compare, ELI5, FinishAnswer}]}; MongoDB questions collection now has 5 new documents"
+    },
+    {
+      "id": 6,
+      "title": "Student Answer Submission and LLM-Based Grading",
+      "deliverable": "`POST /api/nodes/{node_id}/submit-answer` accepts {\"question_id\": id, \"answer_text\": text}, calls OpenAI GPT-4 to evaluate against mark_scheme, returns {\"question_id\": id, \"student_answer\": text, \"marks_awarded\": int, \"max_marks\": 3, \"feedback\": string, \"key_points_hit\": [strings]}",
+      "tasks": [
+        "Define StudentAnswer Pydantic model in backend/models/answer.py with fields: _id (ObjectId), question_id (ObjectId), node_id (ObjectId), answer_text, marks_awarded (0-3), max_marks (3), feedback_text, key_points_hit (list of strings), created_at",
+        "Create MongoDB 'answers' collection with index on node_id and question_id fields in backend/db.py",
+        "Add evaluate_answer(student_answer, question_text, mark_scheme, question_type) to backend/services/openai_service.py that: constructs a prompt requesting GPT-4 to grade student_answer against mark_scheme key_points and grading_rubric, specifies output format {\"marks\": int (0-3), \"feedback\": string, \"key_points_hit\": [strings], \"reasoning\": string}, calls OpenAI GPT-4 with temperature 0.3, returns parsed JSON with marks (0-3), feedback, and key_points_hit",
+        "Create backend/routes/answers.py with POST /api/nodes/{node_id}/submit-answer endpoint that: retrieves Question from MongoDB, retrieves mark_scheme from Node, calls openai_service.evaluate_answer(), creates StudentAnswer document in MongoDB, returns {\"question_id\": q_id, \"student_answer\": answer_text, \"marks_awarded\": marks, \"max_marks\": 3, \"feedback\": feedback_text, \"key_points_hit\": key_points_array}",
+        "Write pytest tests in tests/test_answers.py: test submission of Define question answer, test submission of Solve question answer, test perfect answer awards 3 marks, test partial answer awards 1-2 marks, test completely wrong answer awards 0 marks, test key_points_hit extraction"
+      ],
+      "commit_condition": "Run `pytest tests/test_answers.py -v` — all 6 tests pass; then run `curl -X POST http://localhost:8000/api/nodes/64c3d4e5f6g7/submit-answer -H 'Content-Type: application/json' -d '{\"question_id\": \"64d4e5f6g7h8\", \"answer_text\": \"Mitochondria is the powerhouse of the cell and produces ATP\"}' | jq .marks_awarded` — returns integer 1-3 with HTTP 200",
+      "example_input": "MongoDB questions collection contains question 64d4e5f6g7h8 with question_text \"Define mitochondria and explain its primary function.\" and mark_scheme {\"key_points\": [\"Mitochondria is the powerhouse of the cell\", \"Produces ATP through cellular respiration\", \"Contains its own DNA\"], \"grading_rubric\": \"Award 3 points if all three key concepts mentioned, 2 points if two mentioned, 1 point if one mentioned\"}",
+      "example_output": "curl -X POST http://localhost:8000/api/nodes/64c3d4e5f6g7/submit-answer -H 'Content-Type: application/json' -d '{\"question_id\": \"64d4e5f6g7h8\", \"answer_text\": \"Mitochondria is the powerhouse of the cell and produces ATP through cellular respiration.\"}' returns HTTP 200 with {\"question_id\": \"64d4e5f6g7h8\", \"student_answer\": \"Mitochondria is the powerhouse of the cell and produces ATP through cellular respiration.\", \"marks_awarded\": 2, \"max_marks\": 3, \"feedback\": \"Good explanation of two key points: powerhouse function and ATP production. Consider mentioning that mitochondria have their own DNA.\", \"key_points_hit\": [\"Powerhouse of the cell\", \"ATP production\"]}; MongoDB answers collection now contains this StudentAnswer document"
+    },
+    {
+      "id": 7,
+      "title": "Node Unlock Mechanics and Boss Defeat State Management",
+      "deliverable": "`GET /api/nodes/{node_id}/unlock-status` returns {\"node_id\": id, \"defeated\": boolean, \"boss_questions_answered\": int, \"boss_questions_total\": int, \"all_children_defeated\": boolean, \"parent_unlock_eligible\": boolean}; `POST /api/nodes/{node_id}/check-defeat` checks if all child nodes defeated, unlocks parent if eligible, returns defeat status",
+      "tasks": [
+        "Create backend/services/unlock_service.py with check_node_defeated(node_id) that: retrieves Node from MongoDB, counts boss_question_ids answered (queries answers collection for all boss_question_ids), returns {\"answered_count\": int, \"total_count\": int, \"defeated\": bool}",
+        "Add check_all_children_defeated(node_id) in unlock_service.py that: retrieves Node, gets all children_ids, for each child recursively checks defeated field, returns True only if all children.defeated == True",
+        "Add unlock_parent_node(node_id) in unlock_service.py that: retrieves Node, if parent_id exists and all_children_defeated is True, updates MongoDB node document setting defeated = True, returns {\"parent_id\": id, \"parent_title\": title, \"unlocked\": boolean}",
+        "Create backend/routes/unlock.py with GET /api/nodes/{node_id}/unlock-status endpoint returning {\"node_id\": id, \"defeated\": bool, \"boss_questions_answered\": int, \"boss_questions_total\": int, \"all_children_defeated\": bool, \"parent_unlock_eligible\": bool}",
+        "Add POST /api/nodes/{node_id}/check-defeat endpoint in unlock.py that: calls unlock_service.check_node_defeated(), calls unlock_service.check_all_children_defeated(), calls unlock_service.unlock_parent_node() if eligible, returns {\"node_id\": id, \"defeated\": bool, \"parent_unlocked\": bool, \"parent_id\": id_or_null}",
+        "Write pytest tests in tests/test_unlock.py: test check_defeat on non-leaf node with all children defeated, test check_defeat on non-leaf node with some children undefeated, test check_defeat on leaf node with all questions answered, test unlock_parent_node updates parent defeated field, test unlock_status returns correct counts"
+      ],
+      "commit_condition": "Run `pytest tests/test_unlock.py -v` — all 5 tests pass; then run `curl -X GET http://localhost:8000/api/nodes/64b2c3d4e5/unlock-status | jq .parent_unlock_eligible` — returns boolean with HTTP 200; then run `curl -X POST http://localhost:8000/api/nodes/64b2c3d4e5/check-defeat | jq .parent_unlocked` — returns boolean with HTTP 200",
+      "example_input": "MongoDB nodes collection contains: parent node 64b2c3d4e5 (title \"Cells\", children_ids [64c3d4e5f6g7, 64c3d4e5f6g8], defeated=False) and two child nodes 64c3d4e5f6g7 (title \"Cell Organelles\", boss_question_ids [64d4e5f6g7h8, 64d4e5f6g7h9, 64d4e5f6g7ha, 64d4e5f6g7hb, 64d4e5f6g7hc], defeated=False) and 64c3d4e5f6g8 (title \"Cell Membrane\", boss_question_ids [...], defeated=True); answers collection contains 5 documents for 64c3d4e5f6g7 and 5 documents for 64c3d4e5f6g8",
+      "example_output": "curl -X GET http://localhost:8000/api/nodes/64b2c3d4e5/unlock-status returns HTTP 200 with {\"node_id\": \"64b2c3d4e5\", \"defeated\": false, \"boss_questions_answered\": 0, \"boss_questions_total\": 0, \"all_children_defeated\": false, \"parent_unlock_eligible\": false}; curl -X POST http://localhost:8000/api/nodes/64c3d4e5f6g7/check-defeat (after all 5 answers submitted) returns HTTP 200 with {\"node_id\": \"64c3d4e5f6g7\", \"defeated\": true, \"parent_unlocked\": false, \"parent_id\": \"64b2c3d4e5\"}; MongoDB nodes collection node 64c3d4e5f6g7 now has defeated=True"
+    },
+    {
+      "id": 8,
+      "title": "React Frontend Setup and Topic Tree Visualization",
+      "deliverable": "`npm run dev` starts Vite dev server; browser at http://localhost:3000 displays TopicTree component showing hierarchical tree view of nodes (max depth 3), clickable nodes with titles and difficulty badges, visual indication of defeated vs. locked nodes",
+      "tasks": [
+        "Initialize React 18 project with Vite using `npm create vite@latest studybattles-frontend -- --template react`; install dependencies: react-query 3.39, axios 1.6, react-router-dom 6.20, zustand 4.4, tailwindcss 3.4, lucide-react 0.344",
+        "Create src/api/axiosClient.js with axios instance pointing to http://localhost:8000/api, error handling interceptor, and auth header injection stub (for future session support)",
+        "Create src/hooks/useTopicTree.js custom hook with useQuery (react-query) calling GET /api/topics/{topic_id} to fetch topic tree and cache results",
+        "Create src/store/sessionStore.js using zustand with state: currentTopicId, currentNodeId, answeredQuestions ({question_id: marks}), parentNodeUnlocks (set of unlocked parent IDs)",
+        "Create src/components/TopicTree.jsx component rendering nested hierarchical tree: root node at top, children below, visual hierarchy with connecting lines, each node displays title, difficulty_level (1-5 stars), defeated status (green checkmark or red X), click handlers to set currentNodeId in sessionStore",
+        "Create src/pages/TopicPage.jsx page component that: loads topic on mount, renders TopicTree component in left sidebar, renders node details/questions in main content area (placeholder for now)",
+        "Install tailwindcss and configure tailwind.config.js and postcss.config.js in project root",
+        "Write tests in src/components/__tests__/TopicTree.test.jsx: test TopicTree renders root node title, test TopicTree renders all children recursively, test clicking node updates sessionStore currentNodeId, test defeated nodes show checkmark"
+      ],
+      "commit_condition": "Run `npm run dev` in studybattles-frontend/ — output shows 'VITE v5.0.0 ready in X ms'; open http://localhost:3000 in browser — TopicTree component displays with root node, at least 3 child nodes visible, nodes clickable; run `npm run test` — all 4 component tests pass",
+      "example_input": "Empty studybattles-frontend directory; npm and Node.js 18+ installed; backend running on http://localhost:8000 with sample topic data in MongoDB",
+      "example_output": "Run `npm run dev` from studybattles-frontend/ — terminal shows 'VITE v5.0.0 ready in 234ms'; browser at http://localhost:3000 displays TopicTree with root node 'Biology Fundamentals' (difficulty 3 stars, not defeated), two child nodes 'Cells' (difficulty 2 stars, not defeated) and 'Genetics' (difficulty 3 stars, defeated with green checkmark), 'Cells' node has two child nodes 'Cell Organelles' (defeated) and 'Cell Membrane' (not defeated); clicking 'Cell Organelles' node highlights it and updates sessionStore.currentNodeId to '64c3d4e5f6g7'"
+    },
+    {
+      "id": 9,
+      "title": "Question Display, Answer Submission, and Grading Display UI",
+      "deliverable": "At http://localhost:3000, NodeDetail component displays selected node's 5 boss questions in tabbed interface (Define, Solve, Compare, ELI5, FinishAnswer), textarea input for each, Submit button calls POST /api/nodes/{node_id}/submit-answer, displays marks (0-3), feedback text, key_points_hit list, and updates TopicTree defeated status",
+      "tasks": [
+        "Create src/hooks/useNodeQuestions.js custom hook with useQuery fetching GET /api/nodes/{node_id}/generate-questions, memoizing by node_id, providing refetch trigger",
+        "Create src/hooks/useSubmitAnswer.js custom hook with useMutation calling POST /api/nodes/{node_id}/submit-answer, handling loading/error states, updating sessionStore.answeredQuestions on success",
+        "Create src/components/QuestionTab.jsx component displaying single question: question_text, question_type badge, textarea for answer input, Submit button, conditional rendering of result (marks, feedback, key_points_hit) after submission",
+        "Create src/components/NodeDetail.jsx component: fetches node questions via useNodeQuestions, renders Tab component with 5 QuestionTab instances (one per question_type), displays node title and description above tabs, displays node unlock status (questions answered / total) below tabs",
+        "Create src/components/GradeDisplay.jsx component displaying: marks_awarded / max_marks (e.g., '2/3'), feedback_text as expandable section, key_points_hit as bullet list, color-coded feedback (green for 3/3, yellow for 1-2/3, red for 0/3)",
+        "Update src/pages/TopicPage.jsx to render TopicTree in left sidebar, NodeDetail in main content area when currentNodeId is set, pass sessionStore state as props",
+        "Create src/utils/updateTreeState.js function that: after answer submission, calls GET /api/nodes/{node_id}/check-defeat, updates sessionStore currentNodeUnlocks if parent was unlocked, refreshes TopicTree visual via zustand state trigger",
+        "Write tests in src/components/__tests__/NodeDetail.test.jsx: test NodeDetail loads questions, test QuestionTab renders question_text, test Submit button calls useMutation, test GradeDisplay shows marks after submission, test answer submission updates sessionStore"
+      ],
+      "commit_condition": "Run `npm run dev` — terminal shows 'ready in X ms'; browser at http://localhost:3000, click TopicTree node → NodeDetail renders with question tabs; click Define tab → textarea appears; enter answer → click Submit → GradeDisplay shows marks (0-3), feedback, key_points_hit within 2 seconds; run `npm run test` — all 5 NodeDetail tests pass",
+      "example_input": "http://localhost:3000 with TopicTree displayed, topic and nodes loaded from backend, no answers submitted yet, currentNodeId set to '64c3d4e5f6g7'",
+      "example_output": "Browser at http://localhost:3000 displays NodeDetail with node title 'Cell Organelles' and 5 tabs: Define, Solve, Compare, ELI5, FinishAnswer; click Define tab → renders question_text 'Define mitochondria and explain its primary function.', textarea with placeholder 'Enter your answer...', Submit button; type answer 'Mitochondria is the powerhouse of the cell and produces ATP' → click Submit → GradeDisplay appears showing marks_awarded=2, max_marks=3, feedback_text='Good explanation of two key points: powerhouse function and ATP production. Consider mentioning that mitochondria have their own DNA.', key_points_hit=['Powerhouse of the cell', 'ATP production'] (styled green background, bullet list); all other questions still show unanswered state; TopicTree node 'Cell Organelles' shows updated progress '1/5 answered'"
+    },
+    {
+      "id": 10,
+      "title": "Session Persistence via localStorage and Deployment",
+      "deliverable": "`sessionStore.toJSON()` serializes to localStorage on every state change; page reload at http://localhost:3000 restores currentTopicId, currentNodeId, answeredQuestions ({question_id: marks}), parentNodeUnlocks from localStorage; Dockerfile builds Python 3.11 + FastAPI backend and Node.js 18 + React frontend, docker-compose.yml orchestrates backend, MongoDB, nginx reverse proxy; `docker-compose up -d` runs full stack; `curl https://api.example.com/health` returns {\"status\": \"ok\"} (after pointing domain to EC2 or using localhost)",
+      "tasks": [
+        "Update src/store/sessionStore.js to: persist to localStorage on every state mutation using zustand middleware `(config) => (set, get, api) => config(...)`, add hydrate() method to load from localStorage on app mount, add clearSession() for reset",
+        "Update src/App.jsx to: call sessionStore.hydrate() on mount, useEffect listening to sessionStore state changes (optional visualization), display session timer or indicator",
+        "Create src/hooks/useSessionPersistence.js hook that: manages localStorage sync, provides setItem/getItem wrapper functions, handles storage quota errors with fallback to in-memory state",
+        "Create Dockerfile in project root multistage build: Stage 1 builds backend (Python 3.11, installs requirements.txt, exposes 8000), Stage 2 builds frontend (Node.js 18, npm install, npm run build, outputs dist/), Stage 3 runs nginx with both binaries mounted",
+        "Create docker-compose.yml with services: backend (Dockerfile stage 1, port 8000, env vars from .env.docker), mongodb (mongo:7.0, port 27017, volume for persistence), frontend (Dockerfile stage 2, port 3000), nginx (reverse proxy, port 80/443, config routes /api/* to backend, /* to frontend)",
+        "Create nginx.conf in project root with upstream backend pointing to backend:8000, upstream frontend pointing to frontend:3000, proxy_pass rules, gzip compression, and CORS header passthrough",
+        "Create .env.docker with all required vars: OPENAI_API_KEY, AWS credentials, MONGODB_URI=mongodb://mongodb:27017/studybattles, VITE_API_BASE_URL=http://api.example.com (for prod) or http://localhost:8000 (for dev)",
+        "Write integration test in tests/test_e2e_session.py: start docker-compose, upload document, generate tree, answer 3 questions, reload page (curl /health and localStorage check via Selenium or similar), verify answers and tree state persisted"
+      ],
+      "commit_condition": "Run `docker-compose up -d` in
