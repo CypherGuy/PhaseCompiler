@@ -1,0 +1,156 @@
+```json
+{
+  "project": {
+    "name": "InvoiceFlow",
+    "language": "Node.js 20",
+    "runtime": "web (REST API + React SPA)",
+    "package_manager": "npm",
+    "framework": "Express 4.18 (backend), React 18 (frontend)",
+    "database": "PostgreSQL 16",
+    "deployment": "Docker Compose (local dev), Railway (production)",
+    "external_services": [
+      "Stripe API (payment links + webhooks)",
+      "SendGrid API (transactional email)",
+      "Railway (hosting + PostgreSQL managed service)"
+    ]
+  },
+  "phases": [
+    {
+      "id": 1,
+      "title": "Node.js Backend Setup and Database Schema",
+      "deliverable": "`npm start` runs Express server on http://127.0.0.1:5000 with Swagger docs at `/api-docs` listing 0 endpoints; `psql invoiceflow_dev -c \"\\dt\"` shows 4 tables: freelancers, invoices, payments, audit_logs",
+      "tasks": [
+        "Initialize Node.js 20 project with Express 4.18, install dependencies (express, pg, dotenv, cors, helmet, winston, swagger-ui-express, swagger-jsdoc) into package.json",
+        "Create PostgreSQL 16 database named invoiceflow_dev; install pg package for Node.js connection pooling",
+        "Write `config/database.js` establishing pg pool connection with environment variables (DATABASE_URL, NODE_ENV) and connection error logging",
+        "Create migration file `migrations/001_initial_schema.sql` defining freelancers, invoices, payments, and audit_logs tables with columns: id (UUID), email, name, timestamps, status enums, amounts in cents",
+        "Execute migration script `npm run migrate` to apply schema to invoiceflow_dev database",
+        "Create `backend/server.js` with Express app, CORS middleware for http://localhost:3000, helmet security headers, and request logging using winston",
+        "Write `backend/swagger.js` generating OpenAPI spec with base path `/api` and listing health check endpoint"
+      ],
+      "commit_condition": "Run `npm start` in backend directory — Express server logs 'Server running on http://127.0.0.1:5000' within 3 seconds; in another terminal run `curl -s http://localhost:5000/health | jq .status` — returns `\"ok\"`; run `psql invoiceflow_dev -c \"SELECT table_name FROM information_schema.tables WHERE table_schema='public'\"` — lists 4 tables",
+      "example_input": "Empty Node.js project directory with no dependencies or database",
+      "example_output": "Run `npm start` — logs 'Server running on http://127.0.0.1:5000'; `curl http://localhost:5000/health` returns {\"status\": \"ok\", \"timestamp\": \"2024-01-15T10:00:00Z\"}; PostgreSQL query `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'` returns 4"
+    },
+    {
+      "id": 2,
+      "title": "JWT Authentication Middleware and Freelancer Registration API",
+      "deliverable": "`POST /api/auth/register` accepts {email, password, name}, hashes password with bcrypt, stores freelancer in PostgreSQL, returns HTTP 201 with JWT token and freelancer id; `POST /api/auth/login` validates credentials and returns JWT; `GET /api/freelancers/me` with Authorization header returns authenticated freelancer object",
+      "tasks": [
+        "Install bcrypt 5.1, jsonwebtoken 9.1, and joi 17.11 for password hashing, JWT generation, and input validation",
+        "Create `backend/middleware/auth.js` exporting verifyJWT middleware that extracts Bearer token from Authorization header, validates signature against JWT_SECRET env var, attaches freelancer id to req.user, rejects with HTTP 401 if invalid",
+        "Write `backend/routes/auth.js` with POST /register endpoint accepting {email, password, name}, validating with joi schema (email format, password min 8 chars, name non-empty), hashing password with bcrypt rounds=10, inserting freelancer row into PostgreSQL, returning HTTP 201 with {id, email, name, token} and JWT signed with 7-day expiry",
+        "Add POST /login endpoint in `backend/routes/auth.js` accepting {email, password}, querying freelancers table by email, comparing password hash, returning HTTP 200 with JWT token on match or HTTP 401 on mismatch",
+        "Create `backend/routes/freelancers.js` with GET /me endpoint protected by verifyJWT middleware, querying freelancers table by req.user.id, returning HTTP 200 with freelancer object (id, email, name, created_at) excluding password hash",
+        "Register auth and freelancers routes in `backend/server.js` under /api prefix",
+        "Write `tests/auth.test.js` with jest and supertest testing register success, register duplicate email rejection, login success, login invalid password rejection, and /me endpoint requiring valid JWT"
+      ],
+      "commit_condition": "Run `npm test tests/auth.test.js` — 5 tests pass with 0 failures; run `curl -X POST http://localhost:5000/api/auth/register -H 'Content-Type: application/json' -d '{\"email\": \"alice@example.com\", \"password\": \"SecurePass123\", \"name\": \"Alice\"}' | jq .token` — returns a non-empty JWT string matching pattern ^eyJ",
+      "example_input": "Express server running with PostgreSQL connected; freelancers table exists but contains no rows; no authentication routes defined",
+      "example_output": "curl -X POST http://localhost:5000/api/auth/register -H 'Content-Type: application/json' -d '{\"email\": \"alice@example.com\", \"password\": \"SecurePass123\", \"name\": \"Alice\"}' returns HTTP 201: {\"id\": \"64a1b2c3-...\", \"email\": \"alice@example.com\", \"name\": \"Alice\", \"token\": \"eyJ...\"}; SELECT * FROM freelancers WHERE email = 'alice@example.com' returns 1 row with hashed password; curl -X GET http://localhost:5000/api/freelancers/me -H 'Authorization: Bearer eyJ...' returns HTTP 200: {\"id\": \"64a1b2c3-...\", \"email\": \"alice@example.com\", \"name\": \"Alice\"}"
+    },
+    {
+      "id": 3,
+      "title": "Invoice CRUD Operations and Database Persistence",
+      "deliverable": "`POST /api/invoices` with JWT auth accepts {client_email, client_name, amount, due_date, items_description}, stores invoice in PostgreSQL with status='draft', returns HTTP 201 with invoice id and details; `GET /api/invoices` with JWT returns array of all invoices for authenticated freelancer; `PUT /api/invoices/{id}` updates draft invoice; `DELETE /api/invoices/{id}` soft-deletes draft invoice",
+      "tasks": [
+        "Create `backend/routes/invoices.js` with POST /api/invoices endpoint protected by verifyJWT, accepting {client_email, client_name, amount, due_date, items_description}, validating amount > 0 and due_date in future, inserting row into invoices table with freelancer_id=req.user.id, status='draft', unique_code=nanoid(8), returning HTTP 201 with {id, invoice_number, status, amount, due_date}",
+        "Install nanoid 4.0 for generating unique invoice codes and database identifiers",
+        "Add GET /api/invoices endpoint protected by verifyJWT, querying invoices WHERE freelancer_id=req.user.id AND deleted_at IS NULL ordered by created_at DESC, returning HTTP 200 with array of invoice objects including status, amount, due_date, client_email",
+        "Add GET /api/invoices/{id} endpoint protected by verifyJWT, querying invoices by id and freelancer_id, returning HTTP 200 with full invoice object or HTTP 404 if not found",
+        "Add PUT /api/invoices/{id} endpoint protected by verifyJWT, accepting partial {client_email, amount, due_date, items_description}, validating freelancer ownership and status='draft', updating PostgreSQL row, returning HTTP 200 with updated invoice",
+        "Add DELETE /api/invoices/{id} endpoint protected by verifyJWT, soft-deleting by setting deleted_at=NOW() only if status='draft', returning HTTP 204, or HTTP 400 if already sent/paid",
+        "Write `tests/invoices.test.js` with jest and supertest testing create invoice, list invoices, get single invoice, update draft invoice, delete draft invoice, and ownership validation (freelancer cannot access another freelancer's invoices)"
+      ],
+      "commit_condition": "Run `npm test tests/invoices.test.js` — 6 tests pass; run `curl -X POST http://localhost:5000/api/invoices -H 'Authorization: Bearer eyJ...' -H 'Content-Type: application/json' -d '{\"client_email\": \"bob@client.com\", \"client_name\": \"Bob\", \"amount\": 5000, \"due_date\": \"2024-02-15\", \"items_description\": \"Design services\"}' | jq .id` — returns a UUID string; run `curl http://localhost:5000/api/invoices -H 'Authorization: Bearer eyJ...' | jq '. | length'` — returns 1",
+      "example_input": "Express server running with PostgreSQL connected; invoices table exists but contains no rows; no invoice routes defined",
+      "example_output": "curl -X POST http://localhost:5000/api/invoices -H 'Authorization: Bearer eyJ...' -H 'Content-Type: application/json' -d '{\"client_email\": \"bob@client.com\", \"client_name\": \"Bob\", \"amount\": 5000, \"due_date\": \"2024-02-15\", \"items_description\": \"Design\"}' returns HTTP 201: {\"id\": \"64a2c3d4-...\", \"invoice_number\": \"INV-20240115-ABC123\", \"status\": \"draft\", \"amount\": 5000, \"client_email\": \"bob@client.com\"}; SELECT COUNT(*) FROM invoices WHERE freelancer_id = 'user-id-1' returns 1; curl -X GET http://localhost:5000/api/invoices -H 'Authorization: Bearer eyJ...' returns HTTP 200: [{\"id\": \"64a2c3d4-...\", \"invoice_number\": \"INV-20240115-ABC123\", \"status\": \"draft\", \"amount\": 5000}]"
+    },
+    {
+      "id": 4,
+      "title": "Stripe Payment Links and SendGrid Email Integration",
+      "deliverable": "`POST /api/invoices/{id}/send` with JWT auth generates Stripe Payment Link with amount and description, saves link URL to PostgreSQL, constructs and sends HTML email via SendGrid with invoice details and payment link, returns HTTP 200 with {payment_link_url, email_sent_to}; invoice status changes to 'sent'",
+      "tasks": [
+        "Install stripe 14.10, @sendgrid/mail 7.7, and pdfkit 0.13 for Stripe payment links, SendGrid email API, and later PDF generation",
+        "Configure Stripe API credentials (STRIPE_API_KEY from .env); create `backend/services/stripe.js` exporting createPaymentLink(amount, invoice_id, description) function calling stripe.checkout.sessions.create() with payment_method_types=['card'], success_url, cancel_url, mode='payment', returning {url, session_id}",
+        "Configure SendGrid credentials (SENDGRID_API_KEY from .env); create `backend/services/sendgrid.js` exporting sendInvoiceEmail(client_email, freelancer_name, invoice_number, amount, due_date, payment_link_url) function calling sgMail.send() with HTML template including invoice summary, amount, due date, payment link button, returning promise resolved when sent",
+        "Add POST /api/invoices/{id}/send endpoint protected by verifyJWT, querying invoice by id and freelancer_id, validating status='draft', calling createPaymentLink() with invoice amount and id, calling sendInvoiceEmail() with client email and payment link, updating invoices row set status='sent' and payment_link_url, returning HTTP 200 with {payment_link_url, email_sent_to: client_email}",
+        "Write `tests/stripe.test.js` mocking stripe.checkout.sessions.create() to verify correct amount, currency='usd', and success_url parameters passed",
+        "Write `tests/sendgrid.test.js` mocking sgMail.send() to verify email contains invoice number, amount, client name, and payment link URL"
+      ],
+      "commit_condition": "Run `npm test tests/stripe.test.js tests/sendgrid.test.js` — all tests pass; STRIPE_API_KEY and SENDGRID_API_KEY set in .env; run `curl -X POST http://localhost:5000/api/invoices/{id}/send -H 'Authorization: Bearer eyJ...'` — returns HTTP 200 with payment_link_url starting with 'https://checkout.stripe.com'; SELECT * FROM invoices WHERE id = '{id}' shows status='sent' and payment_link_url is non-null",
+      "example_input": "POST /api/invoices endpoint creates draft invoice; no Stripe or SendGrid integration exists; invoice status is 'draft'",
+      "example_output": "curl -X POST http://localhost:5000/api/invoices/64a2c3d4-/send -H 'Authorization: Bearer eyJ...' returns HTTP 200: {\"payment_link_url\": \"https://checkout.stripe.com/pay/cs_test_abc123...\", \"email_sent_to\": \"bob@client.com\"}; SELECT status, payment_link_url FROM invoices WHERE id = '64a2c3d4-' returns (\"sent\", \"https://checkout.stripe.com/pay/cs_test_abc123...\"); SendGrid logs show email delivered to bob@client.com with subject 'Invoice INV-20240115-ABC123 from Alice' containing 5000 cents formatted as $50.00 and payment link"
+    },
+    {
+      "id": 5,
+      "title": "Stripe Webhook Handler and Payment Status Updates",
+      "deliverable": "`POST /api/webhooks/stripe` receives Stripe `checkout.session.completed` webhook events, verifies signature with STRIPE_WEBHOOK_SECRET, extracts invoice_id from session metadata, queries payments table, updates corresponding invoice status to 'paid' with paid_at timestamp, stores webhook event in audit_logs, returns HTTP 200",
+      "tasks": [
+        "Create `backend/routes/webhooks.js` with POST /api/webhooks/stripe endpoint (NOT protected by JWT), reading raw request body as string, calling stripe.webhooks.constructEvent() with request signature header and STRIPE_WEBHOOK_SECRET from .env, catching signature validation errors and returning HTTP 400",
+        "In webhook handler, check event.type === 'checkout.session.completed'; extract session.id and session.metadata.invoice_id, query PostgreSQL payments table by stripe_session_id, update invoices table set status='paid', paid_at=NOW() where id matches metadata invoice_id",
+        "Log webhook event to audit_logs table with event_type, stripe_session_id, invoice_id, status (success/failed), and timestamp for debugging and compliance",
+        "Return HTTP 200 {received: true} on success; log unhandled event types and return HTTP 200 anyway (per Stripe best practices)",
+        "Register webhooks routes in `backend/server.js` — use express.raw({type: 'application/json'}) middleware only for webhook path to preserve raw body for signature verification",
+        "Write `tests/webhook.test.js` mocking Stripe signature verification, testing checkout.session.completed event with valid signature updates invoice to 'paid', testing invalid signature returns HTTP 400, testing missing invoice_id returns HTTP 200 but logs error"
+      ],
+      "commit_condition": "Run `npm test tests/webhook.test.js` — all tests pass; echo 'webhook test skipped' || true checks no hardcoded Stripe keys in code; run `grep -r 'STRIPE_WEBHOOK_SECRET' backend/` — finds reference in webhook.js and .env.example",
+      "example_input": "POST /api/invoices/{id}/send endpoint sends payment link and updates status to 'sent'; no webhook handling exists; invoice remains in 'sent' status indefinitely",
+      "example_output": "Simulate Stripe webhook: curl -X POST http://localhost:5000/api/webhooks/stripe -H 'Content-Type: application/json' -H 'Stripe-Signature: ...' -d '{\"type\": \"checkout.session.completed\", \"data\": {\"object\": {\"id\": \"cs_test_abc123\", \"metadata\": {\"invoice_id\": \"64a2c3d4-...\"}}}}' returns HTTP 200: {\"received\": true}; SELECT status, paid_at FROM invoices WHERE id = '64a2c3d4-' returns (\"paid\", \"2024-01-15 10:05:00\"); SELECT * FROM audit_logs WHERE event_type = 'checkout.session.completed' shows 1 logged event"
+    },
+    {
+      "id": 6,
+      "title": "React Dashboard with Invoice Listing and Real-Time Status Display",
+      "deliverable": "Browser at `http://localhost:3000/dashboard` renders authenticated dashboard with sidebar showing freelancer name and logout button; main area displays grid of invoice cards showing invoice number, client name, amount, status badge (draft/sent/paid with color coding), due_date, and 'Send' button for draft invoices; filters by status (All/Draft/Sent/Paid); list updates when invoice status changes from 'sent' to 'paid'",
+      "tasks": [
+        "Initialize React 18 frontend with `npx create-react-app frontend`; install axios 1.6, react-router-dom 6.20, and zustand 4.4 for HTTP client, routing, and state management",
+        "Create `frontend/src/services/api.js` exporting apiClient initialized with baseURL=http://localhost:5000/api, interceptor attaching JWT from localStorage to Authorization header, and error handling redirecting to /login on 401",
+        "Create `frontend/src/store/authStore.js` with zustand store managing auth state: token, freelancer (id, email, name), setToken(), setFreelancer(), logout() clearing localStorage",
+        "Create `frontend/src/services/invoiceService.js` exporting fetchInvoices(), fetchInvoiceById(id), createInvoice(), updateInvoice(), deleteInvoice(), sendInvoice(id) — all HTTP calls wrapped with apiClient",
+        "Create `frontend/src/pages/Dashboard.jsx` component rendering sidebar with freelancer name, logout button, and main area with invoice list; import InvoiceCard component for each invoice; implement status filter dropdown (All/Draft/Sent/Paid); fetch invoices on mount using invoiceService.fetchInvoices() and display in grid layout",
+        "Create `frontend/src/components/InvoiceCard.jsx` component accepting invoice prop, displaying invoice_number, client_name, amount formatted as currency, status badge with conditional background color (draft=gray, sent=blue, paid=green), due_date, and 'Send' button (enabled only for draft status) triggering sendInvoice() and refreshing list",
+        "Create `frontend/src/pages/Login.jsx` with email and password form, calling POST /api/auth/login via apiService, storing token and freelancer in authStore + localStorage, redirecting to /dashboard on success",
+        "Create `frontend/src/pages/Register.jsx` with email, password, name form, calling POST /api/auth/register, storing credentials, redirecting to /dashboard",
+        "Set up `frontend/src/App.jsx` with React Router routes: /login, /register, /dashboard (protected by PrivateRoute component checking authStore.token), redirecting to /login if unauthenticated"
+      ],
+      "commit_condition": "Run `npm start` in frontend directory — React dev server starts on http://localhost:3000; open browser, navigate to http://localhost:3000/login, enter valid freelancer credentials, click login, redirect to /dashboard occurs automatically; inspect page shows invoice cards rendered; run `curl http://localhost:5000/api/invoices -H 'Authorization: Bearer eyJ...' | jq '. | length'` matches number of cards displayed",
+      "example_input": "Express backend running on http://localhost:5000 with invoices in 'sent' and 'paid' status; React frontend does not exist",
+      "example_output": "Browser at http://localhost:3000/dashboard shows: sidebar with 'Alice' and 'Logout' button; main grid displays 3 cards: card 1 'INV-20240115-ABC1' amount $50.00 status 'sent' (blue badge) due 2024-02-15 with 'Send' button disabled; card 2 'INV-20240120-ABC2' amount $150.00 status 'paid' (green badge) due 2024-02-28 with 'Send' button disabled; filter dropdown shows All (3 items), Draft (0), Sent (1), Paid (2)"
+    },
+    {
+      "id": 7,
+      "title": "Invoice PDF Export and Overdue Payment Reminders",
+      "deliverable": "`GET /api/invoices/{id}/pdf` with JWT auth generates PDF file containing invoice number, freelancer name and email, client name and email, itemized description, amount in currency format, due_date, and payment status; returns HTTP 200 with Content-Type: application/pdf and binary stream; `POST /api/reminders/send-overdue` (cron-triggered or manual) queries invoices where status='sent' AND due_date < TODAY, sends reminder email via SendGrid to client listing invoice details and payment link, logs reminder to audit_logs, returns HTTP 200 with {reminders_sent: N}",
+      "tasks": [
+        "Create `backend/services/pdf.js` exporting generateInvoicePdf(invoice, freelancer) function using pdfkit to construct PDF with: title 'INVOICE', freelancer header (name, email), client section (name, email), invoice metadata (number, due_date), line items table showing description and amount, total amount in bold, payment status indicator, returning buffer",
+        "Add GET /api/invoices/{id}/pdf endpoint protected by verifyJWT, querying invoice and freelancer by ids, calling generateInvoicePdf(), returning HTTP 200 with Content-Type: application/pdf, Content-Disposition: attachment, and pdf buffer body",
+        "Create `backend/services/reminders.js` exporting sendOverdueReminders() function querying invoices WHERE status='sent' AND due_date < CURRENT_DATE, iterating each, calling sendReminderEmail() via SendGrid with invoice details and payment link, logging to audit_logs each sent reminder, returning {count: N}",
+        "Add POST /api/reminders/send-overdue endpoint protected by verifyJWT (admin only for MVP), calling sendOverdueReminders(), returning HTTP 200 with {reminders_sent: N, sent_to: [email1, email2, ...]}",
+        "Write `tests/pdf.test.js` testing generateInvoicePdf() returns non-empty buffer, contains invoice number and amount as strings, and can be written to disk",
+        "Write `tests/reminders.test.js` mocking sgMail.send(), testing sendOverdueReminders() queries invoices correctly, sends emails only to overdue sent invoices, does not send to paid invoices, logs each reminder sent"
+      ],
+      "commit_condition": "Run `npm test tests/pdf.test.js tests/reminders.test.js` — all tests pass; run `curl -X GET http://localhost:5000/api/invoices/64a2c3d4-/pdf -H 'Authorization: Bearer eyJ...' -o /tmp/invoice.pdf && file /tmp/invoice.pdf` — outputs 'PDF document'; run `curl -X POST http://localhost:5000/api/reminders/send-overdue -H 'Authorization: Bearer eyJ...'` — returns HTTP 200 with {reminders_sent: N} where N >= 0",
+      "example_input": "Invoices exist with status='sent' and due dates in past; no PDF generation or reminder endpoints exist",
+      "example_output": "curl -X GET http://localhost:5000/api/invoices/64a2c3d4-/pdf -H 'Authorization: Bearer eyJ...' returns HTTP 200 with Content-Type: application/pdf and binary PDF stream; saved PDF contains text 'INVOICE INV-20240115-ABC123', 'Alice (alice@example.com)', 'Bob (bob@client.com)', 'Due: 2024-02-15', 'Total: $50.00', 'Status: Sent'; curl -X POST http://localhost:5000/api/reminders/send-overdue -H 'Authorization: Bearer eyJ...' returns HTTP 200: {\"reminders_sent\": 2, \"sent_to\": [\"bob@client.com\", \"carol@client.com\"]}; SELECT * FROM audit_logs WHERE event_type = 'reminder_sent' shows 2 rows"
+    },
+    {
+      "id": 8,
+      "title": "Production Deployment to Railway and End-to-End Testing",
+      "deliverable": "Dockerfile for backend and frontend services; docker-compose.yml orchestrating backend, frontend, and PostgreSQL 16 containers; Railway project configured with environment variables (DATABASE_URL, STRIPE_API_KEY, SENDGRID_API_KEY, JWT_SECRET); both backend and frontend deployed and accessible at https://invoiceflow-{username}.railway.app; health check endpoint returns 200; full user flow (register → create invoice → send → pay → receive paid status) works end-to-end in production",
+      "tasks": [
+        "Create `backend/Dockerfile` with Node.js 20 base image, WORKDIR /app, COPY package*.json, RUN npm ci --only=production, COPY . ., EXPOSE 5000, CMD ['node', 'server.js']",
+        "Create `frontend/Dockerfile` with Node.js 20 base image, build stage running npm ci and npm run build, final stage with nginx base image, copying build/ to /usr/share/nginx/html, exposing port 3000, serving React SPA with fallback to index.html",
+        "Write `docker-compose.yml` with services: postgres (image: postgres:16, volumes for data persistence, environment DATABASE_URL), backend (build: ./backend, depends_on: postgres, ports: 5000:5000, environment: NODE_ENV=development, DATABASE_URL, JWT_SECRET, STRIPE_API_KEY, SENDGRID_API_KEY), frontend (build: ./frontend, ports: 3000:3000)",
+        "Create `.env.example` documenting required variables: NODE_ENV, DATABASE_URL, JWT_SECRET, STRIPE_API_KEY, STRIPE_WEBHOOK_SECRET, SENDGRID_API_KEY; add .env to .gitignore",
+        "Create `README.md` with setup instructions: clone repo, copy .env.example to .env, fill credentials, run `docker-compose up`, access http://localhost:3000; list all user-facing features (register, invoice CRUD, send via email, Stripe payment, dashboard, PDF, reminders)",
+        "Create Railway project via CLI or dashboard; connect GitHub repo; configure environment variables in Railway dashboard from .env; deploy backend to Railway, noting https://{project-backend}.railway.app; deploy frontend to Railway, noting https://{project-frontend}.railway.app",
+        "Update frontend `src/services/api.js` baseURL to use process.env.REACT_APP_API_URL (defaults to /api in production for same-origin requests if proxied, or explicit https://{backend-url}/api)",
+        "Write `tests/e2e.test.js` with puppeteer or similar, testing: user registration with unique email, login, invoice creation, send invoice with payment link, Stripe webhook simulation updating status to paid, dashboard card status updates to paid, PDF download returns PDF file; run against production URL"
+      ],
+      "commit_condition": "Run `docker-compose up -d` — all 3 containers start successfully; run `docker ps` — shows 3 containers running; run `curl -s http://localhost:5000/health | jq .status` — returns 'ok'; open http://localhost:3000/login in browser — React app loads; complete full flow: register, create invoice, send, simulate payment webhook, refresh dashboard — invoice status shows 'paid'; run `npm test tests/e2e.test.js` — all tests pass; deploy to Railway: `railway up` — outputs deployment URL; run `curl -s https://invoiceflow-{username}.railway.app/api/health | jq .status` — returns 'ok' from production",
+      "example_input": "All phases 1–7 complete with backend and frontend running locally; no production deployment exists; code not containerized",
+      "example_output": "Run `docker-compose up -d && sleep 5` — 3 containers running (backend, frontend, postgres); curl -s http://localhost:5000/health returns {\"status\": \"ok\"}; open http://localhost:3000, register alice@example.com / password123 / Alice, redirected to /dashboard; create invoice for bob@client.com $50 due 2024-02-15, send — email logged; simulate Stripe webhook POST to http://localhost:5000/api/webhooks/stripe with checkout.session.completed event; refresh /dashboard — invoice status shows 'paid' (green); download PDF — file saved successfully; After Railway deploy: curl -s https://invoiceflow-username.railway.app/health returns {\"status\": \"ok\"}; same user flow works end-to-end at https://invoiceflow-username.railway.app"
+    }
+  ]
+}
+```
