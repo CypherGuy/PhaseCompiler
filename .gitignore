@@ -4,3 +4,4 @@
 *.sh
 autoeval/dashboard.html
 autoeval/refresh_dashboard.log
+.claude
